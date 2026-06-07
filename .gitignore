@@ -22,3 +22,21 @@ lerna-debug.log*
 # temp directory
 .temp
 .tmp
+
+# apple specific
+.DS_Store
+
+# =================================================================
+# OpenSpec & Antigravity IDE Configuration
+# =================================================================
+
+.agent/scratchpad/
+.agent/logs/
+.agent/workspace_state.json
+openspec-debug.log
+
+openspec/changes/propose/
+openspec/changes/explore/
+
+openspec/cache/
+openspec/tmp/
