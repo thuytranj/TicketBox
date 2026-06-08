@@ -16,13 +16,15 @@
 - [ ] 3.2 Tích hợp RabbitMQ Client, định nghĩa queue và exchange cho tác vụ tạo đơn đặt vé
 - [ ] 3.3 Triển khai Booking Controller nhận yêu cầu, chạy Lua Script trên Redis và đẩy tin nhắn vào RabbitMQ nếu Lua Script trả về thành công
 - [ ] 3.4 Triển khai RabbitMQ Worker tiêu thụ tin nhắn, tạo bản ghi `bookings` và `tickets` trong PostgreSQL bất đồng bộ
-- [ ] 3.5 Triển khai Cron Job khôi phục tồn kho trên Redis đối với các đơn hàng `pending` quá 10 phút mà không được thanh toán
+- [ ] 3.5 Triển khai Cron Job khôi phục tồn kho trên Redis đối với các đơn hàng `pending` đã quá hạn `expires_at` (10 phút mặc định hoặc 2 giờ gia hạn)
 
 ## 4. Protection & Resiliency Mechanisms
 
 - [ ] 4.1 Tích hợp `nestjs-throttler` cấu hình Rate Limiter sử dụng Redis làm storage (Token Bucket) cho các endpoint API đặt vé
 - [ ] 4.2 Thiết lập Idempotency Middleware/Guard lưu trữ `Idempotency-Key` vào Redis với TTL 24 giờ để chặn các yêu cầu thanh toán trùng lặp
-- [ ] 4.3 Tích hợp thư viện `opossum` và bọc cuộc gọi API thanh toán của VNPAY/MoMo để thực hiện Circuit Breaker
+- [ ] 4.3 Tích hợp thư viện `opossum` thiết lập hai Circuit Breakers độc lập (`vnpayCircuitBreaker` và `momoCircuitBreaker`) bọc các cuộc gọi cổng thanh toán tương ứng
+- [ ] 4.3a Xây dựng API `GET /payments/methods` kiểm tra trạng thái Circuit Breaker để phản hồi danh sách cổng thanh toán khả dụng cho Frontend
+- [ ] 4.3b Triển khai cơ chế Graceful Degradation trong API `/payments`: tự động gợi ý chuyển cổng (nếu có cổng khả dụng) hoặc kích hoạt chế độ Pay Later (gia hạn `expires_at` thêm 2 giờ và trả về HTTP 202) khi toàn bộ cổng trực tuyến sập
 - [ ] 4.4 Thiết lập chiến lược Cache-aside với Redis cho các API lấy danh sách và chi tiết concert, tự động invalidate cache khi admin thay đổi thông tin
 
 ## 5. Soát vé Trực tuyến & Ngoại tuyến (Check-in)

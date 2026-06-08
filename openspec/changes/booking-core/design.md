@@ -15,12 +15,12 @@
   - [Mô hình phân quyền: Role-Based Access Control (RBAC)](#mô-hình-phân-quyền-role-based-access-control-rbac)
   - [Nhóm người dùng và quyền truy cập](#nhóm-người-dùng-và-quyền-truy-cập)
   - [Cách kiểm tra quyền tại từng điểm truy cập](#cách-kiểm-tra-quyền-tại-từng-điểm-truy-cập)
-- [Chiến lược xử lý High Concurrency](#chiến-lược-xử-lý-high-concurrency)
 - [Thiết kế các cơ chế bảo vệ hệ thống](#thiết-kế-các-cơ-chế-bảo-vệ-hệ-thống)
   - [Kiểm soát tải đột biến (Rate Limiting)](#kiểm-soát-tải-đột-biến-rate-limiting)
   - [Xử lý cổng thanh toán không ổn định (Circuit Breaker)](#xử-lý-cổng-thanh-toán-không-ổn-định-circuit-breaker)
   - [Chống trừ tiền hai lần (Idempotency Key)](#chống-trừ-tiền-hai-lần-idempotency-key)
   - [Caching (Cache-aside với Redis)](#caching-cache-aside-với-redis)
+- [Chiến lược xử lý High Concurrency](#chiến-lược-xử-lý-high-concurrency)
 - [Soát vé Ngoại tuyến (Offline Check-in)](#soát-vé-ngoại-tuyến-offline-check-in)
 - [Hệ thống Thông báo (Notification Architecture)](#hệ-thống-thông-báo-notification-architecture)
 - [Nhập danh sách khách mời VIP từ CSV (VIP Guest List Import)](#nhập-danh-sách-khách-mời-vip-từ-csv-vip-guest-list-import)
@@ -527,7 +527,8 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ##### Business Rules
 - Khi khởi tạo, đơn hàng bắt buộc ở trạng thái `pending`.
-- `expires_at` được gán bằng `created_at + 10 minutes`. Nếu hết thời gian này đơn hàng chưa sang `paid`, cron job quét sẽ chuyển trạng thái sang `expired` và thực hiện hoàn trả số vé đã giữ về lại kho Redis.
+- `expires_at` mặc định được gán bằng `created_at + 10 minutes`. Trong trường hợp xảy ra sự cố sập cổng thanh toán trực tuyến (các Circuit Breaker của VNPAY và MoMo đều `OPEN`), đơn hàng sẽ được áp dụng chính sách **Pay Later (Thanh toán sau)** và tự động gia hạn `expires_at` thành `NOW() + 2 hours` để người dùng có cơ hội thanh toán lại từ trang lịch sử mua hàng.
+- Nếu hết thời gian `expires_at` mà đơn hàng chưa sang `paid`, cron job quét sẽ chuyển trạng thái sang `expired` và thực hiện hoàn trả số vé đã giữ về lại kho Redis (compensation).
 - Ràng buộc khóa ngoại không cho phép xóa Concert (`ON DELETE RESTRICT`) hoặc User (`ON DELETE RESTRICT`) khi đã phát sinh đơn hàng.
 
 ##### Indexes
@@ -759,145 +760,161 @@ flowchart TD
 
 ---
 
-## Chiến lược xử lý High Concurrency
-
-### Các phương án cân nhắc
-
-| #   | Phương án                                                           | Mô tả                                                                                                                                                    |
-| --- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A   | **PostgreSQL SELECT FOR UPDATE (Pessimistic Locking)**              | Lock row tồn kho trong DB khi đặt vé, giảm `available_quantity`, commit. Các request khác phải chờ lock release.                                         |
-| B   | **PostgreSQL Optimistic Locking (Version Column)**                  | Đọc tồn kho + version number, khi ghi kiểm tra version khớp. Nếu không khớp → retry.                                                                     |
-| C   | **Redis Lua Script (Atomic In-Memory) + RabbitMQ (Async DB Write)** | Redis xử lý trừ tồn kho + kiểm tra per-user limit nguyên tử trong memory. Giao dịch hợp lệ được đẩy vào RabbitMQ, worker ghi vào PostgreSQL bất đồng bộ. |
-
-### Đánh giá
-
-| Tiêu chí                         | Pessimistic Lock (PG)                             | Optimistic Lock (PG)                                | Redis Lua + RabbitMQ                       |
-| -------------------------------- | ------------------------------------------------- | --------------------------------------------------- | ------------------------------------------ |
-| Throughput dưới tải 1000 req/s   | ❌ Nghẽn connection pool, row lock contention cao | ⚠️ Retry storm khi contention cao → throughput giảm | ✅ Redis single-threaded xử lý ~100K ops/s |
-| Consistency                      | ✅ Strong (DB-level lock)                         | ✅ Strong (version check)                           | ✅ Strong (Lua script atomic)              |
-| DB load                          | ❌ Mỗi request = 1 transaction                    | ❌ Mỗi request = 1+ transaction (retry)             | ✅ DB chỉ nhận write từ worker tuần tự     |
-| Phức tạp triển khai              | ✅ Đơn giản                                       | ⚠️ Cần retry logic                                  | ⚠️ Cần Redis + RabbitMQ + Lua Script       |
-| Kiểm tra per-user limit cùng lúc | ⚠️ Cần thêm query trong cùng transaction          | ⚠️ Phức tạp hơn khi kết hợp                         | ✅ Kiểm tra trong cùng Lua Script          |
-
-### Chốt giải pháp: Phương án C — Redis Lua Script + RabbitMQ
-
-**Lý do:** Với peak load 1,000 booking requests/giây, PostgreSQL sẽ bị nghẽn connection pool nếu mỗi request đều lock row. Redis xử lý single-threaded nên **Lua Script chạy nguyên tử tự nhiên** (không cần lock), throughput đạt ~100K ops/s — dư sức cho bài toán này. RabbitMQ đệm các booking task để worker ghi vào DB tuần tự, PostgreSQL không bao giờ chịu tải đột biến trực tiếp.
-
-### Chi tiết triển khai
-
-#### Quy trình luồng đặt vé (Sequence Diagram)
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor K as Khán giả
-    participant API as API NestJS
-    participant Redis as Redis
-    participant MQ as RabbitMQ
-    participant W as Worker
-    participant DB as PostgreSQL
-
-    K->>API: POST /bookings (TicketTypeId, Quantity, IdempotencyKey)
-    API->>Redis: EVALSHA Lua Script (Kiểm tra tồn kho và per-user limit)
-
-    alt Lua Script -> LỖI (Hết vé hoặc Vượt giới hạn)
-        Redis-->>API: Return -1 hoặc -2
-        API-->>K: HTTP 400 Bad Request
-    else Lua Script -> THÀNH CÔNG (Trừ tồn kho + Tăng user count)
-        Redis-->>API: Return 1
-        API->>MQ: Publish BookingTask vào booking.queue
-        API-->>K: HTTP 202 Accepted (kèm BookingId tạm)
-    end
-
-    Note over MQ, W: Xử lý bất đồng bộ
-    MQ->>W: Consume BookingTask
-    W->>DB: BEGIN -> INSERT bookings (status=pending) + INSERT tickets -> COMMIT
-```
-
-#### Redis Data Structures
-
-| Key Pattern                               | Kiểu             | Mô tả                     |
-| ----------------------------------------- | ---------------- | ------------------------- |
-| `inventory:{concert_id}:{ticket_type_id}` | String (integer) | Số vé còn lại             |
-| `user_tickets:{user_id}:{ticket_type_id}` | String (integer) | Số vé user đã mua/giữ chỗ |
-
-#### Lua Script — Đặt vé nguyên tử
-
-```lua
-local inventory_key = KEYS[1]      -- inventory:{concert_id}:{ticket_type_id}
-local user_key = KEYS[2]           -- user_tickets:{user_id}:{ticket_type_id}
-local requested_qty = tonumber(ARGV[1])
-local max_per_user = tonumber(ARGV[2])
-
--- 1. Kiểm tra tồn kho
-local available = tonumber(redis.call('GET', inventory_key))
-if not available or available < requested_qty then
-    return -1  -- HẾT VÉ
-end
-
--- 2. Kiểm tra giới hạn per-user
-local purchased = tonumber(redis.call('GET', user_key) or "0")
-if (purchased + requested_qty) > max_per_user then
-    return -2  -- VƯỢT GIỚI HẠN
-end
-
--- 3. Trừ tồn kho + Tăng user count (nguyên tử)
-redis.call('DECRBY', inventory_key, requested_qty)
-redis.call('INCRBY', user_key, requested_qty)
-
-return 1  -- THÀNH CÔNG
-```
-
-#### Lua Script — Hồi kho khi đơn hàng hết hạn (Compensation)
-
-```lua
--- Gọi khi đơn pending quá 10 phút hoặc user hủy đơn
-redis.call('INCRBY', KEYS[1], ARGV[1])  -- Trả lại tồn kho
-redis.call('DECRBY', KEYS[2], ARGV[1])  -- Giảm user count
-```
-
-#### Cron Job hủy đơn hết hạn
-
-- NestJS `@Cron('*/1 * * * *')` quét mỗi phút.
-- Query: `SELECT * FROM bookings WHERE status = 'pending' AND expires_at < NOW()`
-- Với mỗi booking hết hạn: cập nhật `status = 'expired'`, chạy Lua Script hồi kho trên Redis.
-
----
-
 ## Thiết kế các cơ chế bảo vệ hệ thống
 
 ### Kiểm soát tải đột biến (Rate Limiting)
 
 #### Các phương án cân nhắc
 
-| #   | Phương án                | Mô tả                                                                                             |
-| --- | ------------------------ | ------------------------------------------------------------------------------------------------- |
-| A   | **Fixed Window Counter** | Đếm số request trong window cố định (ví dụ: mỗi phút). Reset về 0 khi hết window.                 |
-| B   | **Sliding Window Log**   | Lưu timestamp mỗi request, đếm số request trong N giây gần nhất. Chính xác nhất nhưng tốn memory. |
-| C   | **Token Bucket**         | Bucket chứa N tokens, mỗi request tiêu 1 token. Tokens được nạp lại đều đặn. Cho phép burst ngắn. |
+| #   | Phương án                                                          | Mô tả                                                                                                                                                                                                                                                                                            |
+| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A   | **Single-Layer Rate Limiting (chỉ tại Application)**               | Toàn bộ logic rate limiting (theo IP và User ID) được xử lý tại tầng ứng dụng NestJS bằng Token Bucket trên Redis. Mọi request đều đi qua Nginx (chỉ proxy), vào NestJS, parse JWT, rồi mới kiểm tra giới hạn.                                                                                  |
+| B   | **Two-Tiered Rate Limiting (API Gateway + Application)**           | Chia rate limiting thành 2 lớp phòng thủ: Lớp 1 tại API Gateway (Nginx) chặn theo IP bằng Token Bucket in-memory để phòng thủ diện rộng (DDoS, Bot). Lớp 2 tại NestJS chặn theo User ID bằng Sliding Window Counter trên Redis để bảo vệ nghiệp vụ (chống đầu cơ vé).                            |
+| C   | **Thay Nginx bằng Kong API Gateway**                               | Sử dụng Kong (API Gateway chuyên dụng) thay thế Nginx, tận dụng plugin rate-limiting có sẵn hỗ trợ nhiều tiêu chí (IP, Consumer, Header). Kong cần thêm PostgreSQL/Cassandra riêng để lưu cấu hình hoặc chạy DB-less mode.                                                                       |
 
 #### Đánh giá
 
-| Tiêu chí              | Fixed Window                                 | Sliding Window Log             | Token Bucket                              |
-| --------------------- | -------------------------------------------- | ------------------------------ | ----------------------------------------- |
-| Chính xác             | ❌ Có thể burst gấp đôi tại ranh giới window | ✅ Rất chính xác               | ✅ Chính xác, cho phép burst có kiểm soát |
-| Memory                | ✅ Rất thấp (1 counter)                      | ❌ Cao (lưu tất cả timestamps) | ✅ Thấp (2 giá trị: tokens + last_refill) |
-| Cho phép burst hợp lý | ❌ Không kiểm soát                           | ❌ Không                       | ✅ Burst tới bucket capacity              |
-| Triển khai trên Redis | ✅ Đơn giản                                  | ⚠️ Phức tạp (Sorted Set)       | ✅ Trung bình (Lua Script)                |
+| Tiêu chí                               | Single-Layer (NestJS only)                                                                               | Two-Tiered (Nginx + NestJS)                                                                                             | Kong API Gateway                                                            |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Bảo vệ hạ tầng trước DDoS              | ❌ Yếu — request vẫn phải vào NestJS, parse header, kết nối Redis mới bị chặn. Nguy cơ nghẽn Event Loop | ✅ Mạnh — Nginx chặn ngay tại rìa hệ thống (Edge), xử lý bằng C native, không tiêu tốn tài nguyên NestJS               | ✅ Mạnh — Kong xử lý tại Gateway, tương tự Nginx                            |
+| Chống gian lận đặt vé (theo User ID)   | ⚠️ Có nhưng lẫn lộn cùng lớp với IP check                                                               | ✅ Tách biệt rõ ràng — Lớp 2 khóa cứng theo User ID trên Redis, bất kể user đổi IP (VPN/Proxy)                         | ✅ Có plugin hỗ trợ, nhưng cần cấu hình JWT plugin kèm theo                 |
+| Độ phức tạp hạ tầng                     | ✅ Đơn giản — chỉ cần NestJS + Redis                                                                     | ✅ Thấp — Nginx đã có sẵn trong kiến trúc, chỉ thêm 5 dòng config `limit_req`                                           | ❌ Cao — cần thêm container Kong + DB riêng (PostgreSQL/Cassandra), ~150MB   |
+| Phù hợp quy mô đồ án (team nhỏ)        | ✅ Rất phù hợp                                                                                           | ✅ Phù hợp — không tăng độ phức tạp vận hành                                                                             | ❌ Over-engineering cho Modular Monolith                                     |
+| Khả năng mở rộng sau này               | ⚠️ Hạn chế — mọi thứ gói trong NestJS                                                                   | ✅ Tốt — nếu cần chuyển sang Kong sau, chỉ thay Nginx                                                                   | ✅ Rất tốt — plugin ecosystem phong phú                                     |
 
-#### Chốt giải pháp: Token Bucket (trên Redis)
+#### Chốt giải pháp: Phương án B — Two-Tiered Rate Limiting (Nginx + NestJS)
 
-**Lý do:** Token Bucket cho phép **burst ngắn hợp lý** (người dùng thật có thể bấm nhanh vài lần khi trang loading) nhưng vẫn giới hạn tổng throughput trong khoảng thời gian dài. Triển khai qua `nestjs-throttler` với Redis storage hoặc custom Lua Script.
+**Lý do:**
 
-**Cấu hình:**
+- **Nginx đã có sẵn** trong kiến trúc Container Diagram với vai trò Reverse Proxy — chỉ cần bổ sung cấu hình `limit_req`, không thêm container hay dependency mới.
+- **Tách biệt trách nhiệm rõ ràng:** Lớp 1 (Nginx) chỉ lo chặn IP bất hợp pháp bằng native C module (`ngx_http_limit_req_module`) với tốc độ nano-giây, không tiêu tốn tài nguyên NestJS. Lớp 2 (NestJS) chỉ lo bảo vệ nghiệp vụ theo User ID sau khi đã decode JWT.
+- **Kong là over-engineering** cho Modular Monolith: chỉ có 1 NestJS app phía sau, không cần hệ sinh thái plugin phức tạp. Nếu sau này chuyển sang Microservices, có thể nâng cấp từ Nginx lên Kong mà không cần tái cấu trúc.
 
-| Endpoint                      | Bucket Size | Refill Rate | Áp dụng theo |
-| ----------------------------- | ----------- | ----------- | ------------ |
-| `GET /concerts` (đọc)         | 100         | 100/phút    | IP           |
-| `POST /bookings` (đặt vé)     | 5           | 5/phút      | User ID + IP |
-| `POST /payments` (thanh toán) | 3           | 3/phút      | User ID      |
+#### Kiến trúc 2 lớp Rate Limiting
 
-**Hành vi khi vượt ngưỡng:** Trả về `HTTP 429 Too Many Requests` kèm header `Retry-After` cho biết thời gian chờ (giây).
+```mermaid
+flowchart TD
+    classDef internet fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#c62828;
+    classDef gateway fill:#eceff1,stroke:#37474f,stroke-width:2px,color:#37474f;
+    classDef app fill:#e0f2f1,stroke:#004d40,stroke-width:2px,color:#004d40;
+    classDef db fill:#fff8e1,stroke:#ff6f00,stroke-width:2px,color:#824a00;
+    classDef reject fill:#fce4ec,stroke:#880e4f,stroke-width:2px,color:#880e4f;
+
+    Internet["Internet Traffic"]:::internet
+    Internet --> Nginx
+
+    subgraph Layer1["Lớp 1: API Gateway"]
+        Nginx["Nginx Reverse Proxy<br/>(limit_req: 30 req/s per IP)<br/>Token Bucket - In-memory"]:::gateway
+    end
+
+    Nginx -->|"Request hợp lệ (IP chưa vượt ngưỡng)"| NestJS
+    Nginx -->|"IP vượt ngưỡng"| Reject1["HTTP 429<br/>X-RateLimit-Source: gateway"]:::reject
+
+    subgraph Layer2["Lớp 2: Application - Bảo vệ nghiệp vụ"]
+        NestJS["NestJS Application<br/>(Decode JWT -> lấy User ID)"]:::app
+        SlidingWindow["Redis Sliding Window Counter<br/>(Lua Script - theo User ID)<br/>5 req/min cho POST /bookings"]:::db
+    end
+
+    NestJS --> SlidingWindow
+    SlidingWindow -->|"User ID chưa vượt ngưỡng"| BookingEngine["Booking Engine"]:::app
+    SlidingWindow -->|"User ID vượt ngưỡng"| Reject2["HTTP 429<br/>X-RateLimit-Source: app-user"]:::reject
+```
+
+#### Lớp 1 — API Gateway (Nginx `limit_req`)
+
+**Mục đích:** Phòng thủ diện rộng (Global Protection). Chặn các cuộc tấn công DDoS, bot cào dữ liệu, hoặc người dùng nhấn F5 liên tục trước khi request chạm tới NestJS Application.
+
+**Thuật toán:** Token Bucket (Leaky Bucket variant) — module native `ngx_http_limit_req_module`, xử lý hoàn toàn trong shared memory của Nginx, không cần Redis.
+
+**Cấu hình Nginx:**
+
+```nginx
+# Khai báo zone: 10MB shared memory, 30 req/s per IP
+limit_req_zone $binary_remote_addr zone=global:10m rate=30r/s;
+
+server {
+    location / {
+        # burst=10: cho phép burst tối đa 10 request trước khi reject
+        # nodelay: xử lý burst ngay lập tức, không queue chờ
+        limit_req zone=global burst=10 nodelay;
+        limit_req_status 429;
+
+        # Trả về JSON thay vì HTML mặc định của Nginx
+        error_page 429 = @rate_limit_exceeded;
+
+        proxy_pass http://nestjs_app;
+    }
+
+    location @rate_limit_exceeded {
+        default_type application/json;
+        add_header X-RateLimit-Source "gateway" always;
+        return 429 '{"statusCode":429,"message":"Too many requests. Please slow down."}';
+    }
+}
+```
+
+| Tham số      | Giá trị        | Ý nghĩa                                                              |
+| ------------ | -------------- | -------------------------------------------------------------------- |
+| `rate`       | `30r/s`        | Tối đa 30 request/giây cho mỗi IP address                            |
+| `burst`      | `10`           | Cho phép burst thêm 10 request vượt ngưỡng (phù hợp người dùng thật) |
+| `nodelay`    | —              | Xử lý burst ngay, không delay/queue                                   |
+| `zone`       | `global:10m`   | 10MB shared memory (~160,000 IP addresses đồng thời)                  |
+
+#### Lớp 2 — Application Layer (Redis Sliding Window Counter)
+
+**Mục đích:** Bảo vệ nghiệp vụ chuyên sâu (Business Logic Protection). Ngăn chặn một tài khoản (User ID) lách luật bằng cách mở nhiều tab, dùng VPN đổi IP, hoặc viết script gửi đồng thời hàng loạt request đặt vé.
+
+**Thuật toán:** Sliding Window Counter trên Redis — sử dụng Lua Script với Sorted Set (`ZSET`) để đếm chính xác số request trong cửa sổ thời gian trượt, triệt tiêu hiện tượng burst tại ranh giới window mà Fixed Window mắc phải.
+
+**Chỉ áp dụng cho các endpoint nhạy cảm:**
+
+| Endpoint                      | Window   | Max Requests | Áp dụng theo | Lý do                                                 |
+| ----------------------------- | -------- | ------------ | ------------- | ----------------------------------------------------- |
+| `POST /bookings` (đặt vé)     | 1 phút   | 5            | User ID       | Chống script spam đặt chỗ hàng loạt                   |
+| `POST /payments` (thanh toán) | 1 phút   | 3            | User ID       | Chống gửi request thanh toán lặp lại                  |
+
+> **Lưu ý:** Endpoint đọc dữ liệu (`GET /concerts`) **không cần** rate limit ở Lớp 2 vì đã được bảo vệ bởi Nginx (Lớp 1) và CDN Cache.
+
+**Redis Lua Script — Sliding Window Counter:**
+
+```lua
+-- KEYS[1] = rate_limit:{user_id}:{endpoint}
+-- ARGV[1] = now (timestamp hiện tại, milliseconds)
+-- ARGV[2] = window_size (kích thước cửa sổ, milliseconds, ví dụ: 60000 = 1 phút)
+-- ARGV[3] = max_requests (số request tối đa trong window)
+
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local max_req = tonumber(ARGV[3])
+
+-- 1. Xóa các bản ghi cũ nằm ngoài cửa sổ thời gian
+redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
+
+-- 2. Đếm số request hiện tại trong cửa sổ
+local current = redis.call('ZCARD', key)
+
+if current >= max_req then
+    return 0  -- VƯỢT NGƯỠNG → chặn
+end
+
+-- 3. Ghi nhận request mới (score = timestamp, member = unique ID)
+redis.call('ZADD', key, now, now .. ':' .. math.random(1000000))
+
+-- 4. Đặt TTL tự động dọn dẹp key khi hết window
+redis.call('PEXPIRE', key, window)
+
+return 1  -- CHO PHÉP
+```
+
+**Key Pattern trên Redis:**
+
+| Key Pattern                                | Kiểu         | Mô tả                                    |
+| ------------------------------------------ | ------------ | ---------------------------------------- |
+| `rate_limit:{user_id}:bookings`            | Sorted Set   | Đếm số lần đặt vé trong 1 phút          |
+| `rate_limit:{user_id}:payments`            | Sorted Set   | Đếm số lần thanh toán trong 1 phút       |
+
+**Hành vi khi vượt ngưỡng:** Trả về `HTTP 429 Too Many Requests` kèm header `X-RateLimit-Source: app-user` và `Retry-After` (giây) để client phân biệt với lỗi 429 từ Nginx Gateway.
 
 ---
 
@@ -920,11 +937,13 @@ redis.call('DECRBY', KEYS[2], ARGV[1])  -- Giảm user count
 | Tự phục hồi            | ❌ Phải retry thủ công              | ✅ Half-Open → auto-recover | ❌ Không                  |
 | Thư viện NestJS        | ✅ axios-retry                      | ✅ opossum                  | ⚠️ Cần tự viết            |
 
-#### Chốt giải pháp: Circuit Breaker (thư viện `opossum`) kết hợp Retry
+#### Chốt giải pháp: Circuit Breaker kết hợp Graceful Degradation (Dynamic Switch & Pay Later)
 
-**Lý do:** Circuit Breaker **ngăn cascade failure** hiệu quả nhất — khi VNPAY/MoMo sập, hệ thống tự cắt mạch thay vì treo server chờ timeout. Kết hợp retry (1-2 lần) trước khi tính là failure để xử lý lỗi mạng tạm thời.
+**Lý do:** 
+- **Tách biệt bảo vệ:** Hệ thống sử dụng hai Circuit Breaker độc lập (`vnpayCircuitBreaker` và `momoCircuitBreaker` sử dụng thư viện `opossum`) cho từng cổng thanh toán trực tuyến. Điều này tránh việc sự cố của cổng này ảnh hưởng đến cổng khác.
+- **Graceful Degradation:** Thay vì trả lỗi cứng `HTTP 503` khi cổng lỗi, hệ thống sẽ tự động chuyển cổng (Dynamic Switch) hoặc chuyển sang tùy chọn **Pay Later (Thanh toán sau)** kết hợp tự động gia hạn thời gian giữ vé của `BOOKINGS` từ 10 phút lên 2 giờ. Việc này tối ưu hóa tỷ lệ chuyển đổi (conversion rate) và bảo vệ giao dịch giữ vé hợp lệ của khách hàng.
 
-**Cấu hình Circuit Breaker:**
+**Cấu hình Circuit Breaker cho từng cổng (`vnpayCircuitBreaker`, `momoCircuitBreaker`):**
 
 | Tham số                    | Giá trị | Ý nghĩa                                       |
 | -------------------------- | ------- | --------------------------------------------- |
@@ -933,7 +952,15 @@ redis.call('DECRBY', KEYS[2], ARGV[1])  -- Giảm user count
 | `rollingCountTimeout`      | 10 giây | Cửa sổ thống kê lỗi                           |
 | `volumeThreshold`          | 5       | Số request tối thiểu trước khi tính tỷ lệ     |
 
-**State Machine:**
+**Cấu hình Retry (bên trong mỗi Circuit Breaker):**
+
+| Tham số          | Giá trị   | Ý nghĩa                                                                 |
+| ---------------- | --------- | ----------------------------------------------------------------------- |
+| `maxRetries`     | 2         | Tối đa retry 2 lần trước khi tính là failure                            |
+| `retryDelay`     | 1s → 2s   | Exponential Backoff — tránh đánh dồn gateway khi đang quá tải           |
+| `retryCondition` | 5xx, ETIMEDOUT | Chỉ retry khi lỗi server hoặc timeout, không retry với 4xx (lỗi client) |
+
+**State Machine của Circuit Breaker:**
 
 ```mermaid
 stateDiagram-v2
@@ -944,7 +971,50 @@ stateDiagram-v2
     HalfOpen --> Open : probe thất bại (request error)
 ```
 
-**Hành vi khi mạch Open:** Trả về HTTP 503 Service Unavailable với message "Hệ thống thanh toán đang bảo trì, vui lòng thử lại sau" — không gọi sang payment gateway.
+**Cơ chế Failover & Fallback:**
+
+1. **Endpoint kiểm tra trạng thái cổng (`GET /payments/methods`):**
+   - API này kiểm tra trạng thái của cả hai Circuit Breakers.
+   - Nếu `vnpayCircuitBreaker` ở trạng thái `OPEN`, trường `available` của VNPAY sẽ trả về `false`. Frontend sẽ tự động ẩn hoặc disable tùy chọn này và gợi ý MoMo.
+   - Nếu cả hai cổng đều `OPEN`, Frontend sẽ chỉ hiển thị lựa chọn **"Thanh toán sau (Pay Later)"**.
+
+2. **Luồng xử lý Checkout API (`POST /payments`):**
+   - Khi nhận yêu cầu thanh toán cho một phương thức (ví dụ: VNPAY):
+     - Nếu CB của cổng đó là `CLOSED` hoặc `HALF-OPEN`: Thực hiện gọi API của gateway bình thường.
+     - Nếu CB của cổng đó là `OPEN`: API tự động kiểm tra xem cổng còn lại (MoMo) có khả dụng hay không.
+       - *Trường hợp cổng còn lại khả dụng (Strategy 1):* Trả về `HTTP 422 Unprocessable Entity` gợi ý người dùng đổi sang cổng khả dụng.
+       - *Trường hợp cả hai cổng đều sập (Strategy 2):* API tự động cập nhật đơn hàng thành **Pay Later** (gia hạn `expires_at` của đơn hàng lên `NOW() + 2 hours`), trả về mã `HTTP 202 Accepted` kèm thông báo hướng dẫn người dùng quay lại lịch sử mua hàng để thanh toán sau.
+
+#### Luồng xử lý thanh toán thông minh (Sequence Diagram)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor K as Khán giả
+    participant API as NestJS Payment Service
+    participant CB_VN as VNPAY Circuit Breaker
+    participant CB_MO as MoMo Circuit Breaker
+    participant GW as Cổng thanh toán (VNPAY/MoMo)
+
+    K->>API: POST /payments (booking_id, method="vnpay")
+    API->>CB_VN: Thực hiện gọi VNPAY qua Circuit Breaker
+
+    alt Gọi VNPAY thành công (CB = CLOSED/HALF-OPEN & Gateway phản hồi tốt)
+        CB_VN->>GW: Gọi API tạo giao dịch (bao gồm tự động retry nếu lỗi mạng)
+        GW-->>K: Redirect link thanh toán (HTTP 200)
+    else Gọi VNPAY thất bại (CB = OPEN hoặc Gateway lỗi sau retry)
+        Note over API: Kích hoạt luồng Fallback / Graceful Degradation tập trung
+        API->>CB_MO: Kiểm tra trạng thái MoMo CB
+        alt MoMo CB = CLOSED
+            API-->>K: HTTP 422 (Gợi ý đổi sang MoMo)
+        else MoMo CB = OPEN (Cả hai cổng sập)
+            API->>API: Gia hạn đơn BOOKINGS.expires_at = NOW() + 2 giờ
+            API-->>K: HTTP 202 (Gợi ý thanh toán sau)
+        end
+    end
+```
+
+**Hành vi khi sập toàn bộ cổng:** Khi cả hai Circuit Breaker đều `OPEN`, người dùng được chuyển sang chế độ thanh toán sau. Hệ thống không tạo giao dịch thanh toán trực tiếp, đồng thời gửi email thông báo giữ chỗ kèm liên kết thanh toán. Đơn hàng sẽ không bị hủy trong vòng 2 giờ. Sau khi hết thời gian này nếu không có giao dịch thanh toán thành công nào được ghi nhận, đơn hàng sẽ bị hủy.
 
 ---
 
@@ -1056,6 +1126,111 @@ flowchart TD
     QueryPG --> SetRedis["Redis SET cache:concerts:{id}:stagemap (TTL 30 phút)"]:::redis
     SetRedis --> ReturnFresh["Trả SVG cho client"]:::success
 ```
+
+---
+
+## Chiến lược xử lý High Concurrency
+
+### Các phương án cân nhắc
+
+| #   | Phương án                                                           | Mô tả                                                                                                                                                    |
+| --- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A   | **PostgreSQL SELECT FOR UPDATE (Pessimistic Locking)**              | Lock row tồn kho trong DB khi đặt vé, giảm `available_quantity`, commit. Các request khác phải chờ lock release.                                         |
+| B   | **PostgreSQL Optimistic Locking (Version Column)**                  | Đọc tồn kho + version number, khi ghi kiểm tra version khớp. Nếu không khớp → retry.                                                                     |
+| C   | **Redis Lua Script (Atomic In-Memory) + RabbitMQ (Async DB Write)** | Redis xử lý trừ tồn kho + kiểm tra per-user limit nguyên tử trong memory. Giao dịch hợp lệ được đẩy vào RabbitMQ, worker ghi vào PostgreSQL bất đồng bộ. |
+
+### Đánh giá
+
+| Tiêu chí                         | Pessimistic Lock (PG)                             | Optimistic Lock (PG)                                | Redis Lua + RabbitMQ                       |
+| -------------------------------- | ------------------------------------------------- | --------------------------------------------------- | ------------------------------------------ |
+| Throughput dưới tải 1000 req/s   | ❌ Nghẽn connection pool, row lock contention cao | ⚠️ Retry storm khi contention cao → throughput giảm | ✅ Redis single-threaded xử lý ~100K ops/s |
+| Consistency                      | ✅ Strong (DB-level lock)                         | ✅ Strong (version check)                           | ✅ Strong (Lua script atomic)              |
+| DB load                          | ❌ Mỗi request = 1 transaction                    | ❌ Mỗi request = 1+ transaction (retry)             | ✅ DB chỉ nhận write từ worker tuần tự     |
+| Phức tạp triển khai              | ✅ Đơn giản                                       | ⚠️ Cần retry logic                                  | ⚠️ Cần Redis + RabbitMQ + Lua Script       |
+| Kiểm tra per-user limit cùng lúc | ⚠️ Cần thêm query trong cùng transaction          | ⚠️ Phức tạp hơn khi kết hợp                         | ✅ Kiểm tra trong cùng Lua Script          |
+
+### Chốt giải pháp: Phương án C — Redis Lua Script + RabbitMQ
+
+**Lý do:** Với peak load 1,000 booking requests/giây, PostgreSQL sẽ bị nghẽn connection pool nếu mỗi request đều lock row. Redis xử lý single-threaded nên **Lua Script chạy nguyên tử tự nhiên** (không cần lock), throughput đạt ~100K ops/s — dư sức cho bài toán này. RabbitMQ đệm các booking task để worker ghi vào DB tuần tự, PostgreSQL không bao giờ chịu tải đột biến trực tiếp.
+
+### Chi tiết triển khai
+
+#### Quy trình luồng đặt vé (Sequence Diagram)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor K as Khán giả
+    participant API as API NestJS
+    participant Redis as Redis
+    participant MQ as RabbitMQ
+    participant W as Worker
+    participant DB as PostgreSQL
+
+    K->>API: POST /bookings (TicketTypeId, Quantity, IdempotencyKey)
+    API->>Redis: EVALSHA Lua Script (Kiểm tra tồn kho và per-user limit)
+
+    alt Lua Script -> LỖI (Hết vé hoặc Vượt giới hạn)
+        Redis-->>API: Return -1 hoặc -2
+        API-->>K: HTTP 400 Bad Request
+    else Lua Script -> THÀNH CÔNG (Trừ tồn kho + Tăng user count)
+        Redis-->>API: Return 1
+        API->>MQ: Publish BookingTask vào booking.queue
+        API-->>K: HTTP 202 Accepted (kèm BookingId tạm)
+    end
+
+    Note over MQ, W: Xử lý bất đồng bộ
+    MQ->>W: Consume BookingTask
+    W->>DB: BEGIN -> INSERT bookings (status=pending) + INSERT tickets -> COMMIT
+```
+
+#### Redis Data Structures
+
+| Key Pattern                               | Kiểu             | Mô tả                     |
+| ----------------------------------------- | ---------------- | ------------------------- |
+| `inventory:{concert_id}:{ticket_type_id}` | String (integer) | Số vé còn lại             |
+| `user_tickets:{user_id}:{ticket_type_id}` | String (integer) | Số vé user đã mua/giữ chỗ |
+
+#### Lua Script — Đặt vé nguyên tử
+
+```lua
+local inventory_key = KEYS[1]      -- inventory:{concert_id}:{ticket_type_id}
+local user_key = KEYS[2]           -- user_tickets:{user_id}:{ticket_type_id}
+local requested_qty = tonumber(ARGV[1])
+local max_per_user = tonumber(ARGV[2])
+
+-- 1. Kiểm tra tồn kho
+local available = tonumber(redis.call('GET', inventory_key))
+if not available or available < requested_qty then
+    return -1  -- HẾT VÉ
+end
+
+-- 2. Kiểm tra giới hạn per-user
+local purchased = tonumber(redis.call('GET', user_key) or "0")
+if (purchased + requested_qty) > max_per_user then
+    return -2  -- VƯỢT GIỚI HẠN
+end
+
+-- 3. Trừ tồn kho + Tăng user count (nguyên tử)
+redis.call('DECRBY', inventory_key, requested_qty)
+redis.call('INCRBY', user_key, requested_qty)
+
+return 1  -- THÀNH CÔNG
+```
+
+#### Lua Script — Hồi kho khi đơn hàng hết hạn (Compensation)
+
+```lua
+-- Gọi khi đơn pending quá 10 phút hoặc user hủy đơn
+redis.call('INCRBY', KEYS[1], ARGV[1])  -- Trả lại tồn kho
+redis.call('DECRBY', KEYS[2], ARGV[1])  -- Giảm user count
+```
+
+#### Cron Job hủy đơn hết hạn
+
+- NestJS `@Cron('*/1 * * * *')` quét mỗi phút.
+- Query: `SELECT * FROM bookings WHERE status = 'pending' AND expires_at < NOW()`
+- Với mỗi booking hết hạn: cập nhật `status = 'expired'`, chạy Lua Script hồi kho trên Redis.
 
 ---
 
@@ -1384,7 +1559,7 @@ sequenceDiagram
 | Raw query khi cần        | ✅ QueryBuilder + raw       | ✅ $queryRaw                     | ✅ Native           |
 | Community + Tài liệu     | ✅ Lớn                      | ✅ Lớn, tài liệu tốt             | ⚠️ Trung bình       |
 
-**Chốt:** **TypeORM** hoặc **Prisma** (để team quyết định). Cả hai đều phù hợp. TypeORM có ưu thế tích hợp native với NestJS qua decorator. Prisma có type safety tốt hơn. Knex quá low-level cho scope đồ án này.
+**Chốt:** **TypeORM**. TypeORM có ưu thế tích hợp native với NestJS qua decorator.
 
 ---
 
