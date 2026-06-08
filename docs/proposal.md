@@ -1,13 +1,13 @@
 # TicketBox — Project Proposal
 
 ## Mục lục
-- [Vấn đề](#vấn-đề)
+- [Why](#why)
 - [Mục tiêu](#mục-tiêu)
-- [Người dùng và nhu cầu](#người-dùng-và-nhu-cầu)
+- [Người dùng và nhu cầu](#người-dúng-và-nhu-cầu)
   - [1. Khán giả (Audience)](#1-khán-giả-audience)
   - [2. Ban tổ chức (Organizer)](#2-ban-tổ-chức-organizer)
   - [3. Nhân viên Soát vé (Gate Staff)](#3-nhân-viên-soát-vé-gate-staff)
-- [Phạm vi](#phạm-vi)
+- [What Changes](#what-changes)
   - [Trong phạm vi đồ án](#trong-phạm-vi-đồ-án)
   - [Ngoài phạm vi đồ án](#ngoài-phạm-vi-đồ-án)
 - [Rủi ro và ràng buộc](#rủi-ro-và-ràng-buộc)
@@ -16,7 +16,7 @@
 
 ---
 
-## Vấn đề
+## Why
 
 Thị trường giải trí và âm nhạc tại Việt Nam đang bùng nổ với các sự kiện quy mô lớn (Anh Trai Say Hi, Anh Trai Vượt Ngàn Chông Gai, các concert quốc tế tại SVĐ Mỹ Đình…). Hiện nay, đa phần các đơn vị tổ chức sự kiện nhỏ và vừa vẫn đang vận hành kênh bán vé bằng các phương thức thủ công: tiếp nhận đơn đặt vé qua **Zalo OA**, **Google Form**, sau đó xác nhận thanh toán qua hình ảnh chuyển khoản ngân hàng và gửi vé điện tử bằng tay qua tin nhắn hoặc email. Quy trình này hoạt động được ở quy mô vài trăm vé, nhưng hoàn toàn sụp đổ khi sự kiện thu hút hàng chục nghìn người mua cùng lúc.
 
@@ -82,7 +82,7 @@ Là nhân sự vận hành tại cổng sự kiện. Họ sử dụng **Mobile A
 
 **Điều quan trọng nhất:** **Tốc độ quét và khả năng hoạt động offline** — nếu máy quét chậm hoặc không hoạt động được khi mất sóng, hàng nghìn khán giả sẽ bị kẹt tại cổng.
 
-## Phạm vi
+## What Changes
 
 ### Trong phạm vi đồ án
 

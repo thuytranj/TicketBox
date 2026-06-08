@@ -1,0 +1,25 @@
+# Đặc tả: Quản lý Concert (Concert Management)
+
+## Mô tả
+Hệ thống quản lý thông tin các buổi biểu diễn ca nhạc (concert), cho phép ban tổ chức quản lý và khán giả tìm kiếm, xem thông tin chi tiết.
+
+## Luồng chính
+<!-- Các bước xử lý theo thứ tự, các thành phần tham gia -->
+
+## Kịch bản lỗi
+<!-- Điều gì xảy ra khi: timeout, mất mạng, dữ liệu không hợp lệ, ... -->
+
+## Ràng buộc
+<!-- Giới hạn hiệu năng, bảo mật, tính nhất quán cần đảm bảo -->
+
+## Tiêu chí chấp nhận
+<!-- Làm thế nào để biết tính năng này hoạt động đúng? -->
+
+## ADDED Requirements
+
+### Requirement: Quản lý thông tin concert và bộ nhớ đệm
+Hệ thống SHALL cho phép ban tổ chức tạo concert mới và quản lý thông tin, đồng thời tối ưu hóa truy vấn bằng Cache-aside trên Redis.
+
+#### Scenario: Truy cập thông tin concert thành công từ cache
+- **WHEN** Khán giả gửi yêu cầu truy vấn thông tin chi tiết của một concert
+- **THEN** Hệ thống kiểm tra cache trên Redis, nếu tồn tại trả về ngay lập tức, ngược lại đọc từ PostgreSQL, lưu vào Redis và trả về kết quả
