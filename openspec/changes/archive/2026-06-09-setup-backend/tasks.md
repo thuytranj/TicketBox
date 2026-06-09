@@ -24,4 +24,4 @@
 ## 5. Dựng cấu trúc thư mục Modular Monolith
 
 - [x] 5.1 Tạo khung thư mục cho các module nghiệp vụ trong `src/modules/`: `auth`, `concerts`, `bookings`, `payments`, `checkin`, `notification`
-- [ ] 5.2 Chạy thử ứng dụng bằng lệnh `npm run start:dev` để kiểm tra kết nối tới các dịch vụ hạ tầng thành công mà không ném lỗi
+- [x] 5.2 Chạy thử ứng dụng bằng lệnh `npm run start:dev` để kiểm tra kết nối tới các dịch vụ hạ tầng thành công mà không ném lỗi

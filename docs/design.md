@@ -527,7 +527,7 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ##### Business Rules
 - Khi khởi tạo, đơn hàng bắt buộc ở trạng thái `pending`.
-- `expires_at` mặc định được gán bằng `created_at + 10 minutes`. Trong trường hợp xảy ra sự cố sập cổng thanh toán trực tuyến (các Circuit Breaker của VNPAY và MoMo đều `OPEN`), đơn hàng sẽ được áp dụng chính sách **Pay Later (Thanh toán sau)** và tự động gia hạn `expires_at` thành `NOW() + 2 hours` để người dùng có cơ hội thanh toán lại từ trang lịch sử mua hàng.
+- `expires_at` mặc định được gán bằng `created_at + 10 minutes`. Khi xảy ra sự cố sập toàn bộ cổng thanh toán trực tuyến (cả hai Circuit Breaker đều `OPEN`), hệ thống sẽ chặn không cho phép tạo đơn hàng mới (`POST /bookings` trả về lỗi bảo trì luồng mua vé). Các đơn đặt hàng đang ở trạng thái `pending` trước đó vẫn giữ nguyên thời hạn thanh toán là 10 phút và không được gia hạn thêm nhằm tránh tình trạng giữ vé ma.
 - Nếu hết thời gian `expires_at` mà đơn hàng chưa sang `paid`, cron job quét sẽ chuyển trạng thái sang `expired` và thực hiện hoàn trả số vé đã giữ về lại kho Redis (compensation).
 - Ràng buộc khóa ngoại không cho phép xóa Concert (`ON DELETE RESTRICT`) hoặc User (`ON DELETE RESTRICT`) khi đã phát sinh đơn hàng.
 
@@ -937,11 +937,13 @@ return 1  -- CHO PHÉP
 | Tự phục hồi            | ❌ Phải retry thủ công              | ✅ Half-Open → auto-recover | ❌ Không                  |
 | Thư viện NestJS        | ✅ axios-retry                      | ✅ opossum                  | ⚠️ Cần tự viết            |
 
-#### Chốt giải pháp: Circuit Breaker kết hợp Graceful Degradation (Dynamic Switch & Pay Later)
+#### Chốt giải pháp: Circuit Breaker kết hợp Graceful Degradation (Dynamic Switch & Read-Only Failover)
 
 **Lý do:** 
 - **Tách biệt bảo vệ:** Hệ thống sử dụng hai Circuit Breaker độc lập (`vnpayCircuitBreaker` và `momoCircuitBreaker` sử dụng thư viện `opossum`) cho từng cổng thanh toán trực tuyến. Điều này tránh việc sự cố của cổng này ảnh hưởng đến cổng khác.
-- **Graceful Degradation:** Thay vì trả lỗi cứng `HTTP 503` khi cổng lỗi, hệ thống sẽ tự động chuyển cổng (Dynamic Switch) hoặc chuyển sang tùy chọn **Pay Later (Thanh toán sau)** kết hợp tự động gia hạn thời gian giữ vé của `BOOKINGS` từ 10 phút lên 2 giờ. Việc này tối ưu hóa tỷ lệ chuyển đổi (conversion rate) và bảo vệ giao dịch giữ vé hợp lệ của khách hàng.
+- **Graceful Degradation (Read-Only Failover):** 
+  - *Dynamic Switch:* Khi một cổng thanh toán bị sập (Circuit Breaker chuyển sang trạng thái `OPEN`), hệ thống tự động điều hướng người dùng sang cổng thanh toán còn lại.
+  - *Read-Only Failover:* Khi cả hai cổng thanh toán đều sập, hệ thống chặn hoàn toàn việc tạo đơn hàng mới (`POST /bookings` trả về lỗi `HTTP 503 Service Unavailable` hoặc thông báo bảo trì thanh toán) nhằm bảo vệ kho vé khỏi tình trạng bot/người dùng ảo chiếm dụng (giữ vé ma). Tuy nhiên, các API đọc thông tin sự kiện (`GET /concerts/:id` và `GET /stagemap`) vẫn mở bình thường từ Redis Cache để khán giả vẫn xem được chi tiết sự kiện và sơ đồ ghế.
 
 **Cấu hình Circuit Breaker cho từng cổng (`vnpayCircuitBreaker`, `momoCircuitBreaker`):**
 
@@ -976,14 +978,18 @@ stateDiagram-v2
 1. **Endpoint kiểm tra trạng thái cổng (`GET /payments/methods`):**
    - API này kiểm tra trạng thái của cả hai Circuit Breakers.
    - Nếu `vnpayCircuitBreaker` ở trạng thái `OPEN`, trường `available` của VNPAY sẽ trả về `false`. Frontend sẽ tự động ẩn hoặc disable tùy chọn này và gợi ý MoMo.
-   - Nếu cả hai cổng đều `OPEN`, Frontend sẽ chỉ hiển thị lựa chọn **"Thanh toán sau (Pay Later)"**.
+   - Nếu cả hai cổng đều `OPEN`, Frontend sẽ hiển thị thông báo cổng thanh toán đang bảo trì và tạm thời khóa nút đặt vé.
 
-2. **Luồng xử lý Checkout API (`POST /payments`):**
+2. **Luồng xử lý Booking API (`POST /bookings`):**
+   - Trước khi cho phép tạo đơn hàng và giữ chỗ, hệ thống kiểm tra trạng thái của cả hai Circuit Breakers.
+   - Nếu cả hai cổng đều `OPEN` (sập toàn bộ): Trả về `HTTP 503 Service Unavailable` kèm thông báo bảo trì thanh toán, chặn tạo đơn hàng mới.
+
+3. **Luồng xử lý Checkout API (`POST /payments`):**
    - Khi nhận yêu cầu thanh toán cho một phương thức (ví dụ: VNPAY):
      - Nếu CB của cổng đó là `CLOSED` hoặc `HALF-OPEN`: Thực hiện gọi API của gateway bình thường.
      - Nếu CB của cổng đó là `OPEN`: API tự động kiểm tra xem cổng còn lại (MoMo) có khả dụng hay không.
        - *Trường hợp cổng còn lại khả dụng (Strategy 1):* Trả về `HTTP 422 Unprocessable Entity` gợi ý người dùng đổi sang cổng khả dụng.
-       - *Trường hợp cả hai cổng đều sập (Strategy 2):* API tự động cập nhật đơn hàng thành **Pay Later** (gia hạn `expires_at` của đơn hàng lên `NOW() + 2 hours`), trả về mã `HTTP 202 Accepted` kèm thông báo hướng dẫn người dùng quay lại lịch sử mua hàng để thanh toán sau.
+       - *Trường hợp cả hai cổng đều sập (Strategy 2):* Trả về `HTTP 503 Service Unavailable` thông báo hệ thống thanh toán đang bảo trì.
 
 #### Luồng xử lý thanh toán thông minh (Sequence Diagram)
 
@@ -991,30 +997,38 @@ stateDiagram-v2
 sequenceDiagram
     autonumber
     actor K as Khán giả
-    participant API as NestJS Payment Service
+    participant API as NestJS Booking/Payment Service
     participant CB_VN as VNPAY Circuit Breaker
     participant CB_MO as MoMo Circuit Breaker
     participant GW as Cổng thanh toán (VNPAY/MoMo)
 
-    K->>API: POST /payments (booking_id, method="vnpay")
-    API->>CB_VN: Thực hiện gọi VNPAY qua Circuit Breaker
-
-    alt Gọi VNPAY thành công (CB = CLOSED/HALF-OPEN & Gateway phản hồi tốt)
-        CB_VN->>GW: Gọi API tạo giao dịch (bao gồm tự động retry nếu lỗi mạng)
-        GW-->>K: Redirect link thanh toán (HTTP 200)
-    else Gọi VNPAY thất bại (CB = OPEN hoặc Gateway lỗi sau retry)
-        Note over API: Kích hoạt luồng Fallback / Graceful Degradation tập trung
+    alt Yêu cầu đặt vé mới (POST /bookings)
+        K->>API: POST /bookings (concert_id, ticket_type, qty)
+        API->>CB_VN: Kiểm tra trạng thái VNPAY CB
         API->>CB_MO: Kiểm tra trạng thái MoMo CB
-        alt MoMo CB = CLOSED
-            API-->>K: HTTP 422 (Gợi ý đổi sang MoMo)
-        else MoMo CB = OPEN (Cả hai cổng sập)
-            API->>API: Gia hạn đơn BOOKINGS.expires_at = NOW() + 2 giờ
-            API-->>K: HTTP 202 (Gợi ý thanh toán sau)
+        alt Cả 2 CB đều OPEN (Sập toàn bộ)
+            API-->>K: HTTP 503 (Cổng thanh toán bảo trì, luồng mua tạm khóa)
+        else Có ít nhất 1 cổng khả dụng
+            API->>API: Thực hiện giữ vé 10 phút, lưu Booking và trả về HTTP 201
+        end
+    else Yêu cầu thanh toán (POST /payments)
+        K->>API: POST /payments (booking_id, method="vnpay")
+        API->>CB_VN: Thực hiện gọi VNPAY qua Circuit Breaker
+        alt Gọi VNPAY thành công (CB = CLOSED/HALF-OPEN)
+            CB_VN->>GW: Gọi API tạo giao dịch
+            GW-->>K: Redirect link thanh toán (HTTP 200)
+        else Gọi VNPAY thất bại (CB = OPEN hoặc lỗi sau retry)
+            API->>CB_MO: Kiểm tra trạng thái MoMo CB
+            alt MoMo CB = CLOSED
+                API-->>K: HTTP 422 (Gợi ý đổi sang MoMo)
+            else MoMo CB = OPEN (Cả hai cổng sập)
+                API-->>K: HTTP 503 (Cổng thanh toán đang bảo trì)
+            end
         end
     end
 ```
 
-**Hành vi khi sập toàn bộ cổng:** Khi cả hai Circuit Breaker đều `OPEN`, người dùng được chuyển sang chế độ thanh toán sau. Hệ thống không tạo giao dịch thanh toán trực tiếp, đồng thời gửi email thông báo giữ chỗ kèm liên kết thanh toán. Đơn hàng sẽ không bị hủy trong vòng 2 giờ. Sau khi hết thời gian này nếu không có giao dịch thanh toán thành công nào được ghi nhận, đơn hàng sẽ bị hủy.
+**Hành vi khi sập toàn bộ cổng:** Khi cả hai Circuit Breaker đều `OPEN`, hệ thống kích hoạt chế độ bảo trì luồng mua vé. Mọi yêu cầu tạo đơn hàng mới (`POST /bookings`) và yêu cầu thanh toán (`POST /payments`) đều bị chặn với lỗi `HTTP 503 Service Unavailable`. Các API đọc thông tin như `GET /concerts/:id` và `GET /stagemap` vẫn hoạt động bình thường qua Redis Cache để khán giả xem thông tin sự kiện và sơ đồ ghế.
 
 ---
 
