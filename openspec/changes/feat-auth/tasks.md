@@ -17,21 +17,25 @@
 
 ## 4. DTOs & Service Implementation
 
-- [x] 4.1 Định nghĩa các DTO validate dữ liệu đầu vào: `RegisterDto`, `LoginDto`, `RefreshTokenDto`, và `VerifyOtpDto` sử dụng `class-validator`
-- [x] 4.2 Triển khai logic xử lý đăng ký trong `AuthService`: băm mật khẩu bằng `bcrypt`, lưu user mới ở trạng thái `pending`, sinh OTP lưu trên Redis (TTL 5 phút), và gửi message nhiệm vụ gửi mail chứa OTP vào RabbitMQ
-- [x] 4.3 Triển khai logic xác thực OTP (`verifyOtp`) trong `AuthService`: so khớp mã OTP trong Redis, cập nhật trạng thái user thành `active` trong PostgreSQL, và xóa OTP khỏi Redis
-- [x] 4.4 Triển khai logic đăng nhập trong `AuthService`: kiểm tra mật khẩu và trạng thái `active` của tài khoản, sinh Access/Refresh Token và lưu hash của Refresh Token lên Redis
-- [x] 4.5 Triển khai logic làm mới token (`refresh`) so khớp token gửi lên với Redis, thực hiện Token Rotation (xoay vòng token) và thu hồi token cũ
-- [x] 4.6 Triển khai logic đăng xuất (`logout`) xóa bỏ Refresh Token tương ứng của người dùng khỏi Redis
+- [x] 4.1.1 Định nghĩa các DTO cốt lõi: `RegisterDto`, `LoginDto`, `RefreshTokenDto`, `VerifyOtpDto` sử dụng `class-validator`
+- [x] 4.1.2 Định nghĩa các DTO mới: `ForgotPasswordDto` và `ResetPasswordDto`
+- [x] 4.2 Triển khai logic đăng ký (`register`) trong `AuthService`: lưu user ở trạng thái `pending`, sinh OTP lưu Redis (TTL 5m), đặt rate limit 60s, gửi RabbitMQ task
+- [x] 4.3 Triển khai logic gửi lại OTP kích hoạt (`resendOtp`) trong `AuthService`: kiểm tra status `pending`, kiểm tra rate limit Redis, sinh OTP mới, gửi RabbitMQ task
+- [x] 4.4 Triển khai logic xác thực OTP (`verifyOtp`) trong `AuthService`: so khớp mã OTP trong Redis, cập nhật trạng thái user thành `active` trong PostgreSQL, và xóa OTP khỏi Redis
+- [x] 4.5 Triển khai logic yêu cầu khôi phục mật khẩu (`forgotPassword`) trong `AuthService`: kiểm tra email tồn tại và `active`, sinh OTP reset mật khẩu lưu trên Redis (TTL 5m), và gửi RabbitMQ task
+- [x] 4.6 Triển khai logic đặt lại mật khẩu (`resetPassword`) trong `AuthService`: so khớp OTP reset, mã hóa mật khẩu mới bằng bcrypt, cập nhật database, và thu hồi toàn bộ session đăng nhập
+- [x] 4.7 Triển khai logic đăng nhập (`login`) trong `AuthService`: kiểm tra mật khẩu và trạng thái `active` của tài khoản, sinh Access/Refresh Token và lưu hash của Refresh Token lên Redis
+- [x] 4.8 Triển khai logic làm mới token (`refresh`): so khớp token gửi lên với Redis, thực hiện Token Rotation (xoay vòng token) và thu hồi token cũ
+- [x] 4.9 Triển khai logic đăng xuất (`logout`): xóa bỏ Refresh Token tương ứng của người dùng khỏi Redis
 
 ## 5. Guards & Strategies
 
 - [x] 5.1 Cấu hình Passport `JwtStrategy` giải mã Access Token và đính kèm thông tin người dùng vào request
 - [x] 5.2 Xây dựng `Roles` decorator và `RolesGuard` để thực thi phân quyền (RBAC) trên các endpoints
-- [x] 5.3 Tạo `AuthController` cấu hình các endpoints `/auth/register`, `/auth/verify-otp`, `/auth/login`, `/auth/refresh`, `/auth/logout` và `/auth/me`
+- [x] 5.3 Triển khai các API còn thiếu trong `AuthController` và gắn Guards bảo vệ: `/resend-otp`, `/forgot-password`, `/reset-password`
 
 ## 6. App Module Integration & Verification
 
 - [x] 6.1 Khai báo và import `AuthModule` trong `AppModule`
-- [x] 6.2 Kiểm thử thủ công luồng đăng ký, gửi OTP, xác thực kích hoạt tài khoản, đăng nhập, lấy token mới bằng refresh token và đăng xuất
-- [x] 6.3 Viết Unit Test cho `AuthService` để kiểm tra các kịch bản thành công và lỗi của login, register, verify OTP, refresh, và logout
+- [x] 6.2 Kiểm thử thủ công toàn bộ 9 API: đăng ký, gửi lại OTP, verify OTP, quên mật khẩu, đặt lại mật khẩu, đăng nhập, làm mới token, đăng xuất và lấy thông tin cá nhân (`/auth/me`)
+- [x] 6.3 Cập nhật và bổ sung Unit Test cho `AuthService` kiểm tra các kịch bản thành công và lỗi của toàn bộ các API

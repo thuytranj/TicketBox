@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, UnauthorizedException, ForbiddenException, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, ConflictException, UnauthorizedException, ForbiddenException, HttpException, HttpStatus, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -10,6 +10,9 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ResendOtpDto } from './dto/resend-otp.dto';
 import { RedisService } from '../common/redis/redis.service';
 import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
 import { generateOtp } from './utils/otp';
@@ -39,6 +42,14 @@ export class AuthService {
 
   private getOtpLimitKey(email: string): string {
     return `otp_limit:${email}`;
+  }
+
+  private getResetOtpKey(email: string): string {
+    return `reset_otp:${email}`;
+  }
+
+  private getResetOtpLimitKey(email: string): string {
+    return `reset_otp_limit:${email}`;
   }
 
   async register(registerDto: RegisterDto): Promise<Omit<User, 'passwordHash' | 'generateId'>> {
@@ -199,6 +210,103 @@ export class AuthService {
         throw new UnauthorizedException('Invalid refresh token hash');
       }
     }
+  }
+
+  async resendOtp(resendOtpDto: ResendOtpDto): Promise<{ message: string }> {
+    const { email } = resendOtpDto;
+
+    const user = await this.userRepository.findOne({ where: { email } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.status === UserStatus.ACTIVE) {
+      throw new BadRequestException('Account is already active');
+    }
+
+    const hasLimit = await this.redisService.get(this.getOtpLimitKey(email));
+    if (hasLimit) {
+      throw new HttpException('Please wait 60 seconds before requesting a new OTP', HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    const otp = generateOtp();
+
+    // Store OTP in Redis (TTL 5 minutes = 300 seconds)
+    await this.redisService.set(this.getOtpKey(email), otp, 'EX', 300);
+
+    // Set OTP limit in Redis (TTL 60 seconds)
+    await this.redisService.set(this.getOtpLimitKey(email), '1', 'EX', 60);
+
+    // Publish to RabbitMQ
+    try {
+      await this.rabbitMQService.sendToQueue('notification.email.otp', { email, otp });
+    } catch (err) {
+      console.error('Failed to send OTP email task to RabbitMQ:', err);
+    }
+
+    return { message: 'OTP resent successfully' };
+  }
+
+  async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ message: string }> {
+    const { email } = forgotPasswordDto;
+
+    const user = await this.userRepository.findOne({ where: { email } });
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new NotFoundException('Email not found or account is not active');
+    }
+
+    const hasLimit = await this.redisService.get(this.getResetOtpLimitKey(email));
+    if (hasLimit) {
+      throw new HttpException('Please wait 60 seconds before requesting a new reset OTP', HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    const otp = generateOtp();
+
+    // Store reset OTP in Redis (TTL 5 minutes = 300 seconds)
+    await this.redisService.set(this.getResetOtpKey(email), otp, 'EX', 300);
+
+    // Set reset OTP limit in Redis (TTL 60 seconds)
+    await this.redisService.set(this.getResetOtpLimitKey(email), '1', 'EX', 60);
+
+    // Publish to RabbitMQ
+    try {
+      await this.rabbitMQService.sendToQueue('notification.email.otp', { email, otp });
+    } catch (err) {
+      console.error('Failed to send reset OTP email task to RabbitMQ:', err);
+    }
+
+    return { message: 'Reset password OTP sent successfully' };
+  }
+
+  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<{ message: string }> {
+    const { email, otp, newPassword } = resetPasswordDto;
+
+    const user = await this.userRepository.findOne({ where: { email } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const storedOtp = await this.redisService.get(this.getResetOtpKey(email));
+    if (!storedOtp) {
+      throw new UnauthorizedException('OTP expired or invalid');
+    }
+
+    if (storedOtp !== otp) {
+      throw new UnauthorizedException('Invalid OTP');
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.passwordHash = await bcrypt.hash(newPassword, salt);
+    await this.userRepository.save(user);
+
+    // Clean up OTP from Redis
+    await this.redisService.del(this.getResetOtpKey(email));
+    await this.redisService.del(this.getResetOtpLimitKey(email));
+
+    // Revoke all login sessions
+    await this.redisService.del(this.getRedisKey(user.id));
+
+    return { message: 'Password has been reset successfully' };
   }
 
   private async generateTokens(user: User): Promise<{ accessToken: string; refreshToken: string }> {

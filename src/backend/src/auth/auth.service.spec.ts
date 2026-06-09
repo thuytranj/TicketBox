@@ -7,7 +7,7 @@ import { AuthService } from './auth.service';
 import { User, UserRole, UserStatus } from './entities/user.entity';
 import { RedisService } from '../common/redis/redis.service';
 import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
-import { ConflictException, UnauthorizedException, ForbiddenException, HttpException, HttpStatus } from '@nestjs/common';
+import { ConflictException, UnauthorizedException, ForbiddenException, HttpException, HttpStatus, NotFoundException, BadRequestException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 
 describe('AuthService', () => {
@@ -194,6 +194,124 @@ describe('AuthService', () => {
       mockUserRepository.findOne.mockResolvedValue(user);
 
       await expect(service.login(dto)).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('resendOtp', () => {
+    it('should resend OTP successfully', async () => {
+      const dto = { email: 'pending@test.com' };
+      const user = { id: 'user-id', email: dto.email, status: UserStatus.PENDING };
+
+      mockUserRepository.findOne.mockResolvedValue(user);
+      mockRedisService.get.mockResolvedValue(null); // No rate limit
+
+      const result = await service.resendOtp(dto);
+      expect(result).toEqual({ message: 'OTP resent successfully' });
+      expect(mockRedisService.set).toHaveBeenCalledTimes(2); // OTP & rate limit
+      expect(mockRabbitMQService.sendToQueue).toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException if user does not exist', async () => {
+      const dto = { email: 'notfound@test.com' };
+      mockUserRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.resendOtp(dto)).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException if user is already active', async () => {
+      const dto = { email: 'active@test.com' };
+      const user = { id: 'user-id', email: dto.email, status: UserStatus.ACTIVE };
+      mockUserRepository.findOne.mockResolvedValue(user);
+
+      await expect(service.resendOtp(dto)).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw 429 TooManyRequests if rate limit hit', async () => {
+      const dto = { email: 'pending@test.com' };
+      const user = { id: 'user-id', email: dto.email, status: UserStatus.PENDING };
+      mockUserRepository.findOne.mockResolvedValue(user);
+      mockRedisService.get.mockResolvedValue('1'); // Rate limit hit
+
+      await expect(service.resendOtp(dto)).rejects.toThrow(HttpException);
+    });
+  });
+
+  describe('forgotPassword', () => {
+    it('should send reset OTP successfully', async () => {
+      const dto = { email: 'active@test.com' };
+      const user = { id: 'user-id', email: dto.email, status: UserStatus.ACTIVE };
+
+      mockUserRepository.findOne.mockResolvedValue(user);
+      mockRedisService.get.mockResolvedValue(null); // No rate limit
+
+      const result = await service.forgotPassword(dto);
+      expect(result).toEqual({ message: 'Reset password OTP sent successfully' });
+      expect(mockRedisService.set).toHaveBeenCalledTimes(2); // OTP & rate limit
+      expect(mockRabbitMQService.sendToQueue).toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException if user does not exist', async () => {
+      const dto = { email: 'notfound@test.com' };
+      mockUserRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.forgotPassword(dto)).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException if user is not active', async () => {
+      const dto = { email: 'pending@test.com' };
+      const user = { id: 'user-id', email: dto.email, status: UserStatus.PENDING };
+      mockUserRepository.findOne.mockResolvedValue(user);
+
+      await expect(service.forgotPassword(dto)).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw 429 TooManyRequests if reset rate limit hit', async () => {
+      const dto = { email: 'active@test.com' };
+      const user = { id: 'user-id', email: dto.email, status: UserStatus.ACTIVE };
+      mockUserRepository.findOne.mockResolvedValue(user);
+      mockRedisService.get.mockResolvedValue('1'); // Limit hit
+
+      await expect(service.forgotPassword(dto)).rejects.toThrow(HttpException);
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('should reset password successfully', async () => {
+      const dto = { email: 'active@test.com', otp: '123456', newPassword: 'new-password' };
+      const user = { id: 'user-id', email: dto.email, passwordHash: 'old-hash' };
+
+      mockUserRepository.findOne.mockResolvedValue(user);
+      mockRedisService.get.mockResolvedValue('123456'); // Correct OTP stored
+      mockUserRepository.save.mockResolvedValue({ ...user, passwordHash: 'new-hash' });
+
+      const result = await service.resetPassword(dto);
+      expect(result).toEqual({ message: 'Password has been reset successfully' });
+      expect(mockRedisService.del).toHaveBeenCalledTimes(3); // OTP, limit, session
+    });
+
+    it('should throw NotFoundException if user does not exist', async () => {
+      const dto = { email: 'notfound@test.com', otp: '123456', newPassword: 'new-password' };
+      mockUserRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.resetPassword(dto)).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw UnauthorizedException if OTP has expired or invalid', async () => {
+      const dto = { email: 'active@test.com', otp: '123456', newPassword: 'new-password' };
+      const user = { id: 'user-id', email: dto.email };
+      mockUserRepository.findOne.mockResolvedValue(user);
+      mockRedisService.get.mockResolvedValue(null); // Expired
+
+      await expect(service.resetPassword(dto)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if OTP is wrong', async () => {
+      const dto = { email: 'active@test.com', otp: 'wrong-otp', newPassword: 'new-password' };
+      const user = { id: 'user-id', email: dto.email };
+      mockUserRepository.findOne.mockResolvedValue(user);
+      mockRedisService.get.mockResolvedValue('123456');
+
+      await expect(service.resetPassword(dto)).rejects.toThrow(UnauthorizedException);
     });
   });
 });
