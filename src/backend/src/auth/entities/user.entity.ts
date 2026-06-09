@@ -7,6 +7,11 @@ export enum UserRole {
   GATE_STAFF = 'gate_staff',
 }
 
+export enum UserStatus {
+  PENDING = 'pending',
+  ACTIVE = 'active',
+}
+
 @Entity('users')
 export class User {
   @PrimaryColumn({ type: 'uuid' })
@@ -27,6 +32,13 @@ export class User {
     default: UserRole.AUDIENCE,
   })
   role: UserRole;
+
+  @Column({
+    type: 'varchar',
+    length: 50,
+    default: UserStatus.PENDING,
+  })
+  status: UserStatus;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

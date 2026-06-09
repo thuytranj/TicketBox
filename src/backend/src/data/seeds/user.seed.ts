@@ -1,6 +1,6 @@
 import { Seeder } from 'typeorm-extension';
 import { DataSource } from 'typeorm';
-import { User, UserRole } from '../../auth/entities/user.entity';
+import { User, UserRole, UserStatus } from '../../auth/entities/user.entity';
 import * as bcrypt from 'bcrypt';
 
 export default class UserSeeder implements Seeder {
@@ -19,18 +19,21 @@ export default class UserSeeder implements Seeder {
         passwordHash,
         fullName: 'TicketBox Organizer',
         role: UserRole.ORGANIZER,
+        status: UserStatus.ACTIVE,
       },
       {
         email: 'staff@ticketbox.vn',
         passwordHash,
         fullName: 'Gate Staff A',
         role: UserRole.GATE_STAFF,
+        status: UserStatus.ACTIVE,
       },
       {
         email: 'audience@ticketbox.vn',
         passwordHash,
         fullName: 'Audience Guest',
         role: UserRole.AUDIENCE,
+        status: UserStatus.ACTIVE,
       },
     ];
 
