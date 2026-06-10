@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { User, UserRole, UserStatus } from './entities/user.entity';
 import { RegisterDto } from './dto/register.dto';
@@ -13,6 +13,7 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ResendOtpDto } from './dto/resend-otp.dto';
+import { VerifyResetOtpDto } from './dto/verify-reset-otp.dto';
 import { RedisService } from '../common/redis/redis.service';
 import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
 import { generateOtp } from './utils/otp';
@@ -52,6 +53,10 @@ export class AuthService {
     return `reset_otp_limit:${email}`;
   }
 
+  private getResetTokenKey(email: string): string {
+    return `reset_token:${email}`;
+  }
+
   async register(registerDto: RegisterDto): Promise<Omit<User, 'passwordHash' | 'generateId'>> {
     const { email, password, fullName } = registerDto;
 
@@ -89,7 +94,7 @@ export class AuthService {
 
     // Publish to RabbitMQ
     try {
-      await this.rabbitMQService.sendToQueue('notification.email.otp', { email, otp });
+      await this.rabbitMQService.sendToQueue('notification.email.otp', { email, otp, type: 'verify' });
     } catch (err) {
       // Log error but do not fail the registration flow
       console.error('Failed to send OTP email task to RabbitMQ:', err);
@@ -239,7 +244,7 @@ export class AuthService {
 
     // Publish to RabbitMQ
     try {
-      await this.rabbitMQService.sendToQueue('notification.email.otp', { email, otp });
+      await this.rabbitMQService.sendToQueue('notification.email.otp', { email, otp, type: 'verify' });
     } catch (err) {
       console.error('Failed to send OTP email task to RabbitMQ:', err);
     }
@@ -270,7 +275,7 @@ export class AuthService {
 
     // Publish to RabbitMQ
     try {
-      await this.rabbitMQService.sendToQueue('notification.email.otp', { email, otp });
+      await this.rabbitMQService.sendToQueue('notification.email.otp', { email, otp, type: 'reset' });
     } catch (err) {
       console.error('Failed to send reset OTP email task to RabbitMQ:', err);
     }
@@ -278,12 +283,12 @@ export class AuthService {
     return { message: 'Reset password OTP sent successfully' };
   }
 
-  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<{ message: string }> {
-    const { email, otp, newPassword } = resetPasswordDto;
+  async verifyResetOtp(verifyResetOtpDto: VerifyResetOtpDto): Promise<{ resetToken: string }> {
+    const { email, otp } = verifyResetOtpDto;
 
     const user = await this.userRepository.findOne({ where: { email } });
-    if (!user) {
-      throw new NotFoundException('User not found');
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new NotFoundException('Email not found or account is not active');
     }
 
     const storedOtp = await this.redisService.get(this.getResetOtpKey(email));
@@ -295,12 +300,38 @@ export class AuthService {
       throw new UnauthorizedException('Invalid OTP');
     }
 
+    const resetToken = randomBytes(16).toString('hex');
+    await this.redisService.set(this.getResetTokenKey(email), resetToken, 'EX', 300);
+
+    // Clean up reset OTP
+    await this.redisService.del(this.getResetOtpKey(email));
+
+    return { resetToken };
+  }
+
+  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<{ message: string }> {
+    const { email, resetToken, newPassword } = resetPasswordDto;
+
+    const user = await this.userRepository.findOne({ where: { email } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const storedToken = await this.redisService.get(this.getResetTokenKey(email));
+    if (!storedToken) {
+      throw new UnauthorizedException('Reset token expired or invalid');
+    }
+
+    if (storedToken !== resetToken) {
+      throw new UnauthorizedException('Invalid reset token');
+    }
+
     const salt = await bcrypt.genSalt(10);
     user.passwordHash = await bcrypt.hash(newPassword, salt);
     await this.userRepository.save(user);
 
-    // Clean up OTP from Redis
-    await this.redisService.del(this.getResetOtpKey(email));
+    // Clean up reset token and rate limit from Redis
+    await this.redisService.del(this.getResetTokenKey(email));
     await this.redisService.del(this.getResetOtpLimitKey(email));
 
     // Revoke all login sessions

@@ -157,40 +157,76 @@ Cho phép người dùng đã kích hoạt tài khoản yêu cầu khôi phục 
 - **THEN** Hệ thống từ chối yêu cầu và trả về HTTP 404 Not Found
 
 
-### Requirement: Cài đặt lại mật khẩu bằng OTP (Reset Password)
+### Requirement: Xác thực OTP khôi phục mật khẩu (Verify Reset OTP)
 **Mô tả:**
-Cho phép người dùng đặt lại mật khẩu mới bằng cách cung cấp địa chỉ email, mã OTP reset mật khẩu và mật khẩu mới.
+Cho phép người dùng xác thực mã OTP reset mật khẩu nhận được qua email. Nếu mã hợp lệ, hệ thống sẽ sinh ra một Reset Token tạm thời lưu trên Redis (TTL 5 phút) để làm bằng chứng cho bước đổi mật khẩu tiếp theo.
 
 **Luồng chính:**
-1. Khách gửi yêu cầu đặt lại mật khẩu (`POST /auth/reset-password`) chứa email, mã OTP reset mật khẩu và mật khẩu mới (`newPassword`).
+1. Khách gửi yêu cầu xác thực OTP reset mật khẩu (`POST /auth/verify-reset-otp`) chứa email và mã OTP.
 2. Tìm kiếm mã OTP reset tương ứng trong Redis key `reset_otp:<email>`.
-3. So khớp mã OTP gửi lên với giá trị lưu trong Redis.
+3. So khớp mã OTP gửi lên với giá trị trong Redis.
+4. Nếu khớp, sinh ra một Reset Token ngẫu nhiên (UUID hoặc chuỗi hex ngẫu nhiên).
+5. Lưu Reset Token vào Redis key `reset_token:<email>` với TTL 300 giây (5 phút).
+6. Xóa mã OTP reset mật khẩu (`reset_otp:<email>`) khỏi Redis.
+7. Trả về Reset Token và HTTP status code 200 OK.
+
+**Kịch bản lỗi:**
+- Email không tồn tại: Trả về HTTP 404 Not Found.
+- Mã OTP reset sai hoặc đã hết hạn: Trả về HTTP 401 Unauthorized.
+
+**Ràng buộc:**
+- Mã OTP reset chỉ được sử dụng một lần duy nhất để đổi lấy Reset Token.
+- Reset Token trên Redis có thời hạn sử dụng tối đa là 5 phút (300 giây).
+
+**Tiêu chí chấp nhận:**
+- Trả về Reset Token khi verify OTP thành công.
+- Khóa `reset_otp:<email>` bị xóa khỏi Redis.
+- Reset Token được lưu trữ đúng trên Redis với TTL 5 phút.
+
+#### Scenario: Xác thực OTP reset mật khẩu thành công
+- **WHEN** Người dùng gửi đúng mã OTP reset hợp lệ còn hạn và email chính xác
+- **THEN** Hệ thống sinh Reset Token lưu vào Redis, xóa OTP trên Redis và trả về Reset Token kèm HTTP 200 OK
+
+#### Scenario: Xác thực OTP reset mật khẩu thất bại do OTP sai hoặc hết hạn
+- **WHEN** Người dùng gửi yêu cầu xác thực nhưng nhập sai OTP hoặc OTP đã hết hạn (không tồn tại key `reset_otp:<email>`)
+- **THEN** Hệ thống từ chối xác thực và trả về HTTP 401 Unauthorized
+
+
+### Requirement: Đặt mật khẩu mới bằng Reset Token (Reset Password)
+**Mô tả:**
+Cho phép người dùng đặt mật khẩu mới bằng cách cung cấp địa chỉ email, Reset Token hợp lệ thu được từ bước trước và mật khẩu mới.
+
+**Luồng chính:**
+1. Khách gửi yêu cầu đặt lại mật khẩu (`POST /auth/reset-password`) chứa email, Reset Token (`resetToken`) và mật khẩu mới (`newPassword`).
+2. Tìm kiếm Reset Token tương ứng trong Redis key `reset_token:<email>`.
+3. So khớp Reset Token gửi lên với giá trị lưu trên Redis.
 4. Nếu khớp, băm (hash) mật khẩu mới bằng bcrypt với salt rounds = 10.
 5. Cập nhật mật khẩu băm mới cho người dùng trong PostgreSQL.
-6. Xóa mã OTP reset mật khẩu (`reset_otp:<email>`) và khóa rate limit (`reset_otp_limit:<email>`) khỏi Redis.
+6. Xóa Reset Token (`reset_token:<email>`) và khóa rate limit (`reset_otp_limit:<email>`) khỏi Redis.
 7. Thu hồi toàn bộ phiên đăng nhập (Refresh Tokens) của người dùng bằng cách xóa key `refresh_token:<userId>` trên Redis (buộc đăng xuất trên mọi thiết bị).
 8. Trả về thông báo thành công và HTTP status code 200 OK.
 
 **Kịch bản lỗi:**
 - Email không tồn tại: Trả về HTTP 404 Not Found.
-- Mã OTP reset sai hoặc đã hết hạn: Trả về HTTP 401 Unauthorized.
+- Reset Token sai hoặc đã hết hạn: Trả về HTTP 401 Unauthorized.
 - Mật khẩu mới không hợp lệ (ví dụ ngắn hơn 6 ký tự): Trả về HTTP 400 Bad Request.
 
 **Ràng buộc:**
 - Mật khẩu mới phải dài tối thiểu 6 ký tự.
-- Bắt buộc thu hồi tất cả các Refresh Token đang hoạt động của người dùng trên Redis ngay sau khi cập nhật mật khẩu thành công.
+- Reset Token chỉ được sử dụng một lần duy nhất để đổi mật khẩu. Phải bị xóa ngay sau khi đổi mật khẩu thành công.
+- Bắt buộc thu hồi tất cả các Refresh Token đang hoạt động của người dùng trên Redis ngay sau khi đổi mật khẩu thành công.
 
 **Tiêu chí chấp nhận:**
 - Mật khẩu mới được băm và lưu thành công vào PostgreSQL.
-- Khóa Refresh Token của người dùng bị xóa hoàn toàn khỏi Redis.
+- Khóa `reset_token:<email>` và Refresh Token của người dùng bị xóa hoàn toàn khỏi Redis.
 - API trả về HTTP 200 OK.
 
-#### Scenario: Đặt lại mật khẩu thành công
-- **WHEN** Người dùng gửi đúng mã OTP reset hợp lệ còn hạn, email chính xác và mật khẩu mới
-- **THEN** Hệ thống cập nhật mật khẩu mới trong PostgreSQL, xóa OTP trên Redis, thu hồi toàn bộ session đăng nhập và trả về HTTP 200 OK
+#### Scenario: Đặt lại mật khẩu thành công bằng Reset Token
+- **WHEN** Người dùng gửi đúng Reset Token hợp lệ còn hạn, email chính xác và mật khẩu mới hợp lệ
+- **THEN** Hệ thống cập nhật mật khẩu mới trong PostgreSQL, xóa Reset Token trên Redis, thu hồi toàn bộ session đăng nhập và trả về HTTP 200 OK
 
-#### Scenario: Đặt lại mật khẩu thất bại do OTP sai hoặc hết hạn
-- **WHEN** Người dùng gửi yêu cầu đặt lại mật khẩu nhưng nhập sai OTP hoặc OTP đã hết hạn (không tồn tại key `reset_otp:<email>`)
+#### Scenario: Đặt lại mật khẩu thất bại do Reset Token sai hoặc hết hạn
+- **WHEN** Người dùng gửi yêu cầu đặt lại mật khẩu với Reset Token sai hoặc đã quá hạn 5 phút (không tồn tại key `reset_token:<email>`)
 - **THEN** Hệ thống từ chối cập nhật mật khẩu và trả về HTTP 401 Unauthorized
 
 

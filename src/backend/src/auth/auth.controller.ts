@@ -7,6 +7,7 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ResendOtpDto } from './dto/resend-otp.dto';
+import { VerifyResetOtpDto } from './dto/verify-reset-otp.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('auth')
@@ -54,6 +55,12 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
     return this.authService.forgotPassword(forgotPasswordDto);
+  }
+
+  @Post('verify-reset-otp')
+  @HttpCode(HttpStatus.OK)
+  async verifyResetOtp(@Body() verifyResetOtpDto: VerifyResetOtpDto) {
+    return this.authService.verifyResetOtp(verifyResetOtpDto);
   }
 
   @Post('reset-password')

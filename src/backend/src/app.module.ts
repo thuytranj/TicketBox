@@ -8,6 +8,7 @@ import { RedisModule } from './common/redis/redis.module';
 import { RabbitMQModule } from './common/rabbitmq/rabbitmq.module';
 import { ormConfig } from './data/ormconfig';
 import { AuthModule } from './auth/auth.module';
+import { NotificationModule } from './notification/notification.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AuthModule } from './auth/auth.module';
     RedisModule,
     RabbitMQModule,
     AuthModule,
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

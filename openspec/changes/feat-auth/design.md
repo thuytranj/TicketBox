@@ -53,6 +53,21 @@ Hệ thống TicketBox hiện tại đang chạy dưới dạng một Modular Mo
 - **Giải pháp:** Khi gọi API `/auth/reset-password` thành công, ngoài việc cập nhật mật khẩu mới trong database, hệ thống sẽ xóa sạch key `refresh_token:<userId>` trên Redis.
 - **Lý do:** Đảm bảo đăng xuất tài khoản khỏi tất cả các thiết bị khác ngay lập tức, gia tăng tính bảo mật khi người dùng có nghi ngờ tài khoản bị lộ và thực hiện khôi phục mật khẩu.
 
+### 6. Tích hợp trực tiếp Email Consumer vào Monolith thông qua NotificationModule
+- **Giải pháp:** Xây dựng `NotificationModule` chứa `EmailService` (dùng `nodemailer` kết nối SMTP) và `NotificationConsumer` (lắng nghe và xử lý message từ RabbitMQ queue `notification.email.otp` phi tuần tự). Module này được import trực tiếp vào `AppModule`.
+- **Lý do:** Đảm bảo hệ thống tinh gọn, dễ deploy và vận hành ở giai đoạn Modular Monolith hiện tại, đồng thời xử lý gửi mail hoàn toàn bất đồng bộ thông qua Message Broker để không chặn tiến trình xử lý request HTTP chính.
+
+### 7. Xác thực reset mật khẩu 2 bước sử dụng Stateful Reset Token trên Redis
+- **Giải pháp:** Tách biệt việc verify OTP reset và việc cập nhật mật khẩu mới thành 2 API. Sau khi verify OTP thành công, Server sinh một chuỗi token ngẫu nhiên bảo mật (Reset Token) lưu vào Redis key `reset_token:<email>` với TTL 5 phút. Ở bước reset password tiếp theo, client gửi Reset Token lên để xác thực. Sau khi đổi mật khẩu thành công, Server xóa ngay Reset Token khỏi Redis để đảm bảo chỉ dùng 1 lần (Single-use).
+- **Lý do:** Tăng cường tính bảo mật, tránh replay attack và phù hợp hơn với luồng giao diện người dùng (User Interface).
+
+### 8. Thống nhất định dạng dữ liệu trả về (Unified Response & Error Envelope)
+- **Giải pháp:**
+  - Áp dụng `TransformInterceptor` toàn cục cho tất cả API trả về thành công: đóng gói dữ liệu gốc vào thuộc tính `data`, đi kèm trạng thái `success: true`, `statusCode`, `message` (lấy từ thuộc tính `message` của response nếu có) và `timestamp`.
+  - Áp dụng `GlobalExceptionFilter` toàn cục cho tất cả các Exception: đóng gói lỗi vào thuộc tính `errors` (mảng các lỗi chi tiết, ví dụ validation errors), đi kèm `success: false`, `statusCode`, `message`, `timestamp` và `path` yêu cầu.
+  - Hỗ trợ loại trừ đóng gói thành công bằng cách sử dụng decorator tùy biến (như `@BypassInterceptor()`) đối với các API trả về file raw hoặc stream trong tương lai.
+- **Lý do:** Đảm bảo tất cả các Client (Web/Mobile) giao tiếp với hệ thống sử dụng một cấu trúc JSON đồng nhất ở lớp ngoài cùng, tăng tính chuyên nghiệp và dễ viết lớp Parser/Mapper dùng chung.
+
 ---
 
 ## APIs
@@ -112,20 +127,37 @@ Hệ thống TicketBox hiện tại đang chạy dưới dạng một Modular Mo
   * **404 Not Found:** Email không tồn tại hoặc chưa kích hoạt.
   * **429 Too Many Requests:** Gửi yêu cầu quá nhanh.
 
-### 5. Cài đặt lại mật khẩu bằng OTP (`POST /auth/reset-password`)
+### 5. Xác thực OTP reset mật khẩu (`POST /auth/verify-reset-otp`)
 - **Request Body (JSON):**
   ```json
   {
     "email": "audience@ticketbox.vn",
-    "otp": "948102",
+    "otp": "948102"
+  }
+  ```
+- **Responses:**
+  * **200 OK:** Trả về Reset Token tạm thời:
+    ```json
+    {
+      "resetToken": "70be9f8c6d48259d64b18f7739502b4e"
+    }
+    ```
+  * **401 Unauthorized:** Mã OTP reset sai hoặc đã hết hạn.
+
+### 6. Cài đặt lại mật khẩu bằng Reset Token (`POST /auth/reset-password`)
+- **Request Body (JSON):**
+  ```json
+  {
+    "email": "audience@ticketbox.vn",
+    "resetToken": "70be9f8c6d48259d64b18f7739502b4e",
     "newPassword": "newsecurepassword123"
   }
   ```
 - **Responses:**
   * **200 OK:** `{"message": "Password has been reset successfully"}`
-  * **401 Unauthorized:** Mã OTP sai hoặc hết hạn.
+  * **401 Unauthorized:** Reset Token không hợp lệ hoặc đã hết hạn.
 
-### 6. Đăng nhập hệ thống (`POST /auth/login`)
+### 7. Đăng nhập hệ thống (`POST /auth/login`)
 - **Request Body (JSON):**
   ```json
   {
@@ -144,7 +176,7 @@ Hệ thống TicketBox hiện tại đang chạy dưới dạng một Modular Mo
   * **401 Unauthorized:** Sai email hoặc mật khẩu.
   * **403 Forbidden:** Tài khoản chưa kích hoạt (`pending`).
 
-### 7. Làm mới Access Token (`POST /auth/refresh`)
+### 8. Làm mới Access Token (`POST /auth/refresh`)
 - **Request Body (JSON):**
   ```json
   {
@@ -161,7 +193,7 @@ Hệ thống TicketBox hiện tại đang chạy dưới dạng một Modular Mo
     ```
   * **401 Unauthorized:** Refresh Token hết hạn, không hợp lệ hoặc đã bị thu hồi/tái sử dụng.
 
-### 8. Đăng xuất hệ thống (`POST /auth/logout`)
+### 9. Đăng xuất hệ thống (`POST /auth/logout`)
 - **Request Body (JSON):**
   ```json
   {
@@ -172,7 +204,7 @@ Hệ thống TicketBox hiện tại đang chạy dưới dạng một Modular Mo
   * **200 OK:** `{"message": "Logged out successfully"}`
   * **401 Unauthorized:** Refresh token không hợp lệ hoặc không khớp.
 
-### 9. Xem thông tin cá nhân (`GET /auth/me`)
+### 10. Xem thông tin cá nhân (`GET /auth/me`)
 - **Headers:** `Authorization: Bearer <accessToken>`
 - **Responses:**
   * **200 OK:**
@@ -197,3 +229,35 @@ Hệ thống TicketBox hiện tại đang chạy dưới dạng một Modular Mo
   * *Mitigation:* Xây dựng một Cron Job chạy định kỳ hàng ngày quét các tài khoản ở trạng thái `pending` được tạo quá 24h để thực hiện xóa bỏ khỏi Database.
 - **[Risk] Mất dữ liệu Refresh Token/OTP khi Redis bị restart đột ngột:**
   * *Mitigation:* Người dùng sẽ phải đăng nhập lại hoặc yêu cầu gửi lại mã OTP mới. Đây là hành vi chấp nhận được đối với dữ liệu tạm thời. Redis cần bật cơ chế bền vững (AOF/RDB).
+
+---
+
+## Email Notification System Design
+
+### 1. SMTP Transporter & Configuration
+Hệ thống kết nối tới SMTP Server (Mailtrap/Gmail/Amazon SES) thông qua các biến cấu hình môi trường sau:
+- `SMTP_HOST`: Địa chỉ máy chủ SMTP.
+- `SMTP_PORT`: Cổng kết nối (ví dụ: 2525 cho Mailtrap, 587 cho TLS).
+- `SMTP_USER`: Tài khoản xác thực.
+- `SMTP_PASSWORD`: Mật khẩu xác thực.
+- `SMTP_FROM_EMAIL`: Địa chỉ email người gửi (ví dụ: `no-reply@ticketbox.vn`).
+
+### 2. Master HTML Email Template Builder
+Sử dụng chung một Master HTML Email Template thiết kế dạng Card hiện đại (bo góc `16px`, viền Slate mờ, đổ bóng nhẹ) tương thích tốt trên mọi mail client. Hỗ trợ cấu hình động qua `EmailTemplateOptions`:
+- `title` (string): Tiêu đề hiển thị trên header.
+- `description` (string): Lời mở đầu nội dung email.
+- `headerBgColor` (string): Màu nền header tùy biến theo loại email:
+  - **Xác thực OTP/Kích hoạt tài khoản:** Navy Đậm (`#0f172a`).
+  - **Khôi phục mật khẩu:** Nâu Đỏ Cảnh báo (`#311005`).
+- `contentHtml` (string): HTML tùy biến (như dashed border box màu xanh/vàng nhạt chứa mã OTP thô có `letter-spacing` rộng dễ đọc).
+- `footerText` (string): Lời lưu ý nhỏ hiển thị ở chân email.
+
+### 3. RabbitMQ Message Consumer Flow
+- `NotificationConsumer` sử dụng phương thức `consume()` của `RabbitMQService` để lắng nghe queue `notification.email.otp` (durable: true).
+- Khi nhận message:
+  1. Trích xuất `email` và `otp` từ JSON payload.
+  2. Tạo mã HTML động qua Master Template Builder.
+  3. Sử dụng `nodemailer` để thực hiện gửi mail qua SMTP.
+  4. Sau khi gửi thành công, gọi `channel.ack(msg)` để xác nhận hoàn tất.
+  5. Trường hợp lỗi (sai thông tin SMTP, lỗi mạng tạm thời): ghi log lỗi chi tiết và gọi `channel.nack(msg, false, false)` để hủy bỏ tin nhắn và tránh vòng lặp vô hạn.
+

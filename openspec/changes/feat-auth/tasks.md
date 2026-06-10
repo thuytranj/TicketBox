@@ -39,3 +39,28 @@
 - [x] 6.1 Khai báo và import `AuthModule` trong `AppModule`
 - [x] 6.2 Kiểm thử thủ công toàn bộ 9 API: đăng ký, gửi lại OTP, verify OTP, quên mật khẩu, đặt lại mật khẩu, đăng nhập, làm mới token, đăng xuất và lấy thông tin cá nhân (`/auth/me`)
 - [x] 6.3 Cập nhật và bổ sung Unit Test cho `AuthService` kiểm tra các kịch bản thành công và lỗi của toàn bộ các API
+
+## 7. Email Notification Service & Consumer Integration
+
+- [x] 7.1 Cài đặt các thư viện `nodemailer` và `@types/nodemailer`
+- [x] 7.2 Cấu hình các biến môi trường SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`) trong `.env` và `.env.example`
+- [x] 7.3 Tạo `EmailService` (`email.service.ts`) chứa logic khởi tạo transporter SMTP và Master HTML Template Builder động
+- [x] 7.4 Tạo `NotificationConsumer` (`notification.consumer.ts`) để lắng nghe queue `notification.email.otp`, giải mã message và gọi `EmailService`
+- [x] 7.5 Định nghĩa `NotificationModule` và import vào `AppModule`
+- [x] 7.6 Viết Unit Test cho `EmailService` và `NotificationConsumer`
+- [x] 7.7 Thực hiện kiểm thử tích hợp thủ công, gửi mã OTP thật qua Mailtrap khi thực hiện luồng đăng ký/quên mật khẩu từ client
+
+## 8. Refactor 2-Step Password Reset (Option 2)
+
+- [x] 8.1 Định nghĩa DTO `VerifyResetOtpDto` và thay thế `otp` bằng `resetToken` trong `ResetPasswordDto`
+- [x] 8.2 Triển khai logic xác thực OTP khôi phục mật khẩu (`verifyResetOtp`) trong `AuthService` sinh ra `resetToken` lưu Redis (TTL 5m)
+- [x] 8.3 Cập nhật logic đặt lại mật khẩu (`resetPassword`) trong `AuthService` xác thực qua `resetToken` thay vì OTP
+- [x] 8.4 Expose endpoint `/auth/verify-reset-otp` và cập nhật `/auth/reset-password` trong `AuthController`
+- [x] 8.5 Cập nhật và bổ sung Unit Test trong `auth.service.spec.ts` cho các API reset mật khẩu mới
+
+## 9. Implement Global Response & Exception Formatting (Unified Envelope)
+
+- [x] 9.1 Tạo custom decorator `BypassInterceptor` để loại trừ đóng gói đối với các endpoint trả về dữ liệu thô (nếu cần)
+- [x] 9.2 Triển khai `TransformInterceptor` đóng gói dữ liệu thành công (`success`, `statusCode`, `message`, `data`, `timestamp`) và cấu hình toàn cục trong `main.ts`
+- [x] 9.3 Triển khai `GlobalExceptionFilter` xử lý mọi exception thành cấu trúc lỗi thống nhất (`success`, `statusCode`, `message`, `errors`, `timestamp`, `path`) và cấu hình toàn cục trong `main.ts`
+- [x] 9.4 Cập nhật và bổ sung các Unit Test/E2E Test để đảm bảo định dạng response mới hoạt động chính xác

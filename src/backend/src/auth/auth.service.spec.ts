@@ -275,29 +275,81 @@ describe('AuthService', () => {
     });
   });
 
-  describe('resetPassword', () => {
-    it('should reset password successfully', async () => {
-      const dto = { email: 'active@test.com', otp: '123456', newPassword: 'new-password' };
-      const user = { id: 'user-id', email: dto.email, passwordHash: 'old-hash' };
+  describe('verifyResetOtp', () => {
+    it('should verify reset OTP successfully and return a reset token', async () => {
+      const dto = { email: 'active@test.com', otp: '123456' };
+      const user = { id: 'user-id', email: dto.email, status: UserStatus.ACTIVE };
 
       mockUserRepository.findOne.mockResolvedValue(user);
       mockRedisService.get.mockResolvedValue('123456'); // Correct OTP stored
+      mockRedisService.set.mockResolvedValue('OK');
+      mockRedisService.del.mockResolvedValue(1);
+
+      const result = await service.verifyResetOtp(dto);
+      expect(result).toBeDefined();
+      expect(result.resetToken).toBeDefined();
+      expect(typeof result.resetToken).toBe('string');
+      expect(mockRedisService.set).toHaveBeenCalled();
+      expect(mockRedisService.del).toHaveBeenCalledWith('reset_otp:active@test.com');
+    });
+
+    it('should throw NotFoundException if email not found', async () => {
+      const dto = { email: 'notfound@test.com', otp: '123456' };
+      mockUserRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.verifyResetOtp(dto)).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException if user is not active', async () => {
+      const dto = { email: 'pending@test.com', otp: '123456' };
+      const user = { id: 'user-id', email: dto.email, status: UserStatus.PENDING };
+      mockUserRepository.findOne.mockResolvedValue(user);
+
+      await expect(service.verifyResetOtp(dto)).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw UnauthorizedException if OTP has expired or invalid', async () => {
+      const dto = { email: 'active@test.com', otp: '123456' };
+      const user = { id: 'user-id', email: dto.email, status: UserStatus.ACTIVE };
+      mockUserRepository.findOne.mockResolvedValue(user);
+      mockRedisService.get.mockResolvedValue(null); // Expired
+
+      await expect(service.verifyResetOtp(dto)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if OTP is wrong', async () => {
+      const dto = { email: 'active@test.com', otp: 'wrong-otp' };
+      const user = { id: 'user-id', email: dto.email, status: UserStatus.ACTIVE };
+      mockUserRepository.findOne.mockResolvedValue(user);
+      mockRedisService.get.mockResolvedValue('123456');
+
+      await expect(service.verifyResetOtp(dto)).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('should reset password successfully', async () => {
+      const dto = { email: 'active@test.com', resetToken: 'some-token', newPassword: 'new-password' };
+      const user = { id: 'user-id', email: dto.email, passwordHash: 'old-hash' };
+
+      mockUserRepository.findOne.mockResolvedValue(user);
+      mockRedisService.get.mockResolvedValue('some-token'); // Correct token stored
       mockUserRepository.save.mockResolvedValue({ ...user, passwordHash: 'new-hash' });
 
       const result = await service.resetPassword(dto);
       expect(result).toEqual({ message: 'Password has been reset successfully' });
-      expect(mockRedisService.del).toHaveBeenCalledTimes(3); // OTP, limit, session
+      expect(mockRedisService.del).toHaveBeenCalledTimes(3); // token, limit, session
     });
 
     it('should throw NotFoundException if user does not exist', async () => {
-      const dto = { email: 'notfound@test.com', otp: '123456', newPassword: 'new-password' };
+      const dto = { email: 'notfound@test.com', resetToken: 'some-token', newPassword: 'new-password' };
       mockUserRepository.findOne.mockResolvedValue(null);
 
       await expect(service.resetPassword(dto)).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw UnauthorizedException if OTP has expired or invalid', async () => {
-      const dto = { email: 'active@test.com', otp: '123456', newPassword: 'new-password' };
+    it('should throw UnauthorizedException if token has expired or invalid', async () => {
+      const dto = { email: 'active@test.com', resetToken: 'some-token', newPassword: 'new-password' };
       const user = { id: 'user-id', email: dto.email };
       mockUserRepository.findOne.mockResolvedValue(user);
       mockRedisService.get.mockResolvedValue(null); // Expired
@@ -305,11 +357,11 @@ describe('AuthService', () => {
       await expect(service.resetPassword(dto)).rejects.toThrow(UnauthorizedException);
     });
 
-    it('should throw UnauthorizedException if OTP is wrong', async () => {
-      const dto = { email: 'active@test.com', otp: 'wrong-otp', newPassword: 'new-password' };
+    it('should throw UnauthorizedException if token is wrong', async () => {
+      const dto = { email: 'active@test.com', resetToken: 'wrong-token', newPassword: 'new-password' };
       const user = { id: 'user-id', email: dto.email };
       mockUserRepository.findOne.mockResolvedValue(user);
-      mockRedisService.get.mockResolvedValue('123456');
+      mockRedisService.get.mockResolvedValue('correct-token');
 
       await expect(service.resetPassword(dto)).rejects.toThrow(UnauthorizedException);
     });
