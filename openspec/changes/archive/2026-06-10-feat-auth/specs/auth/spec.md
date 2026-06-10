@@ -1,14 +1,4 @@
-# auth Specification
-
-## Purpose
-TBD - created by archiving change blueprint. Update Purpose after archive.
-## Requirements
-### Requirement: Phân quyền dựa trên vai trò (RBAC)
-Hệ thống SHALL kiểm tra JWT token và vai trò của người dùng để quyết định quyền truy cập vào các API endpoints tương ứng.
-
-#### Scenario: Đăng nhập thành công và phân quyền chính xác
-- **WHEN** Người dùng gửi yêu cầu đăng nhập hợp lệ và truy cập các API tương ứng với vai trò của mình
-- **THEN** Hệ thống cấp JWT và cho phép truy cập các API được phân quyền, đồng thời từ chối truy cập bằng HTTP 403 Forbidden nếu sai vai trò
+## ADDED Requirements
 
 ### Requirement: Đăng ký tài khoản (Register)
 **Mô tả:**
@@ -55,6 +45,7 @@ Hệ thống cho phép khách truy cập (Guest) đăng ký tài khoản mới b
 - **WHEN** Người dùng gửi yêu cầu đăng ký thiếu `fullName`, hoặc `email` sai định dạng, hoặc `password` ít hơn 6 ký tự
 - **THEN** Hệ thống trả về HTTP 400 Bad Request kèm chi tiết lỗi validation
 
+
 ### Requirement: Xác thực OTP kích hoạt tài khoản (Verify OTP)
 **Mô tả:**
 Người dùng cung cấp địa chỉ email và mã OTP để xác thực và kích hoạt tài khoản của họ từ trạng thái nháp (`pending`) sang trạng thái hoạt động (`active`).
@@ -90,6 +81,7 @@ Người dùng cung cấp địa chỉ email và mã OTP để xác thực và k
 #### Scenario: Xác thực OTP thất bại do sai mã hoặc hết hạn
 - **WHEN** Người dùng gửi yêu cầu xác thực với mã OTP sai hoặc mã OTP đã quá hạn 5 phút (không tồn tại trên Redis)
 - **THEN** Hệ thống từ chối kích hoạt và trả về HTTP 401 Unauthorized
+
 
 ### Requirement: Yêu cầu gửi lại mã OTP (Resend OTP)
 **Mô tả:**
@@ -127,6 +119,7 @@ Cho phép người dùng yêu cầu hệ thống gửi lại mã OTP kích hoạ
 - **WHEN** Người dùng gửi yêu cầu gửi lại OTP khi chưa quá 60s kể từ lần gửi trước (Redis vẫn tồn tại key `otp_limit:<email>`)
 - **THEN** Hệ thống chặn yêu cầu và trả về HTTP 429 Too Many Requests
 
+
 ### Requirement: Yêu cầu khôi phục mật khẩu (Forgot Password)
 **Mô tả:**
 Cho phép người dùng đã kích hoạt tài khoản yêu cầu khôi phục mật khẩu bằng cách gửi mã OTP reset qua email.
@@ -163,6 +156,7 @@ Cho phép người dùng đã kích hoạt tài khoản yêu cầu khôi phục 
 - **WHEN** Người dùng gửi yêu cầu khôi phục mật khẩu cho một email chưa từng đăng ký hoặc đang ở trạng thái `pending`
 - **THEN** Hệ thống từ chối yêu cầu và trả về HTTP 404 Not Found
 
+
 ### Requirement: Xác thực OTP khôi phục mật khẩu (Verify Reset OTP)
 **Mô tả:**
 Cho phép người dùng xác thực mã OTP reset mật khẩu nhận được qua email. Nếu mã hợp lệ, hệ thống sẽ sinh ra một Reset Token tạm thời lưu trên Redis (TTL 5 phút) để làm bằng chứng cho bước đổi mật khẩu tiếp theo.
@@ -196,6 +190,7 @@ Cho phép người dùng xác thực mã OTP reset mật khẩu nhận được 
 #### Scenario: Xác thực OTP reset mật khẩu thất bại do OTP sai hoặc hết hạn
 - **WHEN** Người dùng gửi yêu cầu xác thực nhưng nhập sai OTP hoặc OTP đã hết hạn (không tồn tại key `reset_otp:<email>`)
 - **THEN** Hệ thống từ chối xác thực và trả về HTTP 401 Unauthorized
+
 
 ### Requirement: Đặt mật khẩu mới bằng Reset Token (Reset Password)
 **Mô tả:**
@@ -234,6 +229,7 @@ Cho phép người dùng đặt mật khẩu mới bằng cách cung cấp đị
 - **WHEN** Người dùng gửi yêu cầu đặt lại mật khẩu với Reset Token sai hoặc đã quá hạn 5 phút (không tồn tại key `reset_token:<email>`)
 - **THEN** Hệ thống từ chối cập nhật mật khẩu và trả về HTTP 401 Unauthorized
 
+
 ### Requirement: Đăng nhập hệ thống (Login)
 **Mô tả:**
 Xác thực người dùng bằng email và mật khẩu. Hệ thống chỉ cho phép đăng nhập đối với các tài khoản đã kích hoạt (`status='active'`). Nếu thông tin chính xác, sinh cặp Access Token (hạn ngắn) và Refresh Token (hạn dài, được hash và lưu trên Redis).
@@ -266,6 +262,7 @@ Xác thực người dùng bằng email và mật khẩu. Hệ thống chỉ cho
 #### Scenario: Đăng nhập thất bại do tài khoản chưa kích hoạt
 - **WHEN** Người dùng gửi yêu cầu đăng nhập với tài khoản có `status='pending'` kể cả khi nhập đúng mật khẩu
 - **THEN** Hệ thống từ chối đăng nhập và trả về HTTP 403 Forbidden kèm thông báo yêu cầu xác thực OTP trước
+
 
 ### Requirement: Làm mới Access Token (Refresh)
 **Mô tả:**
@@ -300,6 +297,7 @@ Cho phép client gửi Refresh Token hợp lệ để lấy cặp Access Token v
 - **WHEN** Người dùng gửi yêu cầu POST tới `/auth/refresh` với `refreshToken` khớp với giá trị lưu trên Redis của user đó và token chưa hết hạn
 - **THEN** Hệ thống kiểm tra hợp lệ, thu hồi Refresh Token cũ trên Redis, lưu Refresh Token mới và trả về cặp token mới kèm trạng thái HTTP 200 OK
 
+
 ### Requirement: Đăng xuất hệ thống (Logout)
 **Mô tả:**
 Xóa và vô hiệu hóa Refresh Token tương ứng của người dùng khỏi Redis để kết thúc phiên làm việc.
@@ -326,6 +324,7 @@ Xóa và vô hiệu hóa Refresh Token tương ứng của người dùng khỏi
 - **WHEN** Người dùng gửi yêu cầu POST tới `/auth/logout` kèm theo `refreshToken` hợp lệ
 - **THEN** Hệ thống xóa khóa Refresh Token tương ứng của người dùng khỏi Redis và trả về trạng thái HTTP 200 OK
 
+
 ### Requirement: Xem thông tin cá nhân (Get Profile)
 **Mô tả:**
 Cho phép người dùng đã đăng nhập lấy thông tin cá nhân của mình bằng cách gửi Access Token hợp lệ.
@@ -350,4 +349,3 @@ Cho phép người dùng đã đăng nhập lấy thông tin cá nhân của mì
 #### Scenario: Xem thông tin cá nhân thành công
 - **WHEN** Người dùng đã đăng nhập gửi yêu cầu `GET /auth/me` kèm theo Access Token hợp lệ
 - **THEN** Hệ thống trả về thông tin cá nhân của người dùng (id, email, role) và HTTP 200 OK
-

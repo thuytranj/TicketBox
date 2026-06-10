@@ -7,6 +7,8 @@ import { AppService } from './app.service';
 import { RedisModule } from './common/redis/redis.module';
 import { RabbitMQModule } from './common/rabbitmq/rabbitmq.module';
 import { ormConfig } from './data/ormconfig';
+import { AuthModule } from './auth/auth.module';
+import { NotificationModule } from './notification/notification.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { ormConfig } from './data/ormconfig';
     TypeOrmModule.forRoot(ormConfig),
     RedisModule,
     RabbitMQModule,
+    AuthModule,
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

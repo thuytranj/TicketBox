@@ -316,6 +316,7 @@ erDiagram
         varchar password_hash
         varchar full_name
         varchar role
+        varchar status
         timestamp created_at
     }
     CONCERTS {
@@ -433,12 +434,15 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 | **password_hash** | `varchar(255)` | `NOT NULL` | Mật khẩu người dùng đã được băm (hash) bằng bcrypt |
 | **full_name** | `varchar(255)` | `NOT NULL` | Họ và tên của người dùng |
 | **role** | `varchar(50)` | `NOT NULL`, `DEFAULT 'audience'`, `CHECK (role IN ('audience', 'organizer', 'gate_staff'))` | Vai trò của người dùng trong hệ thống (Khán giả, Ban tổ chức, Nhân viên soát vé) |
+| **status** | `varchar(50)` | `NOT NULL`, `DEFAULT 'pending'`, `CHECK (status IN ('pending', 'active'))` | Trạng thái hoạt động của tài khoản (Chờ kích hoạt, Đang hoạt động) |
 | **created_at** | `timestamp` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | Thời điểm tạo tài khoản người dùng |
 
 ##### Business Rules
 - Địa chỉ `email` phải duy nhất trên toàn hệ thống và tuân thủ định dạng email chuẩn.
 - `role` bắt buộc phải là một trong các giá trị định sẵn: `audience` (mặc định khi đăng ký), `organizer` (tài khoản quản lý của ban tổ chức), `gate_staff` (nhân viên dùng mobile app quét vé).
+- `status` bắt buộc phải là `pending` (mặc định ban đầu chờ kích hoạt) hoặc `active` (đã xác thực mã OTP thành công).
 - Một email chỉ được đăng ký tối đa một tài khoản (Unique constraint).
+- Tài khoản ở trạng thái `pending` sẽ bị chặn đăng nhập và yêu cầu xác thực OTP qua email để chuyển thành `active` trước khi sử dụng các dịch vụ.
 
 ##### Indexes
 | Index Name | Columns | Type | Purpose |
