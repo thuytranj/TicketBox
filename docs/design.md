@@ -342,6 +342,8 @@ erDiagram
         integer total_quantity
         integer available_quantity
         integer max_per_user
+        timestamp sale_start_time
+        timestamp sale_end_time
     }
     BOOKINGS {
         uuid_v7 id PK
@@ -494,16 +496,24 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 | :--- | :--- | :--- | :--- |
 | **id** | `uuid` | `PRIMARY KEY` | Khóa chính dạng UUID v7 |
 | **concert_id** | `uuid` | `FOREIGN KEY REFERENCES CONCERTS(id) ON DELETE CASCADE` | Khóa ngoại trỏ đến concert tương ứng |
-| **name** | `varchar(100)` | `NOT NULL` | Tên loại vé (ví dụ: SVIP, VIP, GA, CAT1) |
+| **name** | `varchar(100)` | `NOT NULL`, `CHECK (name IN ('GA', 'SVIP', 'VIP', 'CAT1', 'CAT2'))` | Tên loại vé (chỉ được là một trong các giá trị: GA, SVIP, VIP, CAT1, CAT2) |
 | **price** | `decimal(12, 2)` | `NOT NULL`, `CHECK (price >= 0)` | Giá vé |
 | **total_quantity** | `integer` | `NOT NULL`, `CHECK (total_quantity > 0)` | Tổng số lượng vé phát hành cho loại này |
 | **available_quantity** | `integer` | `NOT NULL`, `CHECK (available_quantity >= 0 AND available_quantity <= total_quantity)` | Số lượng vé còn lại trong kho có thể bán |
 | **max_per_user** | `integer` | `NOT NULL`, `DEFAULT 4`, `CHECK (max_per_user > 0)` | Giới hạn số lượng vé tối đa của loại này một người dùng được đặt mua |
+| **sale_start_time** | `timestamp` | `NULL` | Thời điểm bắt đầu bán vé. Nếu để trống, vé được mở bán ngay khi concert được kích hoạt (active) |
+| **sale_end_time** | `timestamp` | `NULL` | Thời điểm kết thúc bán vé. Phải lớn hơn `sale_start_time`. Nếu để trống, mặc định bán cho đến khi concert kết thúc |
 
 ##### Business Rules
 - Tên loại vé `name` phải là duy nhất trong phạm vi một buổi biểu diễn cụ thể (ví dụ: một concert không thể có hai loại vé cùng tên "VIP").
+- Tên loại vé bắt buộc phải nằm trong danh sách giới hạn các nhóm phân hạng: `GA`, `SVIP`, `VIP`, `CAT1`, `CAT2`. Quy tắc này được áp dụng cả ở mức database check constraint (`chk_ticket_types_name`) và ở lớp validation DTO (`@IsEnum(TicketTypeName)`).
 - `available_quantity` ban đầu phải bằng `total_quantity` và giảm dần khi có người đặt vé. Không bao giờ được phép nhỏ hơn 0.
 - Số vé tối đa một người được đặt (`max_per_user`) dùng để ngăn chặn đầu cơ vé.
+- Có ràng buộc kiểm tra ở mức database (`CHECK (sale_end_time IS NULL OR sale_start_time IS NULL OR sale_end_time > sale_start_time)`) để đảm bảo tính hợp lệ của thời gian bán vé.
+- Tại thời điểm khách hàng đặt mua vé, hệ thống kiểm tra thời gian hiện tại (`now`):
+  - `now` phải lớn hơn hoặc bằng `sale_start_time` (nếu đã cấu hình).
+  - `now` phải nhỏ hơn hoặc bằng `sale_end_time` (nếu đã cấu hình).
+  - `sale_start_time` bắt buộc phải diễn ra trước khi concert kết thúc (`sale_start_time < concert.end_time`).
 
 ##### Indexes
 | Index Name | Columns | Type | Purpose |
