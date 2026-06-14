@@ -1122,8 +1122,9 @@ flowchart TD
 
 | Đối tượng              | Redis Key Pattern                         | TTL       | Invalidation Strategy                                 |
 | ---------------------- | ----------------------------------------- | --------- | ----------------------------------------------------- |
-| Danh sách concert      | `cache:concerts:list:{page}`              | 10 phút   | Xóa key khi admin tạo/sửa/xóa concert                 |
+| Danh sách concert mặc định | `cache:concerts:list:default:page:{page}:limit:{limit}` | 10 phút   | Xóa khi admin tạo/sửa/xóa hoặc đổi trạng thái concert |
 | Chi tiết concert       | `cache:concerts:{id}`                     | 10 phút   | Xóa key khi admin sửa concert                         |
+| Danh sách loại vé      | `cache:concerts:{id}:ticket-types`        | 10 phút   | Xóa khi admin thay đổi/sửa cấu hình loại vé           |
 | Sơ đồ sân khấu (SVG)  | `cache:concerts:{id}:stagemap`            | 30 phút   | Xóa khi admin cập nhật sơ đồ sân khấu                 |
 | Số vé còn lại          | `inventory:{concert_id}:{ticket_type_id}` | Không TTL | Luôn chính xác vì Lua Script trừ trực tiếp trên Redis |
 
@@ -1138,6 +1139,25 @@ Trường `svg_stage_map` lưu trữ nội dung SVG sơ đồ sân khấu trực
 - **Tiết kiệm memory Redis:** API `GET /concerts/:id` (xem thông tin concert) trả về object nhẹ (~2KB) từ `cache:concerts:{id}` mà không kéo theo SVG nặng ~200KB. SVG chỉ được load khi user thực sự xem sơ đồ sân khấu (`GET /concerts/:id/stagemap`).
 - **TTL tối ưu hóa riêng:** Sơ đồ sân khấu gần như cố định sau khi được tạo — admin hiếm khi thay đổi. TTL 30 phút (dài hơn 3x so với concert info) giúp giảm ~95% DB reads cho trường nặng nhất.
 - **Invalidation đơn giản:** Khi admin cập nhật sơ đồ → `DEL cache:concerts:{id}:stagemap`. Key sẽ tự được populate lại ở lần đọc tiếp theo (lazy loading).
+
+**Lưu ý đặc biệt — Danh sách concert mặc định:**
+
+Để tránh hiện tượng bùng nổ số lượng khóa (Key Explosion) và rủi ro trùng lặp cache do có quá nhiều tổ hợp lọc động khác nhau (từ khóa tìm kiếm, địa điểm, tags), hệ thống chỉ áp dụng Cache-aside cho các truy vấn danh sách concert mặc định (không chứa các bộ lọc động như `search`, `location`, `tag` - chỉ chứa `page` và `limit` để phân trang).
+
+- **Khi có bộ lọc động:** Hệ thống sẽ bỏ qua cache và truy vấn trực tiếp từ PostgreSQL thông qua các trường chỉ mục tối ưu (GIN index cho `tags` và B-Tree cho `location, status`).
+- **Quy tắc đặt key:** `cache:concerts:list:default:page:{page}:limit:{limit}`.
+- **Invalidation:** Khi có concert mới được tạo, cập nhật hoặc xóa bỏ/hủy bỏ, toàn bộ các key dạng mặc định này sẽ bị xóa bỏ trong Redis để đảm bảo tính nhất quán.
+
+**Lưu ý đặc biệt — Tách biệt API và Hybrid Cache cho Hạng vé (Ticket Types):**
+
+Để tối ưu hóa tính nhất quán về số lượng vé còn lại (`availableQuantity`) và hiệu năng đọc trang chi tiết concert, thông tin chi tiết concert (`GET /concerts/:id`) và danh sách hạng vé (`GET /concerts/:id/ticket-types`) được tách biệt thành 2 API độc lập:
+
+1. **Chi tiết Concert (`GET /concerts/:id`)**: Chỉ trả về thông tin cơ bản của concert (không kèm danh sách hạng vé) từ khóa cache `cache:concerts:{id}` (TTL 10 phút).
+2. **Danh sách hạng vé (`GET /concerts/:id/ticket-types`)**: Áp dụng mô hình **Hybrid Caching (Bộ nhớ đệm lai)**:
+   - Các thuộc tính tĩnh của hạng vé (tên, giá, số lượng phát hành `totalQuantity`, số vé tối đa mỗi user `maxPerUser`, thời gian bán vé) được cache trong Redis dưới khóa `cache:concerts:{id}:ticket-types` (TTL 10 phút).
+   - Riêng thuộc tính động thay đổi liên tục là số lượng vé còn lại (`availableQuantity`) sẽ được truy vấn trực tiếp theo thời gian thực (real-time) từ Redis thông qua lệnh `MGET` trên các khóa `inventory:{concertId}:{ticketTypeId}` (vốn là source of truth cập nhật từ booking transaction).
+   - Dữ liệu trả về sẽ tự động ghi đè giá trị `availableQuantity` từ Redis vào trước khi phản hồi cho client.
+   - **Ưu điểm:** Đảm bảo hiển thị tồn kho chính xác 100% cho client mà hoàn toàn không cần gọi vào PostgreSQL hay invalidate cache tĩnh của hạng vé mỗi khi có giao dịch mua vé thành công.
 
 ```mermaid
 flowchart TD

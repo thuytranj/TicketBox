@@ -1,16 +1,22 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { ConcertService } from './concert.service';
 import { CreateConcertDto } from './dto/create-concert.dto';
 import { UpdateConcertDto } from './dto/update-concert.dto';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
+import { ConcertQueryDto } from './dto/concert-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../auth/entities/user.entity';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
 
 @Controller('concerts')
 export class ConcertController {
-  constructor(private readonly concertService: ConcertService) {}
+  constructor(
+    private readonly concertService: ConcertService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -18,6 +24,29 @@ export class ConcertController {
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createConcertDto: CreateConcertDto) {
     return this.concertService.create(createConcertDto);
+  }
+
+  @Post('upload-poster')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANIZER)
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: (req, file, callback) => {
+        if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
+          return callback(new BadRequestException('Only image files (jpg, jpeg, png, webp) are allowed!'), false);
+        }
+        callback(null, true);
+      },
+    }),
+  )
+  async uploadPoster(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+    const result = await this.cloudinaryService.uploadFile(file);
+    return { url: result.secure_url };
   }
 
   @Post(':concertId/ticket-types')
@@ -32,18 +61,18 @@ export class ConcertController {
   }
 
   @Get()
-  async findAll(
-    @Query('search') search?: string,
-    @Query('location') location?: string,
-    @Query('tag') tag?: string,
-    @Query('status') status?: string,
-  ) {
-    return this.concertService.findAll({ search, location, tag, status });
+  async findAll(@Query() query: ConcertQueryDto) {
+    return this.concertService.findAll(query);
   }
 
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.concertService.findOne(id);
+  }
+
+  @Get(':id/ticket-types')
+  async findTicketTypes(@Param('id') id: string) {
+    return this.concertService.findTicketTypes(id);
   }
 
   @Get(':id/stagemap')

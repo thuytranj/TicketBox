@@ -1,98 +1,149 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# TicketBox Backend API — Hướng dẫn Cài đặt & Khởi chạy
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Dịch vụ backend của hệ thống bán vé sự kiện TicketBox được xây dựng trên framework **NestJS** theo kiến trúc **Modular Monolith**, kết hợp các dịch vụ lưu trữ và điều phối:
+- **PostgreSQL** làm cơ sở dữ liệu quan hệ chính (sử dụng UUID v7).
+- **Redis** làm bộ nhớ đệm (Cache-aside) và quản lý số lượng vé khả dụng thời gian thực (real-time inventory).
+- **RabbitMQ** làm Message Broker cho xử lý đặt vé và gửi thông báo bất đồng bộ.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## 1. Yêu cầu hệ thống
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Trước khi bắt đầu, hãy đảm bảo máy tính của bạn đã cài đặt các phần mềm sau:
+- **Node.js** >= 18.x (khuyên dùng phiên bản LTS mới nhất)
+- **NPM** >= 9.x
+- **Docker & Docker Compose** (để khởi chạy PostgreSQL, Redis, RabbitMQ)
 
-## Project setup
+---
 
+## 2. Các bước cài đặt chi tiết
+
+### Bước 1: Cài đặt các thư viện phụ thuộc (Dependencies)
+Truy cập vào thư mục `src/backend` và thực hiện cài đặt:
 ```bash
-$ npm install
+cd src/backend
+npm install
 ```
 
-## Compile and run the project
-
+### Bước 2: Thiết lập biến môi trường (`.env`)
+Tạo tệp cấu hình `.env` tại thư mục gốc (Root) của toàn bộ dự án `TicketBox` từ tệp `.env.example` mẫu:
 ```bash
-# development
-$ npm run start
+# Đứng tại thư mục src/backend
+cp ../../.env.example ../../.env
+```
+Mở tệp `../../.env` và điền cấu hình cơ sở dữ liệu, ví dụ:
+```env
+# App Configuration
+PORT=3000
+NODE_ENV=development
 
-# watch mode
-$ npm run start:dev
+# Database Configuration (PostgreSQL)
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=
+DB_DATABASE=ticketbox
 
-# production mode
-$ npm run start:prod
+# Cache Configuration (Redis)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+# Message Broker Configuration (RabbitMQ)
+RABBITMQ_PORT=5672
+RABBITMQ_MANAGEMENT_PORT=15672
+RABBITMQ_URL=amqp://localhost:5672
+
+# Security Configuration
+JWT_SECRET=super_secret_key_for_jwt
+JWT_REFRESH_SECRET=super_secret_key_for_refresh_jwt
+
+# Email configuration
+SMTP_HOST=
+SMTP_PORT=
+SMTP_USER=your_mailtrap_user
+SMTP_PASSWORD=your_mailtrap_password
+SMTP_FROM_EMAIL=
 ```
 
-## Run tests
-
+### Bước 3: Khởi chạy cơ sở hạ tầng (PostgreSQL, Redis, RabbitMQ)
+Chạy lệnh sau tại thư mục chứa tệp `docker-compose.yml` (thư mục gốc của dự án) để khởi chạy các container:
 ```bash
-# unit tests
-$ npm run test
+# Đứng tại thư mục gốc của dự án
+docker compose up -d
+```
+Kiểm tra trạng thái các container bằng lệnh:
+```bash
+docker compose ps
+```
+Đảm bảo 3 container `ticketbox-postgres`, `ticketbox-redis`, và `ticketbox-rabbitmq` đều đang ở trạng thái `running`.
 
-# e2e tests
-$ npm run test:e2e
+---
 
-# test coverage
-$ npm run test:cov
+## 3. Khởi chạy Ứng dụng
+
+### Bước 1: Chạy Database Migrations
+Tạo cấu trúc bảng trong cơ sở dữ liệu PostgreSQL thông qua migration của TypeORM:
+```bash
+# Đứng tại thư mục src/backend
+npm run migration:run
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
+### Bước 2: Nạp dữ liệu mẫu (Seed Data)
+Nạp dữ liệu thử nghiệm ban đầu (bao gồm thông tin các buổi hòa nhạc, danh sách hạng vé chuẩn như GA, SVIP, VIP...) vào database:
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+# Đứng tại thư mục src/backend
+npm run db:seed
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### Bước 3: Khởi chạy Server
+* **Chế độ phát triển (Development mode với hot-reload):**
+  ```bash
+  npm run start:dev
+  ```
+  API Server sẽ khởi chạy tại địa chỉ: `http://localhost:3000`.
 
-## Resources
+* **Chế độ biên dịch và chạy Production (Production mode):**
+  ```bash
+  npm run build
+  npm run start:prod
+  ```
 
-Check out a few resources that may come in handy when working with NestJS:
+---
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## 4. Kiểm thử (Testing)
 
-## Support
+Hệ thống sử dụng **Jest** và **ts-jest** để viết các bài kiểm tra tự động.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+* **Chạy toàn bộ các bài kiểm tra (Unit & Integration Tests):**
+  ```bash
+  npm run test
+  ```
 
-## Stay in touch
+* **Chạy riêng các kiểm thử cho module Hòa nhạc (Concerts & Ticket Types):**
+  ```bash
+  npm run test -- src/concert
+  ```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+* **Kiểm tra độ bao phủ mã nguồn (Test Coverage):**
+  ```bash
+  npm run test:cov
+  ```
 
-## License
+---
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+## 5. Cấu trúc thư mục chính của Backend
+
+```text
+src/backend/src/
+├── app.module.ts            # Root module kết nối toàn bộ hệ thống
+├── main.ts                  # Entrypoint khởi động NestJS API Server
+├── auth/                    # Module xác thực người dùng (JWT, Passport, RBAC)
+├── common/                  # Các bộ lọc lỗi, interceptors, và RedisService dùng chung
+├── concert/                 # Quản lý Hòa nhạc & Loại vé (Controller, Service, Entities, DTOs)
+│   ├── dto/                 # DTOs validate dữ liệu đầu vào cho Concert/TicketType
+│   ├── entities/            # ORM Entities định nghĩa bảng Postgres
+│   ├── concert.service.ts   # Xử lý logic nghiệp vụ, phân trang, Cache-aside, Hybrid cache
+│   └── concert.controller.ts# Định nghĩa các REST API Endpoints
+├── data/                    # Cấu hình kết nối ORM, Migrations và Seeding dữ liệu
+└── notification/            # Xử lý thông báo qua Email & In-app bất đồng bộ qua RabbitMQ
+```

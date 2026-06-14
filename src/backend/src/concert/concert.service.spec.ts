@@ -6,6 +6,7 @@ import { Concert, ConcertStatus } from './entities/concert.entity';
 import { TicketType, TicketTypeName } from './entities/ticket-type.entity';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { UpdateTicketTypeDto } from './dto/update-ticket-type.dto';
+import { ConcertQueryDto } from './dto/concert-query.dto';
 import { RedisService } from '../common/redis/redis.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
@@ -29,6 +30,7 @@ describe('ConcertService', () => {
   const mockTicketTypeRepository = {
     create: jest.fn(),
     save: jest.fn(),
+    find: jest.fn(),
     findOne: jest.fn(),
     remove: jest.fn(),
     merge: jest.fn(),
@@ -43,6 +45,8 @@ describe('ConcertService', () => {
     set: jest.fn(),
     setex: jest.fn(),
     del: jest.fn(),
+    keys: jest.fn(),
+    mget: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -95,10 +99,14 @@ describe('ConcertService', () => {
       mockConcertRepository.create.mockReturnValue(dto);
       mockConcertRepository.save.mockResolvedValue({ id: 'concert-id', ...dto });
 
+      mockRedisService.keys.mockResolvedValue(['cache:concerts:list:default:page:1:limit:10']);
+
       const result = await service.create(dto as any);
       expect(result).toBeDefined();
       expect(result.id).toBe('concert-id');
       expect(concertRepository.save).toHaveBeenCalled();
+      expect(redisService.keys).toHaveBeenCalledWith('cache:concerts:list:default:*');
+      expect(redisService.del).toHaveBeenCalledWith('cache:concerts:list:default:page:1:limit:10');
     });
 
     it('should throw BadRequestException if endTime <= startTime', async () => {
@@ -157,7 +165,7 @@ describe('ConcertService', () => {
 
     it('should query DB and save to Redis on Cache Miss', async () => {
       mockRedisService.get.mockResolvedValue(null);
-      const dbVal = { id: 'c-1', title: 'DB Concert', ticketTypes: [] };
+      const dbVal = { id: 'c-1', title: 'DB Concert' };
       mockConcertRepository.findOne.mockResolvedValue(dbVal);
 
       const result = await service.findOne('c-1');
@@ -194,16 +202,59 @@ describe('ConcertService', () => {
     });
   });
 
+  describe('findTicketTypes (Hybrid Caching)', () => {
+    it('should return cached ticket types on Cache Hit and fetch quantities from Redis', async () => {
+      const concert = { id: 'c-1' };
+      mockConcertRepository.findOne.mockResolvedValue(concert);
+
+      const cachedTicketTypes = [{ id: 'tt-1', name: 'VIP', price: 100, availableQuantity: 50 }];
+      mockRedisService.get.mockResolvedValue(JSON.stringify(cachedTicketTypes));
+      mockRedisService.mget.mockResolvedValue(['42']);
+
+      const result = await service.findTicketTypes('c-1');
+      expect(result).toBeDefined();
+      expect(result[0].availableQuantity).toBe(42);
+      expect(redisService.get).toHaveBeenCalledWith('cache:concerts:c-1:ticket-types');
+      expect(redisService.mget).toHaveBeenCalledWith('inventory:c-1:tt-1');
+    });
+
+    it('should query DB, save to cache and fetch quantities from Redis on Cache Miss', async () => {
+      const concert = { id: 'c-1' };
+      mockConcertRepository.findOne.mockResolvedValue(concert);
+
+      mockRedisService.get.mockResolvedValue(null);
+      const dbTicketTypes = [{ id: 'tt-1', name: 'VIP', price: 100, availableQuantity: 50 }];
+      mockTicketTypeRepository.find.mockResolvedValue(dbTicketTypes);
+      mockRedisService.mget.mockResolvedValue(['10']);
+
+      const result = await service.findTicketTypes('c-1');
+      expect(result).toBeDefined();
+      expect(result[0].availableQuantity).toBe(10);
+      expect(redisService.setex).toHaveBeenCalledWith('cache:concerts:c-1:ticket-types', 600, expect.any(String));
+      expect(redisService.mget).toHaveBeenCalledWith('inventory:c-1:tt-1');
+    });
+
+    it('should throw NotFoundException if concert does not exist', async () => {
+      mockConcertRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.findTicketTypes('invalid-id')).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('update', () => {
     it('should update concert details and invalidate cache', async () => {
       const concert = { id: 'c-1', title: 'Old Title', startTime: new Date('2026-07-01T19:00:00Z'), endTime: new Date('2026-07-01T22:00:00Z') };
       mockConcertRepository.findOne.mockResolvedValue(concert);
       mockConcertRepository.save.mockResolvedValue({ ...concert, title: 'New Title' });
 
+      mockRedisService.keys.mockResolvedValue(['cache:concerts:list:default:page:1:limit:10']);
+
       const result = await service.update('c-1', { title: 'New Title' });
       expect(result.title).toBe('New Title');
       expect(redisService.del).toHaveBeenCalledWith('cache:concerts:c-1');
       expect(redisService.del).toHaveBeenCalledWith('cache:concerts:c-1:stagemap');
+      expect(redisService.keys).toHaveBeenCalledWith('cache:concerts:list:default:*');
+      expect(redisService.del).toHaveBeenCalledWith('cache:concerts:list:default:page:1:limit:10');
     });
   });
 
@@ -288,4 +339,106 @@ describe('ConcertService', () => {
       });
     });
   });
+
+  describe('findAll', () => {
+    it('should return cached concerts and metadata on default request Cache Hit', async () => {
+      mockRedisService.get.mockResolvedValue(JSON.stringify({
+        concerts: [{ id: 'c-1', title: 'Cached Concert' }],
+        meta: { totalItems: 1, currentPage: 1 },
+      }));
+
+      const result = await service.findAll({
+        page: 1,
+        limit: 10,
+      });
+
+      expect(result).toEqual({
+        concerts: [{ id: 'c-1', title: 'Cached Concert' }],
+        meta: { totalItems: 1, currentPage: 1 },
+      });
+      expect(redisService.get).toHaveBeenCalledWith('cache:concerts:list:default:page:1:limit:10');
+      expect(concertRepository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('should query DB and save to Redis on default request Cache Miss', async () => {
+      mockRedisService.get.mockResolvedValue(null);
+      const concerts = [{ id: 'c-1', title: 'DB Concert' }];
+      const total = 1;
+
+      const mockQueryBuilder = {
+        select: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([concerts, total]),
+      };
+      mockConcertRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+
+      const result = await service.findAll({
+        page: 1,
+        limit: 10,
+      });
+
+      expect(result).toEqual({
+        concerts,
+        meta: {
+          totalItems: total,
+          itemCount: 1,
+          itemsPerPage: 10,
+          totalPages: 1,
+          currentPage: 1,
+        },
+      });
+      expect(redisService.get).toHaveBeenCalledWith('cache:concerts:list:default:page:1:limit:10');
+      expect(redisService.setex).toHaveBeenCalledWith(
+        'cache:concerts:list:default:page:1:limit:10',
+        600,
+        expect.any(String),
+      );
+    });
+
+    it('should bypass cache on non-default request', async () => {
+      const concerts = [{ id: 'c-1', title: 'Filtered Concert' }];
+      const total = 1;
+
+      const mockQueryBuilder = {
+        select: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([concerts, total]),
+      };
+      mockConcertRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+
+      const result = await service.findAll({
+        page: 2,
+        limit: 5,
+        search: 'Rock',
+        location: 'Hanoi',
+        tag: 'music',
+        status: 'active',
+      });
+
+      expect(result).toEqual({
+        concerts,
+        meta: {
+          totalItems: total,
+          itemCount: concerts.length,
+          itemsPerPage: 5,
+          totalPages: 1,
+          currentPage: 2,
+        },
+      });
+      expect(redisService.get).not.toHaveBeenCalled();
+      expect(redisService.setex).not.toHaveBeenCalled();
+      expect(mockConcertRepository.createQueryBuilder).toHaveBeenCalledWith('concert');
+      expect(mockQueryBuilder.select).toHaveBeenCalled();
+      expect(mockQueryBuilder.skip).toHaveBeenCalledWith(5);
+      expect(mockQueryBuilder.take).toHaveBeenCalledWith(5);
+      expect(mockQueryBuilder.getManyAndCount).toHaveBeenCalled();
+    });
+  });
 });
+

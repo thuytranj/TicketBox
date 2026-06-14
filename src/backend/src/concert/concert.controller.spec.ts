@@ -1,8 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConcertController } from './concert.controller';
 import { ConcertService } from './concert.service';
+import { ConcertQueryDto } from './dto/concert-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
+import { BadRequestException } from '@nestjs/common';
 
 describe('ConcertController', () => {
   let controller: ConcertController;
@@ -16,6 +19,11 @@ describe('ConcertController', () => {
     update: jest.fn(),
     remove: jest.fn(),
     createTicketType: jest.fn(),
+    findTicketTypes: jest.fn(),
+  };
+
+  const mockCloudinaryService = {
+    uploadFile: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -25,6 +33,10 @@ describe('ConcertController', () => {
         {
           provide: ConcertService,
           useValue: mockConcertService,
+        },
+        {
+          provide: CloudinaryService,
+          useValue: mockCloudinaryService,
         },
       ],
     })
@@ -64,18 +76,44 @@ describe('ConcertController', () => {
     });
   });
 
+  describe('uploadPoster', () => {
+    it('should upload file and return Cloudinary secure URL', async () => {
+      const mockFile = {
+        buffer: Buffer.from('test-image'),
+        mimetype: 'image/png',
+      } as Express.Multer.File;
+
+      mockCloudinaryService.uploadFile.mockResolvedValue({
+        secure_url: 'https://cloudinary.com/secure.png',
+      });
+
+      const result = await controller.uploadPoster(mockFile);
+      expect(result).toEqual({ url: 'https://cloudinary.com/secure.png' });
+      expect(mockCloudinaryService.uploadFile).toHaveBeenCalledWith(mockFile);
+    });
+
+    it('should throw BadRequestException if no file is provided', async () => {
+      await expect(controller.uploadPoster(null)).rejects.toThrow(BadRequestException);
+    });
+  });
+
   describe('findAll', () => {
     it('should call service.findAll with queries', async () => {
-      mockConcertService.findAll.mockResolvedValue([]);
+      const mockResult = { concerts: [], meta: { totalItems: 0 } };
+      mockConcertService.findAll.mockResolvedValue(mockResult);
 
-      const result = await controller.findAll('Rock', 'Hanoi', 'music', 'active');
-      expect(result).toEqual([]);
-      expect(service.findAll).toHaveBeenCalledWith({
+      const queryDto: ConcertQueryDto = {
         search: 'Rock',
         location: 'Hanoi',
         tag: 'music',
         status: 'active',
-      });
+        page: 1,
+        limit: 10,
+      };
+
+      const result = await controller.findAll(queryDto);
+      expect(result).toEqual(mockResult);
+      expect(service.findAll).toHaveBeenCalledWith(queryDto);
     });
   });
 
@@ -86,6 +124,17 @@ describe('ConcertController', () => {
       const result = await controller.findOne('c-1');
       expect(result).toEqual({ id: 'c-1' });
       expect(service.findOne).toHaveBeenCalledWith('c-1');
+    });
+  });
+
+  describe('findTicketTypes', () => {
+    it('should call service.findTicketTypes with id', async () => {
+      const mockTicketTypes = [{ id: 'tt-1', name: 'VIP', price: 100 }];
+      mockConcertService.findTicketTypes.mockResolvedValue(mockTicketTypes);
+
+      const result = await controller.findTicketTypes('c-1');
+      expect(result).toEqual(mockTicketTypes);
+      expect(service.findTicketTypes).toHaveBeenCalledWith('c-1');
     });
   });
 

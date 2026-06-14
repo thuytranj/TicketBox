@@ -7,6 +7,7 @@ import { CreateConcertDto } from './dto/create-concert.dto';
 import { UpdateConcertDto } from './dto/update-concert.dto';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { UpdateTicketTypeDto } from './dto/update-ticket-type.dto';
+import { ConcertQueryDto } from './dto/concert-query.dto';
 import { RedisService } from '../common/redis/redis.service';
 
 @Injectable()
@@ -22,9 +23,18 @@ export class ConcertService {
     private readonly redisService: RedisService,
   ) {}
 
+  private async invalidateListCache() {
+    const keys = await this.redisService.keys('cache:concerts:list:default:*');
+    if (keys.length > 0) {
+      await this.redisService.del(...keys);
+    }
+  }
+
   private async invalidateCache(concertId: string) {
     await this.redisService.del(`cache:concerts:${concertId}`);
     await this.redisService.del(`cache:concerts:${concertId}:stagemap`);
+    await this.redisService.del(`cache:concerts:${concertId}:ticket-types`);
+    await this.invalidateListCache();
   }
 
   private validateTicketTypeSaleTimes(
@@ -76,10 +86,26 @@ export class ConcertService {
       endTime,
     });
 
-    return this.concertRepository.save(concert);
+    const saved = await this.concertRepository.save(concert);
+    await this.invalidateListCache();
+    return saved;
   }
 
-  async findAll(filters: { search?: string; location?: string; tag?: string; status?: string }): Promise<Concert[]> {
+  async findAll(filters: ConcertQueryDto): Promise<{ concerts: Concert[]; meta: any }> {
+    const page = filters.page ? Math.max(1, filters.page) : 1;
+    const limit = filters.limit ? Math.min(100, Math.max(1, filters.limit)) : 10;
+    const offset = (page - 1) * limit;
+
+    const isDefaultRequest = !filters.search && !filters.location && !filters.tag && !filters.status;
+    const cacheKey = `cache:concerts:list:default:page:${page}:limit:${limit}`;
+
+    if (isDefaultRequest) {
+      const cached = await this.redisService.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    }
+
     const query = this.concertRepository.createQueryBuilder('concert');
 
     // Exclude svg_stage_map by default for listing performance
@@ -122,7 +148,26 @@ export class ConcertService {
 
     query.orderBy('concert.startTime', 'ASC');
 
-    return query.getMany();
+    query.skip(offset).take(limit);
+
+    const [concerts, total] = await query.getManyAndCount();
+
+    const result = {
+      concerts,
+      meta: {
+        totalItems: total,
+        itemCount: concerts.length,
+        itemsPerPage: limit,
+        totalPages: Math.ceil(total / limit),
+        currentPage: page,
+      },
+    };
+
+    if (isDefaultRequest) {
+      await this.redisService.setex(cacheKey, 600, JSON.stringify(result));
+    }
+
+    return result;
   }
 
   async findOne(id: string): Promise<Concert> {
@@ -135,7 +180,6 @@ export class ConcertService {
 
     const concert = await this.concertRepository.findOne({
       where: { id },
-      relations: ['ticketTypes'],
       select: {
         id: true,
         title: true,
@@ -188,6 +232,45 @@ export class ConcertService {
     await this.redisService.setex(cacheKey, 1800, svg);
 
     return svg;
+  }
+
+  async findTicketTypes(concertId: string): Promise<TicketType[]> {
+    const concert = await this.concertRepository.findOne({
+      where: { id: concertId },
+      select: { id: true },
+    });
+    if (!concert) {
+      throw new NotFoundException(`Not found concert with id: ${concertId}`);
+    }
+
+    const cacheKey = `cache:concerts:${concertId}:ticket-types`;
+    const cachedData = await this.redisService.get(cacheKey);
+
+    let ticketTypes: TicketType[];
+
+    if (cachedData) {
+      ticketTypes = JSON.parse(cachedData);
+    } else {
+      ticketTypes = await this.ticketTypeRepository.find({
+        where: { concertId },
+        order: { price: 'ASC' },
+      });
+      await this.redisService.setex(cacheKey, 600, JSON.stringify(ticketTypes));
+    }
+
+    if (ticketTypes.length > 0) {
+      const keys = ticketTypes.map((tt) => `inventory:${concertId}:${tt.id}`);
+      const redisValues = await this.redisService.mget(...keys);
+      ticketTypes = ticketTypes.map((tt, idx) => {
+        const val = redisValues[idx];
+        if (val !== null && val !== undefined) {
+          tt.availableQuantity = parseInt(val, 10);
+        }
+        return tt;
+      });
+    }
+
+    return ticketTypes;
   }
 
   async update(id: string, updateConcertDto: UpdateConcertDto): Promise<Concert> {
