@@ -9,6 +9,7 @@ import { RabbitMQModule } from './common/rabbitmq/rabbitmq.module';
 import { ormConfig } from './data/ormconfig';
 import { AuthModule } from './auth/auth.module';
 import { NotificationModule } from './notification/notification.module';
+import { ConcertModule } from './concert/concert.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { NotificationModule } from './notification/notification.module';
     RabbitMQModule,
     AuthModule,
     NotificationModule,
+    ConcertModule,
   ],
   controllers: [AppController],
   providers: [AppService],

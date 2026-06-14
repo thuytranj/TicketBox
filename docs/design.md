@@ -325,6 +325,7 @@ erDiagram
         text description
         varchar location
         varchar poster_url
+        varchar poster_public_id
         text summary
         varchar_arr tags
         text svg_stage_map
@@ -342,6 +343,8 @@ erDiagram
         integer total_quantity
         integer available_quantity
         integer max_per_user
+        timestamp sale_start_time
+        timestamp sale_end_time
     }
     BOOKINGS {
         uuid_v7 id PK
@@ -463,6 +466,7 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 | **description** | `text` | `NOT NULL` | Mô tả chi tiết nội dung buổi biểu diễn |
 | **location** | `varchar(255)` | `NOT NULL` | Địa điểm tổ chức concert |
 | **poster_url** | `varchar(500)` | `NULL` | Đường dẫn CDN ảnh poster của concert lưu trữ trên Cloudinary |
+| **poster_public_id** | `varchar(255)` | `NULL` | Mã định danh duy nhất (Public ID) của ảnh poster trên Cloudinary phục vụ dọn dẹp |
 | **summary** | `text` | `NULL` | Tóm tắt tiểu sử nghệ sĩ hoặc giới thiệu concert (sinh bằng AI) |
 | **tags** | `varchar(50)[]` | `NOT NULL`, `DEFAULT '{}'` | Danh sách tag (mảng chuỗi) hỗ trợ phân loại và tìm kiếm |
 | **svg_stage_map** | `text` | `NULL` | Bản đồ sơ đồ ghế ngồi/sân khấu dạng chuỗi SVG để hiển thị trên client và cache ở Redis |
@@ -494,16 +498,24 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 | :--- | :--- | :--- | :--- |
 | **id** | `uuid` | `PRIMARY KEY` | Khóa chính dạng UUID v7 |
 | **concert_id** | `uuid` | `FOREIGN KEY REFERENCES CONCERTS(id) ON DELETE CASCADE` | Khóa ngoại trỏ đến concert tương ứng |
-| **name** | `varchar(100)` | `NOT NULL` | Tên loại vé (ví dụ: SVIP, VIP, GA, CAT1) |
+| **name** | `varchar(100)` | `NOT NULL`, `CHECK (name IN ('GA', 'SVIP', 'VIP', 'CAT1', 'CAT2'))` | Tên loại vé (chỉ được là một trong các giá trị: GA, SVIP, VIP, CAT1, CAT2) |
 | **price** | `decimal(12, 2)` | `NOT NULL`, `CHECK (price >= 0)` | Giá vé |
 | **total_quantity** | `integer` | `NOT NULL`, `CHECK (total_quantity > 0)` | Tổng số lượng vé phát hành cho loại này |
 | **available_quantity** | `integer` | `NOT NULL`, `CHECK (available_quantity >= 0 AND available_quantity <= total_quantity)` | Số lượng vé còn lại trong kho có thể bán |
 | **max_per_user** | `integer` | `NOT NULL`, `DEFAULT 4`, `CHECK (max_per_user > 0)` | Giới hạn số lượng vé tối đa của loại này một người dùng được đặt mua |
+| **sale_start_time** | `timestamp` | `NULL` | Thời điểm bắt đầu bán vé. Nếu để trống, vé được mở bán ngay khi concert được kích hoạt (active) |
+| **sale_end_time** | `timestamp` | `NULL` | Thời điểm kết thúc bán vé. Phải lớn hơn `sale_start_time`. Nếu để trống, mặc định bán cho đến khi concert kết thúc |
 
 ##### Business Rules
 - Tên loại vé `name` phải là duy nhất trong phạm vi một buổi biểu diễn cụ thể (ví dụ: một concert không thể có hai loại vé cùng tên "VIP").
+- Tên loại vé bắt buộc phải nằm trong danh sách giới hạn các nhóm phân hạng: `GA`, `SVIP`, `VIP`, `CAT1`, `CAT2`. Quy tắc này được áp dụng cả ở mức database check constraint (`chk_ticket_types_name`) và ở lớp validation DTO (`@IsEnum(TicketTypeName)`).
 - `available_quantity` ban đầu phải bằng `total_quantity` và giảm dần khi có người đặt vé. Không bao giờ được phép nhỏ hơn 0.
 - Số vé tối đa một người được đặt (`max_per_user`) dùng để ngăn chặn đầu cơ vé.
+- Có ràng buộc kiểm tra ở mức database (`CHECK (sale_end_time IS NULL OR sale_start_time IS NULL OR sale_end_time > sale_start_time)`) để đảm bảo tính hợp lệ của thời gian bán vé.
+- Tại thời điểm khách hàng đặt mua vé, hệ thống kiểm tra thời gian hiện tại (`now`):
+  - `now` phải lớn hơn hoặc bằng `sale_start_time` (nếu đã cấu hình).
+  - `now` phải nhỏ hơn hoặc bằng `sale_end_time` (nếu đã cấu hình).
+  - `sale_start_time` bắt buộc phải diễn ra trước khi concert kết thúc (`sale_start_time < concert.end_time`).
 
 ##### Indexes
 | Index Name | Columns | Type | Purpose |
@@ -1112,8 +1124,9 @@ flowchart TD
 
 | Đối tượng              | Redis Key Pattern                         | TTL       | Invalidation Strategy                                 |
 | ---------------------- | ----------------------------------------- | --------- | ----------------------------------------------------- |
-| Danh sách concert      | `cache:concerts:list:{page}`              | 10 phút   | Xóa key khi admin tạo/sửa/xóa concert                 |
+| Danh sách concert mặc định | `cache:concerts:list:default:page:{page}:limit:{limit}` | 10 phút   | Xóa khi admin tạo/sửa/xóa hoặc đổi trạng thái concert |
 | Chi tiết concert       | `cache:concerts:{id}`                     | 10 phút   | Xóa key khi admin sửa concert                         |
+| Danh sách loại vé      | `cache:concerts:{id}:ticket-types`        | 10 phút   | Xóa khi admin thay đổi/sửa cấu hình loại vé           |
 | Sơ đồ sân khấu (SVG)  | `cache:concerts:{id}:stagemap`            | 30 phút   | Xóa khi admin cập nhật sơ đồ sân khấu                 |
 | Số vé còn lại          | `inventory:{concert_id}:{ticket_type_id}` | Không TTL | Luôn chính xác vì Lua Script trừ trực tiếp trên Redis |
 
@@ -1128,6 +1141,25 @@ Trường `svg_stage_map` lưu trữ nội dung SVG sơ đồ sân khấu trực
 - **Tiết kiệm memory Redis:** API `GET /concerts/:id` (xem thông tin concert) trả về object nhẹ (~2KB) từ `cache:concerts:{id}` mà không kéo theo SVG nặng ~200KB. SVG chỉ được load khi user thực sự xem sơ đồ sân khấu (`GET /concerts/:id/stagemap`).
 - **TTL tối ưu hóa riêng:** Sơ đồ sân khấu gần như cố định sau khi được tạo — admin hiếm khi thay đổi. TTL 30 phút (dài hơn 3x so với concert info) giúp giảm ~95% DB reads cho trường nặng nhất.
 - **Invalidation đơn giản:** Khi admin cập nhật sơ đồ → `DEL cache:concerts:{id}:stagemap`. Key sẽ tự được populate lại ở lần đọc tiếp theo (lazy loading).
+
+**Lưu ý đặc biệt — Danh sách concert mặc định:**
+
+Để tránh hiện tượng bùng nổ số lượng khóa (Key Explosion) và rủi ro trùng lặp cache do có quá nhiều tổ hợp lọc động khác nhau (từ khóa tìm kiếm, địa điểm, tags), hệ thống chỉ áp dụng Cache-aside cho các truy vấn danh sách concert mặc định (không chứa các bộ lọc động như `search`, `location`, `tag` - chỉ chứa `page` và `limit` để phân trang).
+
+- **Khi có bộ lọc động:** Hệ thống sẽ bỏ qua cache và truy vấn trực tiếp từ PostgreSQL thông qua các trường chỉ mục tối ưu (GIN index cho `tags` và B-Tree cho `location, status`).
+- **Quy tắc đặt key:** `cache:concerts:list:default:page:{page}:limit:{limit}`.
+- **Invalidation:** Khi có concert mới được tạo, cập nhật hoặc xóa bỏ/hủy bỏ, toàn bộ các key dạng mặc định này sẽ bị xóa bỏ trong Redis để đảm bảo tính nhất quán.
+
+**Lưu ý đặc biệt — Tách biệt API và Hybrid Cache cho Hạng vé (Ticket Types):**
+
+Để tối ưu hóa tính nhất quán về số lượng vé còn lại (`availableQuantity`) và hiệu năng đọc trang chi tiết concert, thông tin chi tiết concert (`GET /concerts/:id`) và danh sách hạng vé (`GET /concerts/:id/ticket-types`) được tách biệt thành 2 API độc lập:
+
+1. **Chi tiết Concert (`GET /concerts/:id`)**: Chỉ trả về thông tin cơ bản của concert (không kèm danh sách hạng vé) từ khóa cache `cache:concerts:{id}` (TTL 10 phút).
+2. **Danh sách hạng vé (`GET /concerts/:id/ticket-types`)**: Áp dụng mô hình **Hybrid Caching (Bộ nhớ đệm lai)**:
+   - Các thuộc tính tĩnh của hạng vé (tên, giá, số lượng phát hành `totalQuantity`, số vé tối đa mỗi user `maxPerUser`, thời gian bán vé) được cache trong Redis dưới khóa `cache:concerts:{id}:ticket-types` (TTL 10 phút).
+   - Riêng thuộc tính động thay đổi liên tục là số lượng vé còn lại (`availableQuantity`) sẽ được truy vấn trực tiếp theo thời gian thực (real-time) từ Redis thông qua lệnh `MGET` trên các khóa `inventory:{concertId}:{ticketTypeId}` (vốn là source of truth cập nhật từ booking transaction).
+   - Dữ liệu trả về sẽ tự động ghi đè giá trị `availableQuantity` từ Redis vào trước khi phản hồi cho client.
+   - **Ưu điểm:** Đảm bảo hiển thị tồn kho chính xác 100% cho client mà hoàn toàn không cần gọi vào PostgreSQL hay invalidate cache tĩnh của hạng vé mỗi khi có giao dịch mua vé thành công.
 
 ```mermaid
 flowchart TD
