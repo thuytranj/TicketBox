@@ -21,6 +21,10 @@ export class CreateConcertDto {
 
   @IsOptional()
   @IsString()
+  posterPublicId?: string;
+
+  @IsOptional()
+  @IsString()
   summary?: string;
 
   @IsOptional()

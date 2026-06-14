@@ -9,6 +9,7 @@ import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { UpdateTicketTypeDto } from './dto/update-ticket-type.dto';
 import { ConcertQueryDto } from './dto/concert-query.dto';
 import { RedisService } from '../common/redis/redis.service';
+import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
 
 @Injectable()
 export class ConcertService {
@@ -21,6 +22,7 @@ export class ConcertService {
     private readonly ticketTypeRepository: Repository<TicketType>,
     private readonly entityManager: EntityManager,
     private readonly redisService: RedisService,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   private async invalidateListCache() {
@@ -286,6 +288,22 @@ export class ConcertService {
       throw new BadRequestException('End time must be after start time');
     }
 
+    // Check if poster is being updated or removed, and cleanup old Cloudinary asset
+    const isPosterChanged =
+      updateConcertDto.posterUrl !== undefined &&
+      updateConcertDto.posterUrl !== concert.posterUrl;
+    const isPosterIdChanged =
+      updateConcertDto.posterPublicId !== undefined &&
+      updateConcertDto.posterPublicId !== concert.posterPublicId;
+
+    if ((isPosterChanged || isPosterIdChanged) && concert.posterPublicId) {
+      try {
+        await this.cloudinaryService.deleteFile(concert.posterPublicId);
+      } catch (err) {
+        this.logger.warn(`Failed to delete old poster from Cloudinary: ${err.message}`);
+      }
+    }
+
     // Merge updates
     this.concertRepository.merge(concert, {
       ...updateConcertDto,
@@ -320,6 +338,14 @@ export class ConcertService {
       throw new BadRequestException(
         'Cannot delete concert with existing bookings. Please move concert to cancelled status.',
       );
+    }
+
+    if (concert.posterPublicId) {
+      try {
+        await this.cloudinaryService.deleteFile(concert.posterPublicId);
+      } catch (err) {
+        this.logger.warn(`Failed to delete poster from Cloudinary on concert removal: ${err.message}`);
+      }
     }
 
     await this.concertRepository.remove(concert);

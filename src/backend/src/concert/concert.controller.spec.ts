@@ -85,15 +85,19 @@ describe('ConcertController', () => {
 
       mockCloudinaryService.uploadFile.mockResolvedValue({
         secure_url: 'https://cloudinary.com/secure.png',
+        public_id: 'ticketbox/posters/test_id',
       });
 
       const result = await controller.uploadPoster(mockFile);
-      expect(result).toEqual({ url: 'https://cloudinary.com/secure.png' });
+      expect(result).toEqual({
+        url: 'https://cloudinary.com/secure.png',
+        publicId: 'ticketbox/posters/test_id',
+      });
       expect(mockCloudinaryService.uploadFile).toHaveBeenCalledWith(mockFile);
     });
 
     it('should throw BadRequestException if no file is provided', async () => {
-      await expect(controller.uploadPoster(null)).rejects.toThrow(BadRequestException);
+      await expect(controller.uploadPoster(null as any)).rejects.toThrow(BadRequestException);
     });
   });
 

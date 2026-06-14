@@ -46,7 +46,7 @@ export class ConcertController {
       throw new BadRequestException('No file uploaded');
     }
     const result = await this.cloudinaryService.uploadFile(file);
-    return { url: result.secure_url };
+    return { url: result.secure_url, publicId: result.public_id };
   }
 
   @Post(':concertId/ticket-types')

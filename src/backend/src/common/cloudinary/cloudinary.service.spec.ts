@@ -7,6 +7,7 @@ jest.mock('cloudinary', () => ({
   v2: {
     uploader: {
       upload_stream: jest.fn(),
+      destroy: jest.fn(),
     },
   },
 }));
@@ -70,6 +71,28 @@ describe('CloudinaryService', () => {
       } as Express.Multer.File;
 
       await expect(service.uploadFile(file)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('deleteFile', () => {
+    it('should successfully delete a file', async () => {
+      const mockResult = { result: 'ok' };
+      (cloudinary.uploader.destroy as jest.Mock).mockImplementation((publicId, callback) => {
+        callback(null, mockResult);
+      });
+
+      const result = await service.deleteFile('test_id');
+      expect(result).toEqual(mockResult);
+      expect(cloudinary.uploader.destroy).toHaveBeenCalledWith('test_id', expect.any(Function));
+    });
+
+    it('should throw BadRequestException if delete fails', async () => {
+      const mockError = new Error('Delete error');
+      (cloudinary.uploader.destroy as jest.Mock).mockImplementation((publicId, callback) => {
+        callback(mockError, null);
+      });
+
+      await expect(service.deleteFile('test_id')).rejects.toThrow(BadRequestException);
     });
   });
 });

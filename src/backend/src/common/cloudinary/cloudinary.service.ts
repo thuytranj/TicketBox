@@ -28,4 +28,17 @@ export class CloudinaryService {
       Readable.from(file.buffer).pipe(uploadStream);
     });
   }
+
+  async deleteFile(publicId: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      cloudinary.uploader.destroy(publicId, (error, result) => {
+        if (error) {
+          return reject(
+            new BadRequestException(`Cloudinary delete failed: ${error.message}`),
+          );
+        }
+        resolve(result);
+      });
+    });
+  }
 }

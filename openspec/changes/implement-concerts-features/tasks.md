@@ -69,6 +69,18 @@
 - [x] 8.6 Viết unit test cho `CloudinaryService` và endpoint upload trong `concert.controller.spec.ts`
 - [x] 8.7 Chạy và xác minh toàn bộ test suite thành công
 
+## 9. Lưu trữ posterPublicId và dọn dẹp ảnh cũ trên Cloudinary
+
+- [x] 9.1 Tạo migration bổ sung cột `poster_public_id` (varchar(255), nullable) vào bảng `concerts`
+- [x] 9.2 Cập nhật thực thể `Concert` (`concert.entity.ts`) để khai báo thuộc tính `posterPublicId` (column `poster_public_id`)
+- [x] 9.3 Cập nhật `CreateConcertDto` và `UpdateConcertDto` để hỗ trợ nhận `posterPublicId` tùy chọn
+- [x] 9.4 Cập nhật `CloudinaryService.uploadFile` để trả về đối tượng có cả `secure_url` và `public_id`, đồng thời thêm phương thức `deleteFile(publicId: string)`
+- [x] 9.5 Cập nhật `ConcertController.uploadPoster` để trả về `{ url, publicId }`
+- [x] 9.6 Cập nhật logic `ConcertService.update` để xóa ảnh cũ trên Cloudinary thông qua `CloudinaryService.deleteFile` khi `posterUrl` / `posterPublicId` thay đổi
+- [x] 9.7 Cập nhật logic `ConcertService.remove` để xóa ảnh poster trên Cloudinary trước khi xóa concert khỏi cơ sở dữ liệu
+- [x] 9.8 Cập nhật các tệp unit test (`cloudinary.service.spec.ts`, `concert.service.spec.ts`, `concert.controller.spec.ts`) để bao phủ việc lưu/xóa và dọn dẹp ảnh cũ
+- [x] 9.9 Chạy và kiểm tra tất cả unit tests thành công
+
 
 
 

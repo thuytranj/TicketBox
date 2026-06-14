@@ -8,6 +8,7 @@ import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { UpdateTicketTypeDto } from './dto/update-ticket-type.dto';
 import { ConcertQueryDto } from './dto/concert-query.dto';
 import { RedisService } from '../common/redis/redis.service';
+import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 describe('ConcertService', () => {
@@ -49,6 +50,11 @@ describe('ConcertService', () => {
     mget: jest.fn(),
   };
 
+  const mockCloudinaryService = {
+    uploadFile: jest.fn(),
+    deleteFile: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -68,6 +74,10 @@ describe('ConcertService', () => {
         {
           provide: RedisService,
           useValue: mockRedisService,
+        },
+        {
+          provide: CloudinaryService,
+          useValue: mockCloudinaryService,
         },
       ],
     }).compile();
@@ -256,6 +266,27 @@ describe('ConcertService', () => {
       expect(redisService.keys).toHaveBeenCalledWith('cache:concerts:list:default:*');
       expect(redisService.del).toHaveBeenCalledWith('cache:concerts:list:default:page:1:limit:10');
     });
+
+    it('should delete old poster from Cloudinary if posterUrl changes', async () => {
+      const concert = { 
+        id: 'c-1', 
+        title: 'Old Title', 
+        posterUrl: 'https://cloudinary.com/old.png',
+        posterPublicId: 'ticketbox/posters/old_id',
+        startTime: new Date('2026-07-01T19:00:00Z'), 
+        endTime: new Date('2026-07-01T22:00:00Z') 
+      };
+      mockConcertRepository.findOne.mockResolvedValue(concert);
+      mockConcertRepository.save.mockResolvedValue({ ...concert, posterUrl: 'https://cloudinary.com/new.png', posterPublicId: 'ticketbox/posters/new_id' });
+      mockRedisService.keys.mockResolvedValue([]);
+
+      await service.update('c-1', { 
+        posterUrl: 'https://cloudinary.com/new.png',
+        posterPublicId: 'ticketbox/posters/new_id'
+      });
+
+      expect(mockCloudinaryService.deleteFile).toHaveBeenCalledWith('ticketbox/posters/old_id');
+    });
   });
 
   describe('remove', () => {
@@ -276,6 +307,19 @@ describe('ConcertService', () => {
 
       await expect(service.remove('c-1')).rejects.toThrow(BadRequestException);
       expect(concertRepository.remove).not.toHaveBeenCalled();
+    });
+
+    it('should delete poster from Cloudinary when concert is removed', async () => {
+      const concert = { 
+        id: 'c-1', 
+        posterPublicId: 'ticketbox/posters/some_id' 
+      };
+      mockConcertRepository.findOne.mockResolvedValue(concert);
+      mockEntityManager.query.mockResolvedValue([]); // No bookings
+
+      await service.remove('c-1');
+      expect(mockCloudinaryService.deleteFile).toHaveBeenCalledWith('ticketbox/posters/some_id');
+      expect(concertRepository.remove).toHaveBeenCalled();
     });
   });
 

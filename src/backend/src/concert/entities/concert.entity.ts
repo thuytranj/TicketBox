@@ -25,6 +25,9 @@ export class Concert {
   @Column({ type: 'varchar', length: 500, name: 'poster_url', nullable: true })
   posterUrl: string;
 
+  @Column({ type: 'varchar', length: 255, name: 'poster_public_id', nullable: true })
+  posterPublicId: string;
+
   @Column({ type: 'text', nullable: true })
   summary: string;
 

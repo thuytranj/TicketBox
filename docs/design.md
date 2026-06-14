@@ -325,6 +325,7 @@ erDiagram
         text description
         varchar location
         varchar poster_url
+        varchar poster_public_id
         text summary
         varchar_arr tags
         text svg_stage_map
@@ -465,6 +466,7 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 | **description** | `text` | `NOT NULL` | Mô tả chi tiết nội dung buổi biểu diễn |
 | **location** | `varchar(255)` | `NOT NULL` | Địa điểm tổ chức concert |
 | **poster_url** | `varchar(500)` | `NULL` | Đường dẫn CDN ảnh poster của concert lưu trữ trên Cloudinary |
+| **poster_public_id** | `varchar(255)` | `NULL` | Mã định danh duy nhất (Public ID) của ảnh poster trên Cloudinary phục vụ dọn dẹp |
 | **summary** | `text` | `NULL` | Tóm tắt tiểu sử nghệ sĩ hoặc giới thiệu concert (sinh bằng AI) |
 | **tags** | `varchar(50)[]` | `NOT NULL`, `DEFAULT '{}'` | Danh sách tag (mảng chuỗi) hỗ trợ phân loại và tìm kiếm |
 | **svg_stage_map** | `text` | `NULL` | Bản đồ sơ đồ ghế ngồi/sân khấu dạng chuỗi SVG để hiển thị trên client và cache ở Redis |

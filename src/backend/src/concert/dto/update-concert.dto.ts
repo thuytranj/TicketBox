@@ -20,6 +20,10 @@ export class UpdateConcertDto {
 
   @IsOptional()
   @IsString()
+  posterPublicId?: string;
+
+  @IsOptional()
+  @IsString()
   summary?: string;
 
   @IsOptional()

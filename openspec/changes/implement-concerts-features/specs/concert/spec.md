@@ -7,18 +7,20 @@ Hệ thống cho phép ban tổ chức tạo concert mới và quản lý thông
 1. **Tải lên poster concert (Cloudinary)**:
    - Ban tổ chức gửi yêu cầu POST đến `/concerts/upload-poster` kèm tệp tin hình ảnh dưới dạng `multipart/form-data` (trường `file`).
    - Hệ thống xác thực token và vai trò `organizer` của người dùng.
-   - Hệ thống tải ảnh trực tiếp lên Cloudinary dưới dạng Stream từ bộ nhớ đệm nhị phân, sau đó trả về URL HTTPS bảo mật của ảnh.
+   - Hệ thống tải ảnh trực tiếp lên Cloudinary dưới dạng Stream từ bộ nhớ đệm nhị phân, sau đó trả về URL HTTPS bảo mật của ảnh kèm `publicId` (Cloudinary Public ID) phục vụ việc xóa/dọn dẹp ảnh sau này.
 2. **Tạo concert mới**:
-   - Ban tổ chức gửi yêu cầu POST đến `/concerts` kèm payload chứa thông tin buổi diễn (bao gồm trường `posterUrl` nhận được từ bước tải ảnh) và cấu hình loại vé ban đầu.
+   - Ban tổ chức gửi yêu cầu POST đến `/concerts` kèm payload chứa thông tin buổi diễn (bao gồm trường `posterUrl` và `posterPublicId` nhận được từ bước tải ảnh) và cấu hình loại vé ban đầu.
+   - Sơ đồ sân khấu (`svgStageMap`) được đọc phía Frontend bằng JavaScript `FileReader` để chuyển đổi file `.svg` thành chuỗi XML/SVG và gửi trong payload JSON, không sử dụng API upload riêng biệt ở Backend.
    - Hệ thống xác thực token và vai trò `organizer` của người dùng.
-   - Hệ thống lưu thông tin concert mới và các loại vé liên kết vào PostgreSQL, trả về kết quả thành công.
+   - Hệ thống lưu thông tin concert mới (lưu `posterUrl`, `posterPublicId`, `svgStageMap` dưới dạng chuỗi) và các loại vé liên kết vào PostgreSQL, trả về kết quả thành công.
 3. **Cấu hình loại vé riêng biệt**:
    - Ban tổ chức gửi yêu cầu POST đến `/concerts/:concertId/ticket-types` hoặc PATCH đến `/ticket-types/:id`.
    - Hệ thống xác thực quyền organizer.
    - Hệ thống thực hiện thêm mới hoặc cập nhật thông tin loại vé trong database, sau đó xóa cache Redis cấu hình tĩnh của vé (`cache:concerts:{concertId}:ticket-types`) và cache danh sách concert mặc định để đảm bảo dữ liệu đồng bộ.
 4. **Cập nhật concert**:
-   - Ban tổ chức gửi yêu cầu PATCH đến `/concerts/:id` kèm payload cập nhật.
+   - Ban tổ chức gửi yêu cầu PATCH đến `/concerts/:id` kèm payload cập nhật (chứa cả `posterUrl` và `posterPublicId` nếu thay đổi).
    - Hệ thống xác thực và kiểm tra quyền của organizer.
+   - Nếu `posterUrl` hoặc `posterPublicId` thay đổi, hệ thống sẽ gọi Cloudinary API để xóa ảnh cũ (dựa trên `posterPublicId` cũ) nhằm tránh rác tài nguyên.
    - Hệ thống cập nhật PostgreSQL, xóa các khóa cache Redis liên quan: `cache:concerts:{id}`, `cache:concerts:{id}:stagemap`, `cache:concerts:{id}:ticket-types`, đồng thời xóa tất cả các khóa danh sách mặc định `cache:concerts:list:default:*`, và trả về kết quả thành công.
 5. **Lấy chi tiết concert**:
    - Người dùng gửi yêu cầu GET đến `/concerts/:id`.
@@ -46,7 +48,7 @@ Hệ thống cho phép ban tổ chức tạo concert mới và quản lý thông
 9. **Xóa concert**:
    - Ban tổ chức gửi yêu cầu DELETE đến `/concerts/:id`.
    - Hệ thống kiểm tra xem có đơn đặt vé nào cho concert này chưa.
-   - Nếu chưa có, thực hiện xóa vật lý concert và xóa các khóa cache Redis liên quan (`cache:concerts:{id}`, `cache:concerts:{id}:stagemap`, `cache:concerts:{id}:ticket-types`) đồng thời xóa toàn bộ các khóa danh sách mặc định `cache:concerts:list:default:*`.
+   - Nếu chưa có, thực hiện xóa ảnh poster cũ trên Cloudinary sử dụng `posterPublicId` (nếu có), thực hiện xóa vật lý concert khỏi DB và xóa các khóa cache Redis liên quan (`cache:concerts:{id}`, `cache:concerts:{id}:stagemap`, `cache:concerts:{id}:ticket-types`) đồng thời xóa toàn bộ các khóa danh sách mặc định `cache:concerts:list:default:*`.
    - Nếu đã có, từ chối và trả về mã lỗi 400.
 
 ## Kịch bản lỗi
@@ -56,7 +58,7 @@ Hệ thống cho phép ban tổ chức tạo concert mới và quản lý thông
 - **Không có quyền truy cập**: Yêu cầu ghi từ người dùng không phải organizer hoặc không đăng nhập sẽ trả về lỗi 401 Unauthorized hoặc 403 Forbidden.
 - **Xóa concert/loại vé đã có bookings**: Ban tổ chức yêu cầu DELETE `/concerts/:id` hoặc DELETE `/ticket-types/:id` nhưng đã phát sinh đơn đặt hàng (bookings), hệ thống trả về lỗi 400 Bad Request kèm thông điệp báo lỗi.
 - **Lỗi kết nối Redis**: Khi Redis bị timeout hoặc gặp sự cố kết nối, hệ thống vẫn hoạt động bình thường bằng cách truy vấn trực tiếp PostgreSQL (cơ chế fallback, không ảnh hưởng đến trải nghiệm người dùng).
-- **Lỗi tải tệp ảnh poster không hợp lệ**: Tải lên tệp vượt quá 5MB hoặc định dạng không được hỗ trợ (ví dụ `.pdf`, `.txt`) sẽ trả về lỗi 400 Bad Request.
+- **Lỗi tải tệp ảnh poster không hợp lệ**: Tải lên tệp vượt quá 10MB hoặc định dạng không được hỗ trợ (ví dụ `.pdf`, `.txt`) sẽ trả về lỗi 400 Bad Request.
 
 ## Ràng buộc
 - **Giới hạn hiệu năng**: Thời gian phản hồi của API chi tiết concert, sơ đồ sân khấu và danh sách loại vé trong trường hợp Cache Hit phải dưới 50ms.
@@ -81,20 +83,20 @@ Hệ thống cho phép ban tổ chức tạo concert mới và quản lý thông
 Hệ thống SHALL cho phép ban tổ chức tạo concert mới và quản lý thông tin, đồng thời tối ưu hóa truy vấn bằng Cache-aside trên Redis.
 
 #### Scenario: Ban tổ chức tải lên ảnh poster thành công
-- **WHEN** Ban tổ chức gửi yêu cầu POST đến `/concerts/upload-poster` kèm tệp tin hình ảnh hợp lệ (dung lượng <= 5MB, định dạng `.jpg`, `.jpeg`, `.png` hoặc `.webp`) và tài khoản có vai trò `organizer`
-- **THEN** Hệ thống truyền trực tiếp dữ liệu tệp tin qua stream lên Cloudinary, lưu trữ và trả về URL ảnh dạng HTTPS với mã trạng thái 201
+- **WHEN** Ban tổ chức gửi yêu cầu POST đến `/concerts/upload-poster` kèm tệp tin hình ảnh hợp lệ (dung lượng <= 10MB, định dạng `.jpg`, `.jpeg`, `.png` hoặc `.webp`) và tài khoản có vai trò `organizer`
+- **THEN** Hệ thống truyền trực tiếp dữ liệu tệp tin qua stream lên Cloudinary, lưu trữ và trả về URL ảnh dạng HTTPS cùng với `publicId` với mã trạng thái 201
 
 #### Scenario: Ban tổ chức tải lên ảnh poster không hợp lệ thất bại
-- **WHEN** Ban tổ chức gửi yêu cầu tải ảnh poster vượt quá 5MB hoặc định dạng không hợp lệ, hoặc tài khoản không có vai trò `organizer`
+- **WHEN** Ban tổ chức gửi yêu cầu tải ảnh poster vượt quá 10MB hoặc định dạng không hợp lệ, hoặc tài khoản không có vai trò `organizer`
 - **THEN** Hệ thống từ chối tải lên và trả về lỗi thích hợp (400 Bad Request hoặc 403 Forbidden)
 
 #### Scenario: Ban tổ chức tạo concert mới thành công
-- **WHEN** Ban tổ chức gửi yêu cầu POST đến `/concerts` với thông tin hợp lệ (`title`, `description`, `location`, `posterUrl`, `start_time`, `end_time`, và tùy chọn danh sách `ticket_types`) và tài khoản có vai trò `organizer`
-- **THEN** Hệ thống lưu thông tin concert mới và các loại vé liên kết vào PostgreSQL, trả về thông tin chi tiết với mã trạng thái 201
+- **WHEN** Ban tổ chức gửi yêu cầu POST đến `/concerts` với thông tin hợp lệ (`title`, `description`, `location`, `posterUrl`, `posterPublicId`, `start_time`, `end_time`, và tùy chọn danh sách `ticket_types`) và tài khoản có vai trò `organizer`
+- **THEN** Hệ thống lưu thông tin concert mới (lưu cả `posterPublicId`) và các loại vé liên kết vào PostgreSQL, trả về thông tin chi tiết với mã trạng thái 201
 
 #### Scenario: Ban tổ chức cập nhật thông tin concert thành công
-- **WHEN** Ban tổ chức gửi yêu cầu PATCH đến `/concerts/:id` với thông tin cần cập nhật và tài khoản có vai trò `organizer`
-- **THEN** Hệ thống cập nhật thông tin trong PostgreSQL, xóa bộ nhớ đệm Redis của concert đó (các khóa `cache:concerts:{id}`, `cache:concerts:{id}:stagemap`, `cache:concerts:{id}:ticket-types`), xóa toàn bộ khóa danh sách mặc định `cache:concerts:list:default:*`, và trả về thông tin cập nhật
+- **WHEN** Ban tổ chức gửi yêu cầu PATCH đến `/concerts/:id` với thông tin cần cập nhật (bao gồm cả `posterUrl` / `posterPublicId` nếu đổi ảnh) và tài khoản có vai trò `organizer`
+- **THEN** Hệ thống kiểm tra nếu `posterUrl` thay đổi thì gọi Cloudinary API xóa ảnh cũ bằng `posterPublicId` cũ, cập nhật thông tin trong PostgreSQL, xóa bộ nhớ đệm Redis của concert đó (các khóa `cache:concerts:{id}`, `cache:concerts:{id}:stagemap`, `cache:concerts:{id}:ticket-types`), xóa toàn bộ khóa danh sách mặc định `cache:concerts:list:default:*`, và trả về thông tin cập nhật
 
 #### Scenario: Ban tổ chức hủy concert thành công
 - **WHEN** Ban tổ chức gửi yêu cầu PATCH đến `/concerts/:id` với payload `status: "cancelled"` và tài khoản có vai trò `organizer`
@@ -102,7 +104,7 @@ Hệ thống SHALL cho phép ban tổ chức tạo concert mới và quản lý 
 
 #### Scenario: Ban tổ chức xóa concert chưa có bookings thành công
 - **WHEN** Ban tổ chức gửi yêu cầu DELETE đến `/concerts/:id` khi concert này chưa có đơn đặt vé (bookings) nào và tài khoản có vai trò `organizer`
-- **THEN** Hệ thống thực hiện xóa vật lý concert khỏi PostgreSQL (các loại vé liên quan cũng tự động xóa), xóa các khóa cache Redis tương ứng (`cache:concerts:{id}`, `cache:concerts:{id}:stagemap`, `cache:concerts:{id}:ticket-types`), xóa toàn bộ khóa danh sách mặc định `cache:concerts:list:default:*`, và trả về mã trạng thái 200/204 thành công
+- **THEN** Hệ thống thực hiện xóa ảnh trên Cloudinary qua `posterPublicId` (nếu có), thực hiện xóa vật lý concert khỏi PostgreSQL (các loại vé liên quan cũng tự động xóa), xóa các khóa cache Redis tương ứng (`cache:concerts:{id}`, `cache:concerts:{id}:stagemap`, `cache:concerts:{id}:ticket-types`), xóa toàn bộ khóa danh sách mặc định `cache:concerts:list:default:*`, và trả về mã trạng thái 200/204 thành công
 
 #### Scenario: Ban tổ chức xóa concert đã có bookings thất bại
 - **WHEN** Ban tổ chức gửi yêu cầu DELETE đến `/concerts/:id` khi concert này đã phát sinh ít nhất một đơn đặt vé (bookings) và tài khoản có vai trò `organizer`
