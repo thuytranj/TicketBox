@@ -10,6 +10,7 @@ import { ormConfig } from './data/ormconfig';
 import { AuthModule } from './auth/auth.module';
 import { NotificationModule } from './notification/notification.module';
 import { ConcertModule } from './concert/concert.module';
+import { AIModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ConcertModule } from './concert/concert.module';
     AuthModule,
     NotificationModule,
     ConcertModule,
+    AIModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -24,7 +24,7 @@ export class UpdateConcertDto {
 
   @IsOptional()
   @IsString()
-  summary?: string;
+  biography?: string;
 
   @IsOptional()
   @IsArray()

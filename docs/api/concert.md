@@ -23,6 +23,10 @@ Tài liệu đặc tả chi tiết các API endpoints thuộc module Quản lý 
 | **GET** | `/concerts/:id/stagemap` | Public | Lấy sơ đồ sân khấu SVG của concert (lưu Redis cache riêng biệt) |
 | **PATCH** | `/concerts/:id` | Bearer Token (Organizer) | Cập nhật thông tin concert hoặc thay đổi trạng thái (hủy bỏ) |
 | **DELETE** | `/concerts/:id` | Bearer Token (Organizer) | Xóa vật lý concert (chỉ cho phép khi chưa có lượt đặt vé) |
+| **POST** | `/concerts/:id/artist-bio` | Bearer Token (Organizer) | Tải lên PDF để trích xuất văn bản và sinh tiểu sử nghệ sĩ bằng AI |
+| **POST** | `/concerts/:id/artist-bio/regenerate` | Bearer Token (Organizer) | Yêu cầu tạo lại bản nháp tiểu sử nghệ sĩ bằng AI từ văn bản thô |
+| **GET** | `/concerts/:id/artist-bio` | Bearer Token (Organizer) | Lấy trạng thái tiến trình và bản nháp tiểu sử nghệ sĩ bằng AI |
+| **PUT** | `/concerts/:id/artist-bio/confirm` | Bearer Token (Organizer) | Phê duyệt và cập nhật chính thức tiểu sử nghệ sĩ vào concert |
 
 #### 2. Quản lý Loại vé (Ticket Types)
 
@@ -50,7 +54,7 @@ Tạo mới một sự kiện hòa nhạc. Hỗ trợ tạo đồng thời các 
     "location": "Sân vận động Quân khu 7, TP. Hồ Chí Minh",
     "posterUrl": "https://res.cloudinary.com/your-cloud-name/image/upload/v1234567890/posters/example.jpg",
     "posterPublicId": "ticketbox/posters/example",
-    "summary": "Đêm nhạc hoành tráng tái hiện các kỷ nguyên âm nhạc độc đáo.",
+    "biography": "Đêm nhạc hoành tráng tái hiện các kỷ nguyên âm nhạc độc đáo.",
     "tags": ["Pop", "Live Concert"],
     "svgStageMap": "<svg>...</svg>",
     "startTime": "2026-07-20T19:00:00.000Z",
@@ -78,7 +82,7 @@ Tạo mới một sự kiện hòa nhạc. Hỗ trợ tạo đồng thời các 
   - `location` (string, required): Địa điểm tổ chức.
   - `posterUrl` (string, optional): Đường dẫn ảnh poster (nhận được sau khi tải ảnh lên Cloudinary).
   - `posterPublicId` (string, optional): Mã định danh ảnh trên Cloudinary (dùng để xóa/dọn dẹp ảnh cũ).
-  - `summary` (string, optional): Tóm tắt ngắn gọn sự kiện.
+  - `biography` (string, optional): Tiểu sử nghệ sĩ hoặc thông tin giới thiệu sự kiện.
   - `tags` (string[], optional): Danh sách nhãn tag phân loại.
   - `svgStageMap` (string, optional): Bản đồ sơ đồ ghế ngồi dạng SVG (Frontend đọc file bằng `FileReader` rồi gửi chuỗi XML/SVG).
   - `startTime` (ISO string, required): Thời gian bắt đầu sự kiện.
@@ -101,7 +105,7 @@ Tạo mới một sự kiện hòa nhạc. Hỗ trợ tạo đồng thời các 
       "location": "Sân vận động Quân khu 7, TP. Hồ Chí Minh",
       "posterUrl": "https://res.cloudinary.com/your-cloud-name/image/upload/v1234567890/posters/example.jpg",
       "posterPublicId": "ticketbox/posters/example",
-      "summary": "Đêm nhạc hoành tráng tái hiện các kỷ nguyên âm nhạc độc đáo.",
+      "biography": "Đêm nhạc hoành tráng tái hiện các kỷ nguyên âm nhạc độc đáo.",
       "tags": ["Pop", "Live Concert"],
       "svgStageMap": "<svg>...</svg>",
       "startTime": "2026-07-20T19:00:00.000Z",
@@ -226,7 +230,7 @@ Tìm kiếm và lọc danh sách sự kiện hòa nhạc có phân trang.
           "description": "Trải nghiệm concert đỉnh cao cùng Taylor Swift",
           "location": "Sân vận động Quân khu 7, TP. Hồ Chí Minh",
           "posterUrl": "https://example.com/poster.jpg",
-          "summary": "Đêm nhạc hoành tráng tái hiện các kỷ nguyên âm nhạc độc đáo.",
+          "biography": "Đêm nhạc hoành tráng tái hiện các kỷ nguyên âm nhạc độc đáo.",
           "tags": ["Pop", "Live Concert"],
           "startTime": "2026-07-20T19:00:00.000Z",
           "endTime": "2026-07-20T23:00:00.000Z",
@@ -265,7 +269,7 @@ Lấy thông tin chi tiết một concert.
       "description": "Trải nghiệm concert đỉnh cao cùng Taylor Swift",
       "location": "Sân vận động Quân khu 7, TP. Hồ Chí Minh",
       "posterUrl": "https://example.com/poster.jpg",
-      "summary": "Đêm nhạc hoành tráng tái hiện các kỷ nguyên âm nhạc độc đáo.",
+      "biography": "Đêm nhạc hoành tráng tái hiện các kỷ nguyên âm nhạc độc đáo.",
       "tags": ["Pop", "Live Concert"],
       "startTime": "2026-07-20T19:00:00.000Z",
       "endTime": "2026-07-20T23:00:00.000Z",
@@ -395,6 +399,110 @@ Xóa bỏ hoàn toàn concert và các hạng vé liên quan (`cascade delete`).
       "statusCode": 400
     }
     ```
+  - **404 Not Found:** Concert không tồn tại.
+
+---
+
+### 9. Yêu cầu tạo tiểu sử nghệ sĩ bằng AI (`POST /concerts/:id/artist-bio`)
+
+Tải lên tệp PDF thông tin báo chí (Press Kit) của nghệ sĩ để trích xuất văn bản thô và gửi yêu cầu sinh tóm tắt tiểu sử bằng AI (Gemini) ở chế độ bất đồng bộ.
+
+- **Headers:**
+  - `Authorization: Bearer <accessToken>`
+  - `Content-Type: multipart/form-data`
+- **Parameters:**
+  - `id` (uuid, required): ID của concert.
+- **Request Body (Multipart Form Data):**
+  - `file` (File, required): Tệp PDF của Ban tổ chức.
+    - **Định dạng cho phép:** `application/pdf`
+    - **Dung lượng tối đa:** 10MB
+- **Responses:**
+  - **202 Accepted:** Yêu cầu đã nhận và đang được xử lý trong hàng đợi.
+    ```json
+    {
+      "message": "PDF uploaded successfully, bio generation is in progress"
+    }
+    ```
+  - **400 Bad Request:** Thiếu tệp tải lên, tệp không đúng định dạng PDF, hoặc lỗi xử lý tệp.
+  - **401 Unauthorized:** Token không hợp lệ hoặc thiếu.
+  - **403 Forbidden:** Tài khoản không phải vai trò `organizer`.
+  - **404 Not Found:** Concert không tồn tại.
+
+---
+
+### 10. Tạo lại nháp tiểu sử nghệ sĩ bằng AI (`POST /concerts/:id/artist-bio/regenerate`)
+
+Yêu cầu tạo lại bản nháp tóm tắt tiểu sử nghệ sĩ bằng AI từ văn bản thô đã được trích xuất và lưu trong cơ sở dữ liệu trước đó.
+
+- **Headers:**
+  - `Authorization: Bearer <accessToken>`
+- **Parameters:**
+  - `id` (uuid, required): ID của concert.
+- **Responses:**
+  - **202 Accepted:** Yêu cầu tạo lại đã nhận và đang được xử lý.
+    ```json
+    {
+      "message": "Bio regeneration is in progress"
+    }
+    ```
+  - **400 Bad Request:** Chưa có dữ liệu văn bản thô (cần upload PDF trước).
+  - **401 Unauthorized:** Token không hợp lệ hoặc thiếu.
+  - **403 Forbidden:** Tài khoản không phải vai trò `organizer`.
+
+---
+
+### 11. Lấy trạng thái và bản nháp tiểu sử bằng AI (`GET /concerts/:id/artist-bio`)
+
+Lấy chi tiết trạng thái tiến trình tạo tiểu sử, bản nháp tiểu sử hoặc lỗi phát sinh nếu có (loại trừ văn bản thô để tối ưu băng thông).
+
+- **Headers:**
+  - `Authorization: Bearer <accessToken>`
+- **Parameters:**
+  - `id` (uuid, required): ID của concert.
+- **Responses:**
+  - **200 OK:** Trả về chi tiết bản ghi AI Bio.
+    ```json
+    {
+      "concertId": "019ec180-4917-74d1-b1bd-ef0e98bed9e0",
+      "draftBio": "Draft biography generated by Gemini API under 300 words.",
+      "status": "completed",
+      "error": null,
+      "updatedAt": "2026-06-16T15:00:00.000Z"
+    }
+    ```
+    - `status` có thể là: `'processing' | 'completed' | 'failed'`.
+  - **401 Unauthorized:** Token không hợp lệ hoặc thiếu.
+  - **403 Forbidden:** Tài khoản không phải vai trò `organizer`.
+  - **404 Not Found:** Không tìm thấy yêu cầu tạo tiểu sử AI cho concert này.
+
+---
+
+### 12. Phê duyệt và cập nhật chính thức tiểu sử (`PUT /concerts/:id/artist-bio/confirm`)
+
+Duyệt hoặc chỉnh sửa bản nháp tóm tắt tiểu sử nghệ sĩ và lưu chính thức vào cột `biography` của bảng `concerts`.
+* **Cache Invalidation:** Tự động xóa các khóa Redis cache liên quan: `cache:concerts:{id}`, `cache:concerts:list:default:*`.
+
+- **Headers:**
+  - `Authorization: Bearer <accessToken>`
+- **Parameters:**
+  - `id` (uuid, required): ID của concert.
+- **Request Body:**
+  ```json
+  {
+    "biography": "Confirmed biography text for the artist..."
+  }
+  ```
+  - `biography` (string, required): Nội dung tiểu sử nghệ sĩ chính thức.
+- **Responses:**
+  - **200 OK:** Cập nhật thành công.
+    ```json
+    {
+      "message": "Biography updated successfully"
+    }
+    ```
+  - **400 Bad Request:** Thiếu trường `biography` hoặc định dạng sai.
+  - **401 Unauthorized:** Token không hợp lệ hoặc thiếu.
+  - **403 Forbidden:** Tài khoản không phải vai trò `organizer`.
   - **404 Not Found:** Concert không tồn tại.
 
 ---

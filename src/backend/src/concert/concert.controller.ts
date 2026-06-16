@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus, UseInterceptors, UploadedFile, BadRequestException, Request } from '@nestjs/common';
 import { ConcertService } from './concert.service';
 import { CreateConcertDto } from './dto/create-concert.dto';
 import { UpdateConcertDto } from './dto/update-concert.dto';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { ConcertQueryDto } from './dto/concert-query.dto';
+import { ConfirmArtistBioDto } from './dto/confirm-artist-bio.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -93,5 +94,62 @@ export class ConcertController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id') id: string) {
     await this.concertService.remove(id);
+  }
+
+  @Post(':id/artist-bio')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANIZER)
+  @HttpCode(HttpStatus.ACCEPTED)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+      fileFilter: (req, file, callback) => {
+        if (file.mimetype !== 'application/pdf') {
+          return callback(new BadRequestException('Only PDF files are allowed!'), false);
+        }
+        callback(null, true);
+      },
+    }),
+  )
+  async generateArtistBio(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Request() req,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+    await this.concertService.generateArtistBio(id, req.user.userId, file.buffer);
+    return { message: 'PDF uploaded successfully, bio generation is in progress' };
+  }
+
+  @Post(':id/artist-bio/regenerate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANIZER)
+  @HttpCode(HttpStatus.ACCEPTED)
+  async regenerateArtistBio(
+    @Param('id') id: string,
+    @Request() req,
+  ) {
+    await this.concertService.regenerateArtistBio(id, req.user.userId);
+    return { message: 'Bio regeneration is in progress' };
+  }
+
+  @Get(':id/artist-bio')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANIZER)
+  async getArtistBio(@Param('id') id: string) {
+    return this.concertService.getArtistBio(id);
+  }
+
+  @Put(':id/artist-bio/confirm')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANIZER)
+  async confirmArtistBio(
+    @Param('id') id: string,
+    @Body() confirmArtistBioDto: ConfirmArtistBioDto,
+  ) {
+    await this.concertService.confirmArtistBio(id, confirmArtistBioDto.biography);
+    return { message: 'Biography updated successfully' };
   }
 }
