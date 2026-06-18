@@ -6,11 +6,13 @@ import { AIConsumer } from './ai.consumer';
 import { ConcertAIBio } from '../concert/entities/concert-ai-bio.entity';
 import { Concert } from '../concert/entities/concert.entity';
 import { NotificationLog } from '../notification/entities/notification-log.entity';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([ConcertAIBio, Concert, NotificationLog]),
     RabbitMQModule,
+    NotificationModule,
   ],
   providers: [AIService, AIConsumer],
   exports: [AIService],

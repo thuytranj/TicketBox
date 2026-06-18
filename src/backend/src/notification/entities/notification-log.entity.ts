@@ -1,5 +1,22 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
 
+export enum NotificationType {
+  BOOKING_CONFIRMED = 'booking_confirmed',
+  CONCERT_REMINDER = 'concert_reminder',
+  AI_BIO_COMPLETED = 'ai_bio_completed',
+  AI_BIO_FAILED = 'ai_bio_failed',
+}
+
+export enum NotificationChannel {
+  IN_APP = 'in_app',
+  EMAIL = 'email',
+}
+
+export enum NotificationStatus {
+  UNREAD = 'unread',
+  READ = 'read',
+}
+
 @Entity('notification_logs')
 export class NotificationLog {
   @PrimaryGeneratedColumn({ type: 'bigint' })
@@ -9,7 +26,7 @@ export class NotificationLog {
   userId: string;
 
   @Column({ type: 'varchar', length: 50 })
-  type: string;
+  type: NotificationType;
 
   @Column({ type: 'varchar', length: 255 })
   title: string;
@@ -17,11 +34,19 @@ export class NotificationLog {
   @Column({ type: 'text' })
   body: string;
 
-  @Column({ type: 'varchar', length: 50, default: 'in_app' })
-  channel: string;
+  @Column({
+    type: 'varchar',
+    length: 50,
+    default: NotificationChannel.IN_APP,
+  })
+  channel: NotificationChannel;
 
-  @Column({ type: 'varchar', length: 50, default: 'unread' })
-  status: string;
+  @Column({
+    type: 'varchar',
+    length: 50,
+    default: NotificationStatus.UNREAD,
+  })
+  status: NotificationStatus;
 
   @Column({ type: 'uuid', name: 'reference_id', nullable: true })
   referenceId: string;

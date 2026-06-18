@@ -5,7 +5,8 @@ import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
 import { AIService } from './ai.service';
 import { ConcertAIBio, ConcertAIBioStatus } from '../concert/entities/concert-ai-bio.entity';
 import { Concert } from '../concert/entities/concert.entity';
-import { NotificationLog } from '../notification/entities/notification-log.entity';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType, NotificationChannel, NotificationStatus } from '../notification/entities/notification-log.entity';
 
 @Injectable()
 export class AIConsumer implements OnModuleInit {
@@ -18,8 +19,7 @@ export class AIConsumer implements OnModuleInit {
     private readonly concertAIBioRepository: Repository<ConcertAIBio>,
     @InjectRepository(Concert)
     private readonly concertRepository: Repository<Concert>,
-    @InjectRepository(NotificationLog)
-    private readonly notificationLogRepository: Repository<NotificationLog>,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async onModuleInit() {
@@ -92,17 +92,14 @@ export class AIConsumer implements OnModuleInit {
           await this.concertAIBioRepository.save(aiBio);
 
           // Create success in-app notification
-          await this.notificationLogRepository.save(
-            this.notificationLogRepository.create({
-              userId,
-              type: 'ai_bio_completed',
-              title: 'Artist biography generated successfully',
-              body: `The artist biography for concert "${concert.title}" has been successfully generated as a draft. Please review and approve it.`,
-              channel: 'in_app',
-              status: 'unread',
-              referenceId: concertId,
-            }),
-          );
+          await this.notificationService.createNotification(userId, {
+            type: NotificationType.AI_BIO_COMPLETED,
+            title: 'Artist biography generated successfully',
+            body: `The artist biography for concert "${concert.title}" has been successfully generated as a draft. Please review and approve it.`,
+            channel: NotificationChannel.IN_APP,
+            status: NotificationStatus.UNREAD,
+            referenceId: concertId,
+          });
         } else {
           // Failure
           aiBio.status = ConcertAIBioStatus.FAILED;
@@ -110,17 +107,14 @@ export class AIConsumer implements OnModuleInit {
           await this.concertAIBioRepository.save(aiBio);
 
           // Create failure in-app notification
-          await this.notificationLogRepository.save(
-            this.notificationLogRepository.create({
-              userId,
-              type: 'ai_bio_failed',
-              title: 'Artist biography generation failed',
-              body: `Failed to generate artist biography for concert "${concert.title}": ${errorMsg}`,
-              channel: 'in_app',
-              status: 'unread',
-              referenceId: concertId,
-            }),
-          );
+          await this.notificationService.createNotification(userId, {
+            type: NotificationType.AI_BIO_FAILED,
+            title: 'Artist biography generation failed',
+            body: `Failed to generate artist biography for concert "${concert.title}": ${errorMsg}`,
+            channel: NotificationChannel.IN_APP,
+            status: NotificationStatus.UNREAD,
+            referenceId: concertId,
+          });
         }
 
         channel.ack(msg);
