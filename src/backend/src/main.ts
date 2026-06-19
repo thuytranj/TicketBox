@@ -20,6 +20,7 @@ async function bootstrap() {
       `Starting TicketBox Backend in HTTP API mode (INSTANCE_ROLE: ${role})...`,
     );
     const app = await NestFactory.create(AppModule);
+    app.setGlobalPrefix('api/v1');
 
     // Setup Socket.io Redis Adapter for cluster scaling
     const redisIoAdapter = new RedisIoAdapter(app);

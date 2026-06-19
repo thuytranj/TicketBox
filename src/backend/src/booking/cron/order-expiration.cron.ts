@@ -6,7 +6,7 @@ import { RedisService } from '../../common/redis/redis.service';
 @Injectable()
 export class OrderExpirationCron {
   private readonly logger = new Logger(OrderExpirationCron.name);
-  private readonly LOCK_KEY = 'lock:order-expiration';
+  private readonly LOCK_KEY = '{order-expiration}:lock';
   private readonly LOCK_TTL_MS = 60000; // 60 seconds
 
   constructor(

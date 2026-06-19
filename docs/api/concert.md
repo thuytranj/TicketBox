@@ -4,7 +4,7 @@ Tài liệu đặc tả chi tiết các API endpoints thuộc module Quản lý 
 
 ## Tổng quan
 
-- **Base URL:** `http://localhost:3000` (môi trường Local Development)
+- **Base URL:** `http://localhost:3000/api/v1` (môi trường Local Development)
 - **Định dạng dữ liệu:** `application/json` cho tất cả các Request và Response.
 - **Cơ chế xác thực:** Sử dụng JWT (JSON Web Tokens). Access Token được truyền qua HTTP Header `Authorization: Bearer <token>`.
 - **Phân quyền:** Các API có ký hiệu `Bearer Token (Organizer)` yêu cầu người dùng phải đăng nhập với vai trò `organizer`. Các API khác được công khai (`Public`).

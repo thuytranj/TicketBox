@@ -4,6 +4,7 @@
 - [x] 1.2 Cập nhật file `docker-compose.yml` để tích hợp dịch vụ `nginx-lb` ánh xạ cổng 3000
 - [x] 1.3 Điều chỉnh dịch vụ `ticketbox-api` trong `docker-compose.yml` (bỏ container_name, bỏ port 3000 mapping và đổi thành expose)
 - [x] 1.4 Phân tách dịch vụ `ticketbox-worker` thành `ticketbox-booking-worker` (chạy role `worker:booking`) và `ticketbox-background-worker` (chạy role `worker:background`)
+- [x] 1.5 Cấu hình `prefetch(1)` trên RabbitMQ channel trong `RabbitMQService` để đảm bảo cơ chế Fair Dispatch và tránh quá tải worker
 
 ## 2. Tích hợp Socket.io Redis Adapter & Redis Emitter (WebSockets Cluster Scaling)
 
@@ -19,9 +20,11 @@
 - [x] 3.1 Cập nhật `OrderExpirationCron` (`src/backend/src/booking/cron/order-expiration.cron.ts`) để inject `RedisService`
 - [x] 3.2 Tích hợp luồng acquire lock `lock:order-expiration` với TTL 60s trước khi thực thi xử lý quét đơn hàng
 - [x] 3.3 Đảm bảo giải phóng lock hoặc tự giải phóng bằng TTL khi kết thúc/bị lỗi xử lý
+- [x] 3.4 Định cấu hình khóa phân tán cho `OrderExpirationCron` và `NotificationCleanupService` sử dụng Hash Tags `{}` để tương thích với Redis Cluster
 
 ## 4. Kiểm thử & Kiểm tra tích hợp (Verification & Testing)
 
 - [x] 4.1 Khởi chạy môi trường local bằng lệnh `docker compose up --scale ticketbox-api=2 -d` để xác nhận Nginx phân phối request đều đến cả 2 instances
 - [x] 4.2 Kiểm thử gửi thông báo real-time qua websocket khi client kết nối tới các api instance khác nhau
 - [x] 4.3 Giả lập chạy đồng thời 2 cronjobs quét đơn hàng hết hạn ở các instances khác nhau và kiểm tra xem chỉ 1 instance giành được lock thực thi
+- [x] 4.4 Kiểm tra hệ thống hoạt động ổn định và các unit/e2e test vẫn pass sau khi thay đổi khóa và cấu hình RabbitMQ

@@ -58,11 +58,11 @@ export class RedisIoAdapter extends IoAdapter {
 
   async close(): Promise<void> {
     const promises: Promise<any>[] = [];
-    if (this.pubClient) {
-      promises.push(this.pubClient.quit());
+    if (this.pubClient && this.pubClient.status !== 'end') {
+      promises.push(this.pubClient.quit().catch((err) => this.logger.warn(`Error quitting pubClient: ${err.message}`)));
     }
-    if (this.subClient) {
-      promises.push(this.subClient.quit());
+    if (this.subClient && this.subClient.status !== 'end') {
+      promises.push(this.subClient.quit().catch((err) => this.logger.warn(`Error quitting subClient: ${err.message}`)));
     }
     await Promise.all(promises);
     this.logger.log('Socket.io Redis clients disconnected.');

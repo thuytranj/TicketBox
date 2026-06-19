@@ -80,13 +80,13 @@ Hệ thống được thiết kế theo kiến trúc **Multi-instance Modular Mo
    ```bash
    # Đứng tại thư mục gốc dự án
    docker compose up -d postgres redis rabbitmq
-   ```
+    ```
 2. **Chạy ứng dụng backend**:
    ```bash
    # Đứng tại thư mục src/backend
    npm run start:dev
    ```
-   *Lúc này ứng dụng chạy ở chế độ All-in-one (`INSTANCE_ROLE=all`), tự động mở cổng HTTP 3000 và chạy toàn bộ consumers/cronjobs chung một tiến trình trên host.*
+   *Lúc này ứng dụng chạy ở chế độ All-in-one (`INSTANCE_ROLE=all`), tự động mở cổng HTTP 3000 và chạy toàn bộ consumers/cronjobs chung một tiến trình trên host. **Toàn bộ các REST API sẽ chạy dưới tiền tố: `http://localhost:3000/api/v1/`** (ví dụ: `/api/v1/auth/login`, `/api/v1/concerts`).*
 
 #### Workflow B: Chạy hoàn toàn trên Docker Compose (Kiểm thử tích hợp, Cân bằng tải & Cận Production)
 *Workflow này mô phỏng chính xác môi trường triển khai thực tế bằng cách chạy nhiều bản sao API phía sau Nginx Load Balancer, đồng thời chia tách cụ thể các vai trò Booking Worker và Background Worker thành các container độc lập.*
@@ -96,7 +96,7 @@ Hệ thống được thiết kế theo kiến trúc **Multi-instance Modular Mo
    # Đứng tại thư mục gốc dự án
    docker compose up --build -d
    ```
-   *Hệ thống sẽ khởi chạy Postgres, Redis, RabbitMQ cùng với 1 instance `ticketbox-api` (expose cổng 3000 nội bộ), `ticketbox-booking-worker`, `ticketbox-background-worker`, và cổng tiếp nhận duy nhất `nginx-lb` ánh xạ ra cổng `3000` của máy host.*
+   *Hệ thống sẽ khởi chạy Postgres, Redis, RabbitMQ cùng với 1 instance `ticketbox-api` (expose cổng 3000 nội bộ), `ticketbox-booking-worker`, `ticketbox-background-worker`, và cổng tiếp nhận duy nhất `nginx-lb` ánh xạ ra cổng `3000` của máy host. **Các request API HTTP đi qua cổng load balancer này sẽ được tiếp nhận tại `http://localhost:3000/api/v1/`**.*
 
 2. **Khởi chạy hoặc mở rộng nhiều API instances (Cân bằng tải)**:
    Nếu muốn test tải hoặc kiểm tra tính đồng bộ của Socket.io Redis Adapter trên nhiều instances chạy song song, bạn có thể scale số lượng API:
@@ -104,7 +104,7 @@ Hệ thống được thiết kế theo kiến trúc **Multi-instance Modular Mo
    # Tăng số lượng API instances lên 3 bản sao
    docker compose up --scale ticketbox-api=3 -d
    ```
-   *Nginx Load Balancer sẽ tự động phân phối các request HTTP và kết nối WebSockets (đã đồng bộ qua Redis) đều sang 3 instances API.*
+   *Nginx Load Balancer sẽ tự động phân phối các request HTTP (`/api/v1/...`) và kết nối WebSockets (đã đồng bộ qua Redis) đều sang 3 instances API.*
 
 3. **Theo dõi logs của từng cụm thực thể**:
    * Xem log Nginx Load Balancer: `docker compose logs -f nginx-lb`
@@ -122,11 +122,17 @@ Hệ thống được thiết kế theo kiến trúc **Multi-instance Modular Mo
 
 ## 4. Kiểm thử (Testing)
 
-Hệ thống sử dụng **Jest** và **ts-jest** để viết các bài kiểm tra tự động.
+Hệ thống sử dụng **Jest** và **ts-jest** để viết các bài kiểm tra tự động bao gồm Unit Tests và End-to-End (E2E) Integration Tests.
 
-* **Chạy toàn bộ các bài kiểm tra (Unit & Integration Tests):**
+* **Chạy toàn bộ các bài kiểm tra Đơn vị (Unit Tests):**
   ```bash
   npm run test
+  ```
+
+* **Chạy các bài kiểm tra Tích hợp End-to-End (E2E Tests):**
+  *E2E tests kiểm chứng toàn bộ luồng hoạt động thực tế bao gồm HTTP API và WebSockets thời gian thực qua Redis Adapter:*
+  ```bash
+  npm run test:e2e
   ```
 
 * **Chạy riêng các kiểm thử cho module Hòa nhạc (Concerts & Ticket Types):**

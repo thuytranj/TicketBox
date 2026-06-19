@@ -48,6 +48,16 @@ Hệ thống TicketBox Backend đã hỗ trợ kiến trúc Multi-instance Modul
   - Đăng ký khóa với key `lock:order-expiration` và thời gian tồn tại (TTL) là 60 giây.
   - Khi cron job chạy mỗi 5 phút, nó sẽ cố gắng lấy khóa. Nếu không thành công (có một instance khác đang chạy), nó sẽ dừng lại ngay lập tức.
 
+### Decision 5: Cấu hình RabbitMQ Fair Dispatch (Prefetch = 1)
+- **Lựa chọn**: Khuyến nghị cấu hình `prefetch(1)` trên RabbitMQ channel cho tất cả các worker.
+- **Lý do**: Mặc dù cấu hình hiện tại chỉ chạy 1 worker instance cho từng vai trò (`worker:booking` và `worker:background`), việc áp dụng `prefetch(1)` là một Best Practice giúp ngăn chặn nguy cơ dồn ứ tin nhắn làm tràn bộ nhớ đệm (OOM) của worker khi gặp tải đột biến, đồng thời đảm bảo phân phối tải công bằng (Fair Dispatch) ngay lập tức khi mở rộng ngang (horizontal scaling) lên nhiều instances worker song song trong tương lai.
+
+### Decision 6: Khuyến nghị đặt tên khóa tương thích Redis Cluster (Hash Tags)
+- **Lựa chọn**: Áp dụng cú pháp Hash Tags `{}` cho các khóa phân tán và các dữ liệu liên kết trên Redis.
+- **Chi tiết**:
+  - Thay vì đặt tên khóa tự do dạng `lock:order-expiration` hay `lock:vip-import`, sử dụng `{order-expiration}:lock` và `{vip-import}:lock`.
+  - Việc này đảm bảo các khóa thuộc cùng một phân vùng nghiệp vụ được băm (hash) về cùng một hash slot trong cấu hình Redis Cluster, phòng ngừa lỗi `CROSSSLOT` khi di chuyển hệ thống từ môi trường đơn lẻ (Standalone) hiện tại lên Cluster thực tế trên Production.
+
 ## Risks / Trade-offs
 
 - **[Risk] Phân rã handshake trong Socket.io**: Nếu Client kết nối sử dụng HTTP Long-Polling trước khi nâng cấp lên WebSocket, các request HTTP của cùng một phiên kết nối có thể bị định tuyến sang các API instances khác nhau, dẫn tới lỗi `Session ID unknown`.

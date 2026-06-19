@@ -62,7 +62,7 @@ describe('NotificationCleanupService', () => {
     await service.cleanupOldNotifications();
 
     expect(mockRedisService.acquireLock).toHaveBeenCalledWith(
-      'locks:notification-cleanup',
+      '{notification-cleanup}:lock',
       60000,
     );
     expect(repository.createQueryBuilder).not.toHaveBeenCalled();
@@ -78,13 +78,13 @@ describe('NotificationCleanupService', () => {
     await service.cleanupOldNotifications();
 
     expect(mockRedisService.acquireLock).toHaveBeenCalledWith(
-      'locks:notification-cleanup',
+      '{notification-cleanup}:lock',
       60000,
     );
     expect(repository.createQueryBuilder).toHaveBeenCalledTimes(2);
     expect(mockQueryBuilder.execute).toHaveBeenCalledTimes(2);
     expect(mockRedisService.releaseLock).toHaveBeenCalledWith(
-      'locks:notification-cleanup',
+      '{notification-cleanup}:lock',
     );
   });
 
@@ -96,7 +96,7 @@ describe('NotificationCleanupService', () => {
 
     expect(repository.createQueryBuilder).toHaveBeenCalledTimes(1);
     expect(mockRedisService.releaseLock).toHaveBeenCalledWith(
-      'locks:notification-cleanup',
+      '{notification-cleanup}:lock',
     );
   });
 });

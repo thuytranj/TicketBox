@@ -11,7 +11,7 @@ import { RedisService } from '../common/redis/redis.service';
 @Injectable()
 export class NotificationCleanupService {
   private readonly logger = new Logger(NotificationCleanupService.name);
-  private readonly LOCK_KEY = 'locks:notification-cleanup';
+  private readonly LOCK_KEY = '{notification-cleanup}:lock';
   private readonly LOCK_TTL_MS = 60000; // 60 seconds
 
   constructor(

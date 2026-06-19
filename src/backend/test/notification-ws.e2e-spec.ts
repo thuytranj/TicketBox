@@ -24,6 +24,7 @@ describe('NotificationGateway (e2e WebSockets)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.setGlobalPrefix('api/v1');
 
     // Register RedisIoAdapter for the test app so it subscribes to Redis pub/sub
     redisIoAdapter = new RedisIoAdapter(app);
