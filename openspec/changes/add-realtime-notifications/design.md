@@ -9,7 +9,7 @@ Thiết kế này giới thiệu việc sử dụng NestJS WebSockets kết hợ
 **Goals:**
 - Tích hợp WebSocket Gateway (sử dụng Socket.io) vào backend để đẩy thông báo real-time.
 - Xác thực kết nối WebSocket bằng JWT Token của người dùng.
-- Xây dựng API `/notifications` với các phương thức GET (phân trang), PATCH (đánh dấu đã đọc).
+- Xây dựng API `/notifications` với các phương thức GET (phân trang và lọc theo trạng thái read/unread), PATCH (đánh dấu đã đọc).
 - Cấu hình phát sự kiện WebSocket `notification_received` mỗi khi lưu thành công thông báo In-app mới.
 - Thiết lập tiến trình tự động dọn dẹp (cleanup) các thông báo cũ đã đọc quá 30 ngày.
 

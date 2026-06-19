@@ -145,7 +145,47 @@ describe('NotificationService', () => {
         currentPage: 1,
       });
     });
+
+    it('should filter by status when unread is passed', async () => {
+      const userId = 'user-uuid';
+      mockRepository.findAndCount.mockResolvedValueOnce([[], 0]);
+
+      await service.getUserNotifications(userId, 1, 10, 'unread');
+
+      expect(repository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId, channel: NotificationChannel.IN_APP, status: NotificationStatus.UNREAD },
+        }),
+      );
+    });
+
+    it('should filter by status when read is passed', async () => {
+      const userId = 'user-uuid';
+      mockRepository.findAndCount.mockResolvedValueOnce([[], 0]);
+
+      await service.getUserNotifications(userId, 1, 10, 'read');
+
+      expect(repository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId, channel: NotificationChannel.IN_APP, status: NotificationStatus.READ },
+        }),
+      );
+    });
+
+    it('should not filter by status if status parameter is invalid', async () => {
+      const userId = 'user-uuid';
+      mockRepository.findAndCount.mockResolvedValueOnce([[], 0]);
+
+      await service.getUserNotifications(userId, 1, 10, 'invalid-status');
+
+      expect(repository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId, channel: NotificationChannel.IN_APP },
+        }),
+      );
+    });
   });
+
 
   describe('markAsRead', () => {
     it('should mark an unread notification as read', async () => {

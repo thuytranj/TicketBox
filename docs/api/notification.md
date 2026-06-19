@@ -37,6 +37,8 @@ Lấy danh sách các thông báo trong ứng dụng (channel = `in_app`) của 
 - **Query Parameters:**
   - `page` (number, optional, default: `1`): Số trang muốn truy vấn.
   - `limit` (number, optional, default: `10`): Số lượng thông báo tối đa mỗi trang.
+  - `status` (string, optional): Lọc theo trạng thái đọc. Nhận giá trị `'read'` hoặc `'unread'`. Nếu bỏ trống, trả về tất cả thông báo.
+
 
 - **Responses:**
   - **200 OK:** Lấy danh sách thông báo thành công.

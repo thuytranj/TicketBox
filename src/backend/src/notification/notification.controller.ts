@@ -21,11 +21,13 @@ export class NotificationController {
     @Request() req,
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
+    @Query('status') status?: string,
   ) {
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
-    return this.notificationService.getUserNotifications(req.user.userId, pageNum, limitNum);
+    return this.notificationService.getUserNotifications(req.user.userId, pageNum, limitNum, status);
   }
+
 
   @Patch('read-all')
   async markAllAsRead(@Request() req) {

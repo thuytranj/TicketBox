@@ -59,9 +59,9 @@ describe('NotificationController', () => {
       };
       mockNotificationService.getUserNotifications.mockResolvedValueOnce(mockResult);
 
-      const result = await controller.getNotifications(req, '1', '10');
+      const result = await controller.getNotifications(req, '1', '10', 'unread');
 
-      expect(service.getUserNotifications).toHaveBeenCalledWith('user-uuid', 1, 10);
+      expect(service.getUserNotifications).toHaveBeenCalledWith('user-uuid', 1, 10, 'unread');
       expect(result).toEqual(mockResult);
     });
 
@@ -78,11 +78,12 @@ describe('NotificationController', () => {
         },
       });
 
-      await controller.getNotifications(req, 'invalid', 'invalid');
+      await controller.getNotifications(req, 'invalid', 'invalid', undefined);
 
-      expect(service.getUserNotifications).toHaveBeenCalledWith('user-uuid', 1, 10);
+      expect(service.getUserNotifications).toHaveBeenCalledWith('user-uuid', 1, 10, undefined);
     });
   });
+
 
   describe('markAllAsRead', () => {
     it('should call service markAllAsRead', async () => {

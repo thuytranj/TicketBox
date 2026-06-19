@@ -40,6 +40,7 @@ export class NotificationService {
     userId: string,
     page: number = 1,
     limit: number = 10,
+    status?: string,
   ): Promise<{
     data: NotificationLog[];
     meta: {
@@ -50,8 +51,13 @@ export class NotificationService {
       currentPage: number;
     };
   }> {
+    const whereCondition: any = { userId, channel: NotificationChannel.IN_APP };
+    if (status === NotificationStatus.READ || status === NotificationStatus.UNREAD) {
+      whereCondition.status = status;
+    }
+
     const [data, total] = await this.notificationLogRepository.findAndCount({
-      where: { userId, channel: NotificationChannel.IN_APP },
+      where: whereCondition,
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -68,6 +74,7 @@ export class NotificationService {
       },
     };
   }
+
 
   async markAsRead(userId: string, id: number): Promise<NotificationLog> {
     const notification = await this.notificationLogRepository.findOne({

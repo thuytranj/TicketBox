@@ -23,6 +23,9 @@
 - [x] 4.2 Thiết lập route `GET /notifications` để trả về danh sách thông báo phân trang của user hiện tại.
 - [x] 4.3 Thiết lập route `PATCH /notifications/:id/read` để đánh dấu một thông báo cụ thể là đã đọc.
 - [x] 4.4 Thiết lập route `PATCH /notifications/read-all` để đánh dấu tất cả thông báo của user là đã đọc.
+- [x] 4.5 Mở rộng route `GET /notifications` và `NotificationService.getUserNotifications` để hỗ trợ lọc theo query parameter `status` (lọc thông báo `read` hoặc `unread`).
+
+
 
 ## 5. Kiểm thử và Xác minh
 

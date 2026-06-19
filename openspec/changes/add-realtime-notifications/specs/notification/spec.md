@@ -21,7 +21,7 @@ Tính năng này cung cấp giải pháp đẩy thông báo trong ứng dụng (
    - Nếu người dùng offline: Bỏ qua bước đẩy realtime, bản ghi vẫn được lưu trong DB để người dùng đọc sau.
 
 ### Luồng 3: Xem và cập nhật trạng thái thông báo qua REST API
-1. **Xem danh sách phân trang (`GET /notifications`)**: Người dùng gửi yêu cầu lấy danh sách thông báo. API thực hiện phân trang theo tham số `page` và `limit`, chỉ trả về các thông báo của chính người dùng hiện tại, sắp xếp theo thời gian tạo giảm dần.
+1. **Xem danh sách phân trang (`GET /notifications`)**: Người dùng gửi yêu cầu lấy danh sách thông báo. API thực hiện phân trang theo tham số `page` và `limit`, hỗ trợ lọc theo trạng thái qua query parameter `status` (nhận `'read'` hoặc `'unread'`). Chỉ trả về các thông báo thuộc sở hữu của chính người dùng hiện tại, sắp xếp theo thời gian tạo giảm dần.
 2. **Đánh dấu một thông báo đã đọc (`PATCH /notifications/:id/read`)**: Người dùng bấm xem một thông báo cụ thể. API cập nhật trường trạng thái `status = 'read'` và timestamp `read_at = thời điểm hiện tại`.
 3. **Đánh dấu tất cả thông báo đã đọc (`PATCH /notifications/read-all`)**: Người dùng bấm nút đọc tất cả. API cập nhật trường trạng thái `status = 'read'` và `read_at = thời điểm hiện tại` cho tất cả thông báo chưa đọc của người dùng đó.
 
@@ -73,6 +73,9 @@ Tính năng này cung cấp giải pháp đẩy thông báo trong ứng dụng (
 - **Xem danh sách**: 
   - API `GET /notifications` trả về đúng định dạng JSON có phân trang (chứa mảng `data` và thông tin `meta` như `totalPages`, `totalItems`, `currentPage`).
   - Danh sách chỉ chứa thông báo thuộc về chính user đang đăng nhập và sắp xếp mới nhất lên đầu.
+  - Khi truyền `status = unread`, danh sách trả về chỉ chứa thông báo có `status = 'unread'`.
+  - Khi truyền `status = read`, danh sách trả về chỉ chứa thông báo có `status = 'read'`.
+  - Khi không truyền `status` hoặc truyền giá trị khác, danh sách trả về chứa tất cả thông báo của user (cả `read` và `unread`).
 - **Đánh dấu đã đọc**:
   - Gọi API `PATCH /notifications/:id/read` cập nhật đúng trạng thái `read` và trường `readAt` trên DB, trả về HTTP 200 kèm bản ghi đã cập nhật.
   - Gọi API `PATCH /notifications/read-all` cập nhật thành công tất cả thông báo của user đó sang trạng thái `read` trên DB, trả về kết quả thành công.
