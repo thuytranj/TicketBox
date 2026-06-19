@@ -1,4 +1,12 @@
-import { IsUUID, IsArray, ArrayMinSize, ValidateNested, IsInt, Min, Max } from 'class-validator';
+import {
+  IsUUID,
+  IsArray,
+  ArrayMinSize,
+  ValidateNested,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class BookingItemDto {

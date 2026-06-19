@@ -21,8 +21,9 @@ import { BookingModule } from './booking/booking.module';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [
-        path.resolve(__dirname, '../../../.env'),
+        path.resolve(process.cwd(), '.env'),
         path.resolve(process.cwd(), '../../.env'),
+        path.resolve(__dirname, '../../../.env'),
       ],
     }),
     TypeOrmModule.forRoot(ormConfig),
@@ -52,5 +53,4 @@ import { BookingModule } from './booking/booking.module';
     },
   ],
 })
-
 export class AppModule {}

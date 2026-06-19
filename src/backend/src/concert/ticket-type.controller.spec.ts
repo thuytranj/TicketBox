@@ -40,9 +40,12 @@ describe('TicketTypeController', () => {
   describe('update', () => {
     it('should call service.updateTicketType with id and DTO', async () => {
       const dto = { price: 150 };
-      mockConcertService.updateTicketType.mockResolvedValue({ id: 'tt-1', ...dto });
+      mockConcertService.updateTicketType.mockResolvedValue({
+        id: 'tt-1',
+        ...dto,
+      });
 
-      const result = await controller.update('tt-1', dto as any);
+      const result = await controller.update('tt-1', dto);
       expect(result).toBeDefined();
       expect(service.updateTicketType).toHaveBeenCalledWith('tt-1', dto);
     });

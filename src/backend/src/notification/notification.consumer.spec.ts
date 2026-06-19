@@ -61,14 +61,21 @@ describe('NotificationConsumer', () => {
     await consumer.onModuleInit();
     const handler = mockRabbitMQService.consume.mock.calls[0][1];
 
-    const messageContent = { email: 'test@example.com', otp: '123456', type: 'verify' };
+    const messageContent = {
+      email: 'test@example.com',
+      otp: '123456',
+      type: 'verify',
+    };
     const mockMsg = {
       content: Buffer.from(JSON.stringify(messageContent)),
     } as any;
 
     await handler(mockMsg);
 
-    expect(mockEmailService.sendOtpEmail).toHaveBeenCalledWith('test@example.com', '123456');
+    expect(mockEmailService.sendOtpEmail).toHaveBeenCalledWith(
+      'test@example.com',
+      '123456',
+    );
     expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
   });
 
@@ -76,14 +83,21 @@ describe('NotificationConsumer', () => {
     await consumer.onModuleInit();
     const handler = mockRabbitMQService.consume.mock.calls[0][1];
 
-    const messageContent = { email: 'test@example.com', otp: '654321', type: 'reset' };
+    const messageContent = {
+      email: 'test@example.com',
+      otp: '654321',
+      type: 'reset',
+    };
     const mockMsg = {
       content: Buffer.from(JSON.stringify(messageContent)),
     } as any;
 
     await handler(mockMsg);
 
-    expect(mockEmailService.sendResetPasswordEmail).toHaveBeenCalledWith('test@example.com', '654321');
+    expect(mockEmailService.sendResetPasswordEmail).toHaveBeenCalledWith(
+      'test@example.com',
+      '654321',
+    );
     expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
   });
 
@@ -93,7 +107,11 @@ describe('NotificationConsumer', () => {
 
     mockEmailService.sendOtpEmail.mockRejectedValue(new Error('SMTP error'));
 
-    const messageContent = { email: 'test@example.com', otp: '123456', type: 'verify' };
+    const messageContent = {
+      email: 'test@example.com',
+      otp: '123456',
+      type: 'verify',
+    };
     const mockMsg = {
       content: Buffer.from(JSON.stringify(messageContent)),
     } as any;

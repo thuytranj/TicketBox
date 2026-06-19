@@ -39,4 +39,3 @@ export class RedisService extends Redis implements OnModuleDestroy {
     this.disconnect();
   }
 }
-

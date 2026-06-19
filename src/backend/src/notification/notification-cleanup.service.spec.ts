@@ -41,8 +41,12 @@ describe('NotificationCleanupService', () => {
       ],
     }).compile();
 
-    service = module.get<NotificationCleanupService>(NotificationCleanupService);
-    repository = module.get<Repository<NotificationLog>>(getRepositoryToken(NotificationLog));
+    service = module.get<NotificationCleanupService>(
+      NotificationCleanupService,
+    );
+    repository = module.get<Repository<NotificationLog>>(
+      getRepositoryToken(NotificationLog),
+    );
     redisService = module.get<RedisService>(RedisService);
 
     jest.clearAllMocks();
@@ -57,7 +61,10 @@ describe('NotificationCleanupService', () => {
 
     await service.cleanupOldNotifications();
 
-    expect(mockRedisService.acquireLock).toHaveBeenCalledWith('locks:notification-cleanup', 60000);
+    expect(mockRedisService.acquireLock).toHaveBeenCalledWith(
+      'locks:notification-cleanup',
+      60000,
+    );
     expect(repository.createQueryBuilder).not.toHaveBeenCalled();
     expect(mockRedisService.releaseLock).not.toHaveBeenCalled();
   });
@@ -70,10 +77,15 @@ describe('NotificationCleanupService', () => {
 
     await service.cleanupOldNotifications();
 
-    expect(mockRedisService.acquireLock).toHaveBeenCalledWith('locks:notification-cleanup', 60000);
+    expect(mockRedisService.acquireLock).toHaveBeenCalledWith(
+      'locks:notification-cleanup',
+      60000,
+    );
     expect(repository.createQueryBuilder).toHaveBeenCalledTimes(2);
     expect(mockQueryBuilder.execute).toHaveBeenCalledTimes(2);
-    expect(mockRedisService.releaseLock).toHaveBeenCalledWith('locks:notification-cleanup');
+    expect(mockRedisService.releaseLock).toHaveBeenCalledWith(
+      'locks:notification-cleanup',
+    );
   });
 
   it('should release lock even if an error is thrown during cleanup', async () => {
@@ -83,6 +95,8 @@ describe('NotificationCleanupService', () => {
     await service.cleanupOldNotifications();
 
     expect(repository.createQueryBuilder).toHaveBeenCalledTimes(1);
-    expect(mockRedisService.releaseLock).toHaveBeenCalledWith('locks:notification-cleanup');
+    expect(mockRedisService.releaseLock).toHaveBeenCalledWith(
+      'locks:notification-cleanup',
+    );
   });
 });

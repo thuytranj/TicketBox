@@ -26,11 +26,14 @@ export class NotificationGateway
   constructor(private readonly jwtService: JwtService) {}
 
   afterInit(server: Server) {
-    this.logger.log('NotificationGateway initialized. Registering JWT handshake middleware.');
-    
+    this.logger.log(
+      'NotificationGateway initialized. Registering JWT handshake middleware.',
+    );
+
     server.use(async (socket, next) => {
       try {
-        let token = socket.handshake.auth?.token || socket.handshake.query?.token;
+        let token =
+          socket.handshake.auth?.token || socket.handshake.query?.token;
         if (!token && socket.handshake.headers?.authorization) {
           const parts = socket.handshake.headers.authorization.split(' ');
           if (parts.length === 2 && parts[0].toLowerCase() === 'bearer') {
@@ -91,7 +94,9 @@ export class NotificationGateway
       for (const socketId of sockets) {
         this.server.to(socketId).emit(event, data);
       }
-      this.logger.log(`Pushed real-time event "${event}" to user ${userId} (${sockets.size} active connections)`);
+      this.logger.log(
+        `Pushed real-time event "${event}" to user ${userId} (${sockets.size} active connections)`,
+      );
     } else {
       this.logger.log(`User ${userId} is offline, skipping real-time push`);
     }

@@ -4,11 +4,9 @@ import { User, UserRole, UserStatus } from '../../auth/entities/user.entity';
 import * as bcrypt from 'bcrypt';
 
 export default class UserSeeder implements Seeder {
-  public async run(
-    dataSource: DataSource,
-  ): Promise<any> {
+  public async run(dataSource: DataSource): Promise<any> {
     const repository = dataSource.getRepository(User);
-    
+
     // Hash password "123123"
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash('123123', salt);

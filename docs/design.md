@@ -55,21 +55,25 @@
 | Dễ chuyển sang Microservices sau | —                                                                  | ✅ Module boundary rõ ràng, dễ tách           | ❌ Phải refactor toàn bộ            |
 | Transaction xuyên module         | ❌ Cần Saga pattern phức tạp                                       | ✅ Dùng DB transaction thông thường           | ✅ Dùng DB transaction thông thường |
 
-### Chốt giải pháp: Phương án B — Modular Monolith (NestJS)
+### Chốt giải pháp: Phương án B — Multi-instance Modular Monolith (NestJS)
 
 **Lý do:**
 
 - Đồ án do team nhỏ thực hiện, Microservices gây quá tải về hạ tầng và vận hành (service mesh, distributed tracing, Saga pattern). Chi phí không xứng đáng với lợi ích.
-- Modular Monolith giữ được **ranh giới module rõ ràng** (mỗi NestJS Module là một domain context) giống Microservices về mặt kiến trúc logic, nhưng triển khai đơn giản chỉ cần 1 container.
-- Các tác vụ nặng (booking, notification) đã được tách ra xử lý bất đồng bộ qua RabbitMQ Worker, nên không bị nghẽn cổ chai tại API thread.
-- Nếu sau này cần scale, có thể tách module thành service độc lập mà không phải viết lại — đây chính là ưu điểm của Modular Monolith so với Monolith truyền thống.
+- Modular Monolith giữ được **ranh giới module rõ ràng** (mỗi NestJS Module là một domain context) giống Microservices về mặt kiến trúc logic.
+- **Kiến trúc Multi-instance**: Toàn bộ hệ thống chạy chung một codebase duy nhất, nhưng khi triển khai (Docker Compose / Production) sẽ được chia tách thành các thực thể chuyên biệt thông qua cấu hình biến môi trường `INSTANCE_ROLE` (`api`, `worker:booking`, `worker:background`, `worker`, `all`). Điều này giúp cô lập hoàn toàn tải xử lý và đảm bảo hiệu năng tối đa cho luồng đặt vé chính (Critical Booking Path) mà không tăng độ phức tạp trong quản lý mã nguồn.
+- Các tác vụ nặng (booking, notification, AI) đã được tách ra xử lý bất đồng bộ qua các cụm RabbitMQ Worker chuyên biệt, tránh việc nghẽn cổ chai tại tiến trình phục vụ HTTP API.
+- Nếu sau này cần scale, có thể tách module thành service độc lập hoàn toàn mà không phải viết lại mã nguồn từ đầu.
 
 **Kiến trúc bao gồm:**
 
-- **1 NestJS Application** chứa các module: Auth, Concert, Booking, Payment, Check-in, Guest List, AI Bio, Notification.
+- **NestJS Application** được đóng gói và cấu hình chạy theo các vai trò:
+  - **API Instance** (`INSTANCE_ROLE=api`): Chuyên xử lý các HTTP API request đồng bộ, vô hiệu hóa các background consumers và crons. Có thể scale ngang thành nhiều bản sao ($N$ instances) phía sau Nginx Load Balancer để chia sẻ tải.
+  - **Booking Worker** (`INSTANCE_ROLE=worker:booking`): Chỉ tiêu thụ hàng đợi `booking_queue`, `booking_dlx_queue` và chạy cron hủy đơn hàng quá hạn nhằm bảo vệ luồng xác nhận đơn hàng trọng yếu.
+  - **Background Worker** (`INSTANCE_ROLE=worker:background`): Tiêu thụ hàng đợi AI (`ai.generate_bio`), email/sms (`notification_queue`) và chạy cron dọn dẹp định kỳ.
 - **PostgreSQL** làm persistent storage chính.
 - **Redis** làm cache layer + atomic inventory operations + rate limiting.
-- **RabbitMQ** làm message broker cho xử lý bất đồng bộ (booking queue, notification exchange).
+- **RabbitMQ** làm message broker cho xử lý bất đồng bộ.
 - **Mailtrap SMTP** (mock) cho gửi email trong môi trường Dev.
 
 ---
@@ -121,8 +125,12 @@ flowchart TD
         %% Gateway
         Nginx["Nginx<br/>(Reverse Proxy / Load Balancer)"]:::gateway
 
-        %% API App
-        NestJS["NestJS API Application<br/>(Modular Monolith)"]:::app
+        %% API Instances
+        NestJSAPI["NestJS API Instance<br/>(HTTP Server)"]:::app
+
+        %% Worker Instances
+        BookingWorker["Booking Worker<br/>(Queue Consumer - Cron)"]:::app
+        BackgroundWorker["Background Worker<br/>(AI - Notification)"]:::app
 
         %% Databases - Broker
         Postgres[("PostgreSQL Database<br/>(Primary Storage — UUID v7)")]:::db
@@ -145,19 +153,30 @@ flowchart TD
     %% Kết nối từ Client tới Gateway/Backend
     WebApp -->|"Gửi API requests (HTTPS)"| Nginx
     MobileApp -->|"Gửi API requests - Đồng bộ (HTTPS)"| Nginx
-    Nginx -->|"Chuyển tiếp requests"| NestJS
+    Nginx -->|"Chuyển tiếp requests (Round-Robin)"| NestJSAPI
 
-    %% Kết nối từ Backend tới các Container dữ liệu
-    NestJS -->|"Đọc/Ghi dữ liệu (TypeORM)"| Postgres
-    NestJS -->|"Đọc/Ghi Cache, Lua Script, Rate Limit"| Redis
-    NestJS -->|"Publish / Subscribe message tasks"| RabbitMQ
+    %% Kết nối từ API Instance tới các Container dữ liệu - hàng đợi
+    NestJSAPI -->|"Đọc/Ghi dữ liệu (TypeORM)"| Postgres
+    NestJSAPI -->|"Đọc/Ghi Cache, Lua Script, Rate Limit"| Redis
+    NestJSAPI -->|"Publish message tasks"| RabbitMQ
 
-    %% Kết nối tới các Hệ thống bên ngoài
-    NestJS -->|"Tạo giao dịch - Nhận webhook"| VNPAY
-    NestJS -->|"Tạo giao dịch - Nhận webhook"| MoMo
-    NestJS -->|"Gửi thông tin nghệ sĩ để tóm tắt"| GeminiAPI
-    NestJS -->|"Gửi email xác nhận / nhắc nhở"| SMTP
-    NestJS -->|"Upload ảnh poster, Nhận CDN URL"| Cloudinary
+    %% Kết nối từ Booking Worker tới các dữ liệu - hàng đợi
+    BookingWorker -->|"Đọc/Ghi dữ liệu (TypeORM)"| Postgres
+    BookingWorker -->|"Hồi kho / Đọc ghi cache"| Redis
+    BookingWorker -->|"Consume booking queues"| RabbitMQ
+
+    %% Kết nối từ Background Worker tới các dữ liệu - hàng đợi
+    BackgroundWorker -->|"Đọc/Ghi dữ liệu (TypeORM)"| Postgres
+    BackgroundWorker -->|"Consume AI/Notification queues"| RabbitMQ
+
+    %% Kết nối tới các Hệ thống bên ngoài từ API
+    NestJSAPI -->|"Tạo giao dịch - Nhận webhook"| VNPAY
+    NestJSAPI -->|"Tạo giao dịch - Nhận webhook"| MoMo
+    NestJSAPI -->|"Upload ảnh poster, Nhận CDN URL"| Cloudinary
+
+    %% Kết nối tới các Hệ thống bên ngoài từ Background Worker
+    BackgroundWorker -->|"Gửi văn bản cần tóm tắt"| GeminiAPI
+    BackgroundWorker -->|"Gửi email xác nhận / nhắc nhở"| SMTP
     SMTP -.->|"Gửi email thông báo tới"| KhanGia
 ```
 
@@ -1617,9 +1636,9 @@ sequenceDiagram
         W->>DB: Tạo bản ghi thất bại trong notification_logs (type="ai_bio_failed")
     end
 
-    Note over Admin, API: Quy trình duyệt của Admin (Draft & Approve)
+    Note over Admin, API: Quy trình duyệt của Admin (Draft - Approve)
     Admin->>API: GET /concerts/:id/artist-bio
-    API-->>Admin: Trả về trạng thái & draft_bio
+    API-->>Admin: Trả về trạng thái - draft_bio
 
     Admin->>API: PUT /concerts/:id/artist-bio/confirm (payload: { biography })
     API->>DB: Cập nhật biography chính thức vào bảng concerts

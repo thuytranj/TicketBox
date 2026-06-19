@@ -12,6 +12,16 @@ export class NotificationConsumer implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    const role = process.env.INSTANCE_ROLE ?? 'all';
+    const isEnabled = ['all', 'worker', 'worker:background'].includes(role);
+
+    if (!isEnabled) {
+      this.logger.log(
+        `Skipped starting notification consumer due to INSTANCE_ROLE: ${role}`,
+      );
+      return;
+    }
+
     this.startConsuming().catch((err) => {
       this.logger.error('Failed to start consuming OTP email queue:', err);
     });
@@ -41,8 +51,11 @@ export class NotificationConsumer implements OnModuleInit {
         const channel = this.rabbitMQService.getChannel();
         channel.ack(msg);
       } catch (err) {
-        this.logger.error('Error processing OTP email message from RabbitMQ:', err);
-        
+        this.logger.error(
+          'Error processing OTP email message from RabbitMQ:',
+          err,
+        );
+
         // nack with requeue = false to discard bad messages
         const channel = this.rabbitMQService.getChannel();
         channel.nack(msg, false, false);

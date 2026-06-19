@@ -30,6 +30,16 @@ export class BookingConsumer implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    const role = process.env.INSTANCE_ROLE ?? 'all';
+    const isEnabled = ['all', 'worker', 'worker:booking'].includes(role);
+
+    if (!isEnabled) {
+      this.logger.log(
+        `Skipped starting booking consumer due to INSTANCE_ROLE: ${role}`,
+      );
+      return;
+    }
+
     this.startConsuming().catch((err) => {
       this.logger.error('Failed to start booking consumer:', err);
     });

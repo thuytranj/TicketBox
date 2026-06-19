@@ -2,7 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NotificationService } from './notification.service';
-import { NotificationLog, NotificationType, NotificationChannel, NotificationStatus } from './entities/notification-log.entity';
+import {
+  NotificationLog,
+  NotificationType,
+  NotificationChannel,
+  NotificationStatus,
+} from './entities/notification-log.entity';
 import { NotificationGateway } from './notification.gateway';
 import { NotFoundException } from '@nestjs/common';
 
@@ -13,7 +18,9 @@ describe('NotificationService', () => {
 
   const mockRepository = {
     create: jest.fn((dto) => dto),
-    save: jest.fn((entity) => Promise.resolve({ id: 1, ...entity, createdAt: new Date() })),
+    save: jest.fn((entity) =>
+      Promise.resolve({ id: 1, ...entity, createdAt: new Date() }),
+    ),
     findAndCount: jest.fn(() => Promise.resolve([[] as any[], 0])),
     findOne: jest.fn(),
     update: jest.fn(() => Promise.resolve({ affected: 1 })),
@@ -39,7 +46,9 @@ describe('NotificationService', () => {
     }).compile();
 
     service = module.get<NotificationService>(NotificationService);
-    repository = module.get<Repository<NotificationLog>>(getRepositoryToken(NotificationLog));
+    repository = module.get<Repository<NotificationLog>>(
+      getRepositoryToken(NotificationLog),
+    );
     gateway = module.get<NotificationGateway>(NotificationGateway);
   });
 
@@ -154,7 +163,11 @@ describe('NotificationService', () => {
 
       expect(repository.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { userId, channel: NotificationChannel.IN_APP, status: NotificationStatus.UNREAD },
+          where: {
+            userId,
+            channel: NotificationChannel.IN_APP,
+            status: NotificationStatus.UNREAD,
+          },
         }),
       );
     });
@@ -167,7 +180,11 @@ describe('NotificationService', () => {
 
       expect(repository.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { userId, channel: NotificationChannel.IN_APP, status: NotificationStatus.READ },
+          where: {
+            userId,
+            channel: NotificationChannel.IN_APP,
+            status: NotificationStatus.READ,
+          },
         }),
       );
     });
@@ -186,11 +203,16 @@ describe('NotificationService', () => {
     });
   });
 
-
   describe('markAsRead', () => {
     it('should mark an unread notification as read', async () => {
       const userId = 'user-uuid';
-      const mockLog = { id: 5, userId, channel: NotificationChannel.IN_APP, status: NotificationStatus.UNREAD, readAt: null };
+      const mockLog = {
+        id: 5,
+        userId,
+        channel: NotificationChannel.IN_APP,
+        status: NotificationStatus.UNREAD,
+        readAt: null,
+      };
       mockRepository.findOne.mockResolvedValueOnce(mockLog);
       mockRepository.save.mockResolvedValueOnce({
         ...mockLog,
@@ -209,7 +231,9 @@ describe('NotificationService', () => {
 
     it('should throw NotFoundException if notification does not exist', async () => {
       mockRepository.findOne.mockResolvedValueOnce(null);
-      await expect(service.markAsRead('user-uuid', 99)).rejects.toThrow(NotFoundException);
+      await expect(service.markAsRead('user-uuid', 99)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -219,8 +243,15 @@ describe('NotificationService', () => {
       await service.markAllAsRead(userId);
 
       expect(repository.update).toHaveBeenCalledWith(
-        { userId, channel: NotificationChannel.IN_APP, status: NotificationStatus.UNREAD },
-        expect.objectContaining({ status: NotificationStatus.READ, readAt: expect.any(Date) }),
+        {
+          userId,
+          channel: NotificationChannel.IN_APP,
+          status: NotificationStatus.UNREAD,
+        },
+        expect.objectContaining({
+          status: NotificationStatus.READ,
+          readAt: expect.any(Date),
+        }),
       );
     });
   });

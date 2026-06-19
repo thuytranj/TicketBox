@@ -44,8 +44,12 @@ export class CreateOrdersAndTickets1781600000000 implements MigrationInterface {
       ALTER TABLE "orders" ADD CONSTRAINT "FK_orders_concert_id"
         FOREIGN KEY ("concert_id") REFERENCES "concerts"("id") ON DELETE CASCADE
     `);
-    await queryRunner.query(`CREATE INDEX "idx_orders_user_id" ON "orders" ("user_id")`);
-    await queryRunner.query(`CREATE INDEX "idx_orders_status_created_at" ON "orders" ("status", "created_at")`);
+    await queryRunner.query(
+      `CREATE INDEX "idx_orders_user_id" ON "orders" ("user_id")`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "idx_orders_status_created_at" ON "orders" ("status", "created_at")`,
+    );
 
     // Add constraints and indexes for tickets
     await queryRunner.query(`
@@ -60,21 +64,35 @@ export class CreateOrdersAndTickets1781600000000 implements MigrationInterface {
       ALTER TABLE "tickets" ADD CONSTRAINT "FK_tickets_ticket_type_id"
         FOREIGN KEY ("ticket_type_id") REFERENCES "ticket_types"("id") ON DELETE RESTRICT
     `);
-    await queryRunner.query(`CREATE INDEX "idx_tickets_order_id" ON "tickets" ("order_id")`);
+    await queryRunner.query(
+      `CREATE INDEX "idx_tickets_order_id" ON "tickets" ("order_id")`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP INDEX "idx_tickets_order_id"`);
-    await queryRunner.query(`ALTER TABLE "tickets" DROP CONSTRAINT "FK_tickets_ticket_type_id"`);
-    await queryRunner.query(`ALTER TABLE "tickets" DROP CONSTRAINT "FK_tickets_order_id"`);
-    await queryRunner.query(`ALTER TABLE "tickets" DROP CONSTRAINT "CHK_tickets_status"`);
+    await queryRunner.query(
+      `ALTER TABLE "tickets" DROP CONSTRAINT "FK_tickets_ticket_type_id"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "tickets" DROP CONSTRAINT "FK_tickets_order_id"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "tickets" DROP CONSTRAINT "CHK_tickets_status"`,
+    );
     await queryRunner.query(`DROP TABLE "tickets"`);
 
     await queryRunner.query(`DROP INDEX "idx_orders_status_created_at"`);
     await queryRunner.query(`DROP INDEX "idx_orders_user_id"`);
-    await queryRunner.query(`ALTER TABLE "orders" DROP CONSTRAINT "FK_orders_concert_id"`);
-    await queryRunner.query(`ALTER TABLE "orders" DROP CONSTRAINT "FK_orders_user_id"`);
-    await queryRunner.query(`ALTER TABLE "orders" DROP CONSTRAINT "CHK_orders_status"`);
+    await queryRunner.query(
+      `ALTER TABLE "orders" DROP CONSTRAINT "FK_orders_concert_id"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "orders" DROP CONSTRAINT "FK_orders_user_id"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "orders" DROP CONSTRAINT "CHK_orders_status"`,
+    );
     await queryRunner.query(`DROP TABLE "orders"`);
   }
 }

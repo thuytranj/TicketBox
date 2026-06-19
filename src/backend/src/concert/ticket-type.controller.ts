@@ -1,4 +1,13 @@
-import { Controller, Patch, Delete, Body, Param, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { ConcertService } from './concert.service';
 import { UpdateTicketTypeDto } from './dto/update-ticket-type.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -13,7 +22,10 @@ export class TicketTypeController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ORGANIZER)
-  async update(@Param('id') id: string, @Body() updateDto: UpdateTicketTypeDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateTicketTypeDto,
+  ) {
     return this.concertService.updateTicketType(id, updateDto);
   }
 

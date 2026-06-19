@@ -4,7 +4,10 @@ import { AppModule } from './../src/app.module';
 import { JwtService } from '@nestjs/jwt';
 import { NotificationService } from '../src/notification/notification.service';
 import { io, Socket } from 'socket.io-client';
-import { NotificationType, NotificationChannel } from '../src/notification/entities/notification-log.entity';
+import {
+  NotificationType,
+  NotificationChannel,
+} from '../src/notification/entities/notification-log.entity';
 
 describe('NotificationGateway (e2e WebSockets)', () => {
   let app: INestApplication;
@@ -77,7 +80,11 @@ describe('NotificationGateway (e2e WebSockets)', () => {
 
   it('should connect successfully with valid token and receive push notification', (done) => {
     const userId = '11111111-2222-3333-4444-555555555555';
-    const token = jwtService.sign({ userId, email: 'user@test.com', role: 'organizer' });
+    const token = jwtService.sign({
+      userId,
+      email: 'user@test.com',
+      role: 'organizer',
+    });
 
     clientSocket = io(`http://localhost:${port}`, {
       auth: { token },

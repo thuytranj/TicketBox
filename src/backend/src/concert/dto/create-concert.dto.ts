@@ -1,4 +1,11 @@
-import { IsNotEmpty, IsString, IsArray, ValidateNested, IsOptional, IsDateString } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsArray,
+  ValidateNested,
+  IsOptional,
+  IsDateString,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { CreateTicketTypeDto } from './create-ticket-type.dto';
 

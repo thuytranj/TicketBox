@@ -72,7 +72,10 @@ describe('ConcertController', () => {
   describe('createTicketType', () => {
     it('should call service.createTicketType with param and DTO', async () => {
       const dto = { name: 'VIP', price: 100 };
-      mockConcertService.createTicketType.mockResolvedValue({ id: 'tt-1', ...dto });
+      mockConcertService.createTicketType.mockResolvedValue({
+        id: 'tt-1',
+        ...dto,
+      });
 
       const result = await controller.createTicketType('c-1', dto as any);
       expect(result).toBeDefined();
@@ -101,7 +104,9 @@ describe('ConcertController', () => {
     });
 
     it('should throw BadRequestException if no file is provided', async () => {
-      await expect(controller.uploadPoster(null as any)).rejects.toThrow(BadRequestException);
+      await expect(controller.uploadPoster(null as any)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -161,7 +166,7 @@ describe('ConcertController', () => {
       const dto = { title: 'Updated title' };
       mockConcertService.update.mockResolvedValue({ id: 'c-1', ...dto });
 
-      const result = await controller.update('c-1', dto as any);
+      const result = await controller.update('c-1', dto);
       expect(result).toBeDefined();
       expect(service.update).toHaveBeenCalledWith('c-1', dto);
     });
@@ -185,13 +190,25 @@ describe('ConcertController', () => {
 
       mockConcertService.generateArtistBio.mockResolvedValue(undefined);
 
-      const result = await controller.generateArtistBio('c-1', mockFile, { user: { userId: 'u-1' } });
-      expect(result).toEqual({ message: 'PDF uploaded successfully, bio generation is in progress' });
-      expect(service.generateArtistBio).toHaveBeenCalledWith('c-1', 'u-1', mockFile.buffer);
+      const result = await controller.generateArtistBio('c-1', mockFile, {
+        user: { userId: 'u-1' },
+      });
+      expect(result).toEqual({
+        message: 'PDF uploaded successfully, bio generation is in progress',
+      });
+      expect(service.generateArtistBio).toHaveBeenCalledWith(
+        'c-1',
+        'u-1',
+        mockFile.buffer,
+      );
     });
 
     it('should throw BadRequestException if no file is provided', async () => {
-      await expect(controller.generateArtistBio('c-1', null as any, { user: { userId: 'u-1' } })).rejects.toThrow(BadRequestException);
+      await expect(
+        controller.generateArtistBio('c-1', null as any, {
+          user: { userId: 'u-1' },
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -199,7 +216,9 @@ describe('ConcertController', () => {
     it('should request bio regeneration and return success message', async () => {
       mockConcertService.regenerateArtistBio.mockResolvedValue(undefined);
 
-      const result = await controller.regenerateArtistBio('c-1', { user: { userId: 'u-1' } });
+      const result = await controller.regenerateArtistBio('c-1', {
+        user: { userId: 'u-1' },
+      });
       expect(result).toEqual({ message: 'Bio regeneration is in progress' });
       expect(service.regenerateArtistBio).toHaveBeenCalledWith('c-1', 'u-1');
     });
@@ -207,7 +226,11 @@ describe('ConcertController', () => {
 
   describe('getArtistBio', () => {
     it('should retrieve artist bio status and details', async () => {
-      const mockBio = { concertId: 'c-1', status: 'completed', draftBio: 'Gemini Bio' };
+      const mockBio = {
+        concertId: 'c-1',
+        status: 'completed',
+        draftBio: 'Gemini Bio',
+      };
       mockConcertService.getArtistBio.mockResolvedValue(mockBio);
 
       const result = await controller.getArtistBio('c-1');
@@ -220,9 +243,14 @@ describe('ConcertController', () => {
     it('should confirm biography and return success message', async () => {
       mockConcertService.confirmArtistBio.mockResolvedValue(undefined);
 
-      const result = await controller.confirmArtistBio('c-1', { biography: 'Confirmed Bio' });
+      const result = await controller.confirmArtistBio('c-1', {
+        biography: 'Confirmed Bio',
+      });
       expect(result).toEqual({ message: 'Biography updated successfully' });
-      expect(service.confirmArtistBio).toHaveBeenCalledWith('c-1', 'Confirmed Bio');
+      expect(service.confirmArtistBio).toHaveBeenCalledWith(
+        'c-1',
+        'Confirmed Bio',
+      );
     });
   });
 });

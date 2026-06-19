@@ -1,4 +1,12 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, BeforeInsert, OneToMany, OneToOne } from 'typeorm';
+import {
+  Entity,
+  PrimaryColumn,
+  Column,
+  CreateDateColumn,
+  BeforeInsert,
+  OneToMany,
+  OneToOne,
+} from 'typeorm';
 import { generateUuidV7 } from '../../auth/utils/uuid';
 import { TicketType } from './ticket-type.entity';
 import { ConcertAIBio } from './concert-ai-bio.entity';
@@ -26,7 +34,12 @@ export class Concert {
   @Column({ type: 'varchar', length: 500, name: 'poster_url', nullable: true })
   posterUrl: string;
 
-  @Column({ type: 'varchar', length: 255, name: 'poster_public_id', nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    name: 'poster_public_id',
+    nullable: true,
+  })
   posterPublicId: string;
 
   @Column({ type: 'text', name: 'biography', nullable: true })
@@ -57,7 +70,9 @@ export class Concert {
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @OneToMany(() => TicketType, (ticketType) => ticketType.concert, { cascade: true })
+  @OneToMany(() => TicketType, (ticketType) => ticketType.concert, {
+    cascade: true,
+  })
   ticketTypes: TicketType[];
 
   @OneToOne(() => ConcertAIBio, (aiBio) => aiBio.concert)

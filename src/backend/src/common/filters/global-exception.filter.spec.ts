@@ -25,7 +25,10 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('should format HttpExceptions correctly', () => {
-    const exception = new HttpException('Forbidden Resource', HttpStatus.FORBIDDEN);
+    const exception = new HttpException(
+      'Forbidden Resource',
+      HttpStatus.FORBIDDEN,
+    );
 
     filter.catch(exception, mockArgumentsHost);
 
@@ -42,7 +45,10 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('should format validation errors (BadRequestException array message) correctly', () => {
-    const errorMessages = ['email must be an email', 'password must be at least 6 characters'];
+    const errorMessages = [
+      'email must be an email',
+      'password must be at least 6 characters',
+    ];
     const exception = new HttpException(
       { message: errorMessages, error: 'Bad Request' },
       HttpStatus.BAD_REQUEST,
@@ -67,7 +73,9 @@ describe('GlobalExceptionFilter', () => {
 
     filter.catch(exception, mockArgumentsHost);
 
-    expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
+    expect(mockResponse.status).toHaveBeenCalledWith(
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
     expect(mockResponse.json).toHaveBeenCalledWith(
       expect.objectContaining({
         success: false,

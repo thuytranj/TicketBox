@@ -15,6 +15,13 @@ export class OrderExpirationCron {
    */
   @Cron('*/5 * * * *', { name: 'expire-stale-orders' })
   async handleOrderExpiration() {
+    const role = process.env.INSTANCE_ROLE ?? 'all';
+    const isEnabled = ['all', 'worker', 'worker:booking'].includes(role);
+
+    if (!isEnabled) {
+      return;
+    }
+
     this.logger.log('Cronjob: Scanning for stale pending orders...');
     try {
       const count = await this.bookingService.expireStaleOrders();

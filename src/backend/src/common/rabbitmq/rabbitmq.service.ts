@@ -1,4 +1,9 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
 
@@ -15,12 +20,17 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   }
 
   async connect() {
-    const url = this.configService.get<string>('RABBITMQ_URL', 'amqp://localhost:5673');
+    const url = this.configService.get<string>(
+      'RABBITMQ_URL',
+      'amqp://localhost:5673',
+    );
     try {
       this.logger.log(`Connecting to RabbitMQ at ${url}...`);
       this.connection = await amqp.connect(url);
       this.channel = await this.connection.createChannel();
-      this.logger.log('Successfully connected to RabbitMQ and created a channel');
+      this.logger.log(
+        'Successfully connected to RabbitMQ and created a channel',
+      );
 
       this.connection.on('error', (err) => {
         this.logger.error('RabbitMQ connection error:', err);
@@ -43,7 +53,12 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     return this.connection;
   }
 
-  async publish(exchange: string, routingKey: string, content: any, options?: amqp.Options.Publish) {
+  async publish(
+    exchange: string,
+    routingKey: string,
+    content: any,
+    options?: amqp.Options.Publish,
+  ) {
     if (!this.channel) {
       throw new Error('RabbitMQ channel is not initialized');
     }
@@ -51,7 +66,11 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     return this.channel.publish(exchange, routingKey, messageBuffer, options);
   }
 
-  async sendToQueue(queue: string, content: any, options?: amqp.Options.Publish) {
+  async sendToQueue(
+    queue: string,
+    content: any,
+    options?: amqp.Options.Publish,
+  ) {
     if (!this.channel) {
       throw new Error('RabbitMQ channel is not initialized');
     }
@@ -60,7 +79,11 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     return this.channel.sendToQueue(queue, messageBuffer, options);
   }
 
-  async consume(queue: string, onMessage: (msg: amqp.ConsumeMessage | null) => void, options?: amqp.Options.Consume) {
+  async consume(
+    queue: string,
+    onMessage: (msg: amqp.ConsumeMessage | null) => void,
+    options?: amqp.Options.Consume,
+  ) {
     if (!this.channel) {
       throw new Error('RabbitMQ channel is not initialized');
     }

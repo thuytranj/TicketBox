@@ -1,4 +1,11 @@
-import { Entity, PrimaryColumn, Column, OneToOne, JoinColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryColumn,
+  Column,
+  OneToOne,
+  JoinColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 import { Concert } from './concert.entity';
 
 export enum ConcertAIBioStatus {

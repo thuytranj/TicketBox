@@ -1,7 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { NotificationLog, NotificationChannel, NotificationStatus } from './entities/notification-log.entity';
+import {
+  NotificationLog,
+  NotificationChannel,
+  NotificationStatus,
+} from './entities/notification-log.entity';
 import { NotificationGateway } from './notification.gateway';
 
 @Injectable()
@@ -12,7 +16,10 @@ export class NotificationService {
     private readonly notificationGateway: NotificationGateway,
   ) {}
 
-  async createNotification(userId: string, data: Partial<NotificationLog>): Promise<NotificationLog> {
+  async createNotification(
+    userId: string,
+    data: Partial<NotificationLog>,
+  ): Promise<NotificationLog> {
     const notification = this.notificationLogRepository.create({
       userId,
       channel: data.channel ?? NotificationChannel.IN_APP,
@@ -23,7 +30,8 @@ export class NotificationService {
       referenceId: data.referenceId,
     });
 
-    const savedNotification = await this.notificationLogRepository.save(notification);
+    const savedNotification =
+      await this.notificationLogRepository.save(notification);
 
     if (savedNotification.channel === NotificationChannel.IN_APP) {
       this.notificationGateway.sendNotificationToUser(
@@ -52,7 +60,10 @@ export class NotificationService {
     };
   }> {
     const whereCondition: any = { userId, channel: NotificationChannel.IN_APP };
-    if (status === NotificationStatus.READ || status === NotificationStatus.UNREAD) {
+    if (
+      status === NotificationStatus.READ ||
+      status === NotificationStatus.UNREAD
+    ) {
       whereCondition.status = status;
     }
 
@@ -75,7 +86,6 @@ export class NotificationService {
     };
   }
 
-
   async markAsRead(userId: string, id: number): Promise<NotificationLog> {
     const notification = await this.notificationLogRepository.findOne({
       where: { id, userId, channel: NotificationChannel.IN_APP },
@@ -93,7 +103,11 @@ export class NotificationService {
 
   async markAllAsRead(userId: string): Promise<void> {
     await this.notificationLogRepository.update(
-      { userId, channel: NotificationChannel.IN_APP, status: NotificationStatus.UNREAD },
+      {
+        userId,
+        channel: NotificationChannel.IN_APP,
+        status: NotificationStatus.UNREAD,
+      },
       { status: NotificationStatus.READ, readAt: new Date() },
     );
   }

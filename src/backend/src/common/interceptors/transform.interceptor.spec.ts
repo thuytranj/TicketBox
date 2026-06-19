@@ -37,16 +37,21 @@ describe('TransformInterceptor', () => {
   });
 
   it('should wrap success response in unified envelope', (done) => {
-    interceptor.intercept(mockExecutionContext, mockCallHandler).subscribe((result) => {
-      expect(result).toBeDefined();
-      expect(result).toHaveProperty('success', true);
-      expect(result).toHaveProperty('statusCode', 200);
-      expect(result).toHaveProperty('message', 'Request processed successfully');
-      expect(result).toHaveProperty('data');
-      expect((result as any).data).toEqual({ foo: 'bar' });
-      expect(result).toHaveProperty('timestamp');
-      done();
-    });
+    interceptor
+      .intercept(mockExecutionContext, mockCallHandler)
+      .subscribe((result) => {
+        expect(result).toBeDefined();
+        expect(result).toHaveProperty('success', true);
+        expect(result).toHaveProperty('statusCode', 200);
+        expect(result).toHaveProperty(
+          'message',
+          'Request processed successfully',
+        );
+        expect(result).toHaveProperty('data');
+        expect(result.data).toEqual({ foo: 'bar' });
+        expect(result).toHaveProperty('timestamp');
+        done();
+      });
   });
 
   it('should extract message from nested object if present', (done) => {
@@ -54,21 +59,25 @@ describe('TransformInterceptor', () => {
       handle: () => of({ message: 'Custom message', result: 'ok' }),
     };
 
-    interceptor.intercept(mockExecutionContext, customCallHandler).subscribe((result) => {
-      expect(result).toHaveProperty('success', true);
-      expect(result).toHaveProperty('message', 'Custom message');
-      expect((result as any).data).toEqual({ result: 'ok' });
-      done();
-    });
+    interceptor
+      .intercept(mockExecutionContext, customCallHandler)
+      .subscribe((result) => {
+        expect(result).toHaveProperty('success', true);
+        expect(result).toHaveProperty('message', 'Custom message');
+        expect(result.data).toEqual({ result: 'ok' });
+        done();
+      });
   });
 
   it('should bypass transformation if BypassInterceptor decorator is present', (done) => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(true);
 
-    interceptor.intercept(mockExecutionContext, mockCallHandler).subscribe((result) => {
-      expect(result).toEqual({ foo: 'bar' });
-      expect(result).not.toHaveProperty('success');
-      done();
-    });
+    interceptor
+      .intercept(mockExecutionContext, mockCallHandler)
+      .subscribe((result) => {
+        expect(result).toEqual({ foo: 'bar' });
+        expect(result).not.toHaveProperty('success');
+        done();
+      });
   });
 });

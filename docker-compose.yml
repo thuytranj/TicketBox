@@ -39,6 +39,60 @@ services:
       - ticketbox-network
     restart: unless-stopped
 
+  ticketbox-api:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: ticketbox-api
+    command: npm run start:dev
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./src/backend/.env
+    environment:
+      - INSTANCE_ROLE=api
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_HOST=redis
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    volumes:
+      - ./src/backend:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - ticketbox-network
+    restart: unless-stopped
+
+  ticketbox-worker:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: ticketbox-worker
+    command: npm run start:dev
+    env_file:
+      - ./src/backend/.env
+    environment:
+      - INSTANCE_ROLE=worker
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_HOST=redis
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    volumes:
+      - ./src/backend:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - ticketbox-network
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
