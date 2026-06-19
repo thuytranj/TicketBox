@@ -28,3 +28,11 @@
 
 - [x] 5.1 Tạo các unit test kiểm thử các API mới trong `NotificationController` và logic nghiệp vụ của `NotificationService`.
 - [x] 5.2 Kiểm tra kết nối WebSocket thực tế: giả lập kết nối bằng client Socket.io, xác thực bằng JWT hợp lệ và kiểm tra xem có nhận được thông tin push real-time khi có thông báo mới (ví dụ khi chạy AI Bio hoàn thành).
+
+## 6. Tự động dọn dẹp dữ liệu thông báo
+
+- [ ] 6.1 Triển khai Cron Job (`@Cron`) chạy định kỳ lúc 2:00 AM hàng ngày để xóa các thông báo `in_app` đã đọc quá 30 ngày (`status = 'read'` và `read_at < thirtyDaysAgo`) sử dụng cơ chế Batching (chia nhỏ thành các lô 5,000 bản ghi, giãn cách thời gian để tránh lock bảng).
+- [ ] 6.2 Tạo database migration để thêm Partial Index trên trường `read_at` với điều kiện `status = 'read'`.
+- [ ] 6.3 Tích hợp cơ chế khóa phân tán (Redis Lock) để đảm bảo an toàn khi chạy đa instance.
+
+
