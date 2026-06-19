@@ -14,7 +14,7 @@ import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { Order, OrderStatus } from './entities/order.entity';
 import { TicketType } from '../concert/entities/ticket-type.entity';
-import { generateUuidV7 } from '../../auth/utils/uuid';
+import { generateUuidV7 } from '../auth/utils/uuid';
 
 export const BOOKING_QUEUE = 'booking_tasks';
 export const BOOKING_DELAY_QUEUE = 'booking_delay_queue';
