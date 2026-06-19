@@ -27,11 +27,11 @@ Hệ thống SHALL cung cấp một khung ứng dụng NestJS TypeScript hoạt 
 - **THEN** Hệ thống khởi chạy thành công, mở cổng HTTP và đồng thời khởi chạy tất cả các RabbitMQ consumers cùng Cronjobs
 
 ### Requirement: Cung cấp đầy đủ hạ tầng local qua Docker Compose
-Hệ thống SHALL thiết lập tệp cấu hình Docker Compose để khởi chạy đầy đủ các dịch vụ cơ sở hạ tầng bổ trợ (PostgreSQL, Redis, RabbitMQ) cùng các container instance của ứng dụng (`ticketbox-api`, `ticketbox-worker`) cho môi trường phát triển local.
+Hệ thống SHALL thiết lập tệp cấu hình Docker Compose để khởi chạy đầy đủ các dịch vụ cơ sở hạ tầng bổ trợ (PostgreSQL, Redis, RabbitMQ), các container instance của ứng dụng chạy đa tiến trình (`ticketbox-api` scale N bản sao, `ticketbox-booking-worker`, `ticketbox-background-worker`) và cổng định tuyến Nginx làm cổng tiếp nhận duy nhất cho môi trường phát triển local.
 
 #### Scenario: Khởi chạy các dịch vụ phụ trợ Docker thành công
 - **WHEN** Thực hiện lệnh `docker compose up -d` tại thư mục gốc của dự án
-- **THEN** Các dịch vụ PostgreSQL (5432), Redis (6379), RabbitMQ (5672, 15672), ứng dụng `ticketbox-api` (3000) và `ticketbox-worker` được khởi chạy thành công
+- **THEN** Các dịch vụ PostgreSQL (5432), Redis (6379), RabbitMQ (5672, 15672), Nginx Load Balancer (3000), cùng các container API và các workers chuyên biệt (`ticketbox-booking-worker`, `ticketbox-background-worker`) được khởi chạy thành công và hoạt động ổn định
 
 ### Requirement: Tự động kết nối cơ sở dữ liệu và hàng đợi khi khởi động
 Hệ thống SHALL tự động thiết lập và kiểm tra kết nối từ ứng dụng NestJS tới PostgreSQL (thông qua TypeORM), Redis client, và RabbitMQ khi ứng dụng khởi chạy.
