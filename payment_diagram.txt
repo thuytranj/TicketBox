@@ -1,0 +1,86 @@
+%%{init: {
+  "flowchart": {
+    "htmlLabels": true,
+    "nodeSpacing": 80,
+    "rankSpacing": 90,
+    "curve": "basis"
+  },
+  "themeVariables": {
+    "fontSize": "16px"
+  }
+}}%%
+
+graph TD
+    %% Client
+    Client["Web / Mobile<br/>Client"] 
+    NestJS["NestJS<br/>Backend API"]
+
+    Client -->|"1. POST /payment<br/>X-Idempotency-Key"| NestJS
+
+    %% Tầng phòng thủ lõi
+    subgraph CoreDefense["Tầng Phòng Thủ Lõi"]
+        Redis[("Redis<br/>Cache")]
+
+        NestJS -->|"2. SETNX<br/>kiểm tra trùng lặp"| Redis
+        Redis -->|"3a. PROCESSING<br/>trả về 409"| NestJS
+        Redis -->|"3b. SUCCESS<br/>trả kết quả cũ"| NestJS
+    end
+
+    %% Circuit Breaker
+    subgraph CircuitBreaker["Cơ Chế Tự Vệ Tích Hợp<br/>Circuit Breaker"]
+        CB{"Trạng thái<br/>Circuit Breaker?"}
+
+        Block["Chặn request<br/>báo lỗi bảo trì"]
+        Gateway["Cổng thanh toán<br/>VNPAY / MoMo"]
+        LimitReq["Cho phép một lượng nhỏ<br/>request thử nghiệm"]
+
+        M_Closed["Đóng mạch<br/>CLOSED"]
+        M_Open["Mở mạch<br/>OPEN"]
+
+        NestJS -->|"4. Kiểm tra<br/>trạng thái mạch"| CB
+
+        CB -->|"OPEN"| Block
+        Block -.-> Client
+
+        CB -->|"CLOSED"| Gateway
+
+        CB -->|"HALF-OPEN"| LimitReq
+        LimitReq --> Gateway
+
+        Gateway -.->|"Thử nghiệm<br/>thành công"| M_Closed
+        Gateway -.->|"Lỗi hoặc<br/>timeout"| M_Open
+
+        M_Closed -.-> CB
+        M_Open -.-> CB
+    end
+
+    %% Webhook
+    Gateway -->|"5. Webhook / Callback<br/>kết quả thanh toán"| NestJS
+
+    %% Event-driven
+    subgraph EventStorage["Kiến Trúc Event-Driven<br/>và Lưu Trữ"]
+        RabbitMQ[["RabbitMQ<br/>Message Broker"]]
+        Worker["Payment<br/>Worker"]
+        TimeoutWorker["Timeout<br/>Worker"]
+        Postgres[("PostgreSQL<br/>Database")]
+
+        NestJS -->|"6. Cập nhật kết quả<br/>và giải phóng key"| Redis
+        NestJS -->|"7. Đẩy event<br/>thanh toán thành công"| RabbitMQ
+
+        RabbitMQ -->|"8. Nhận message<br/>tuần tự"| Worker
+        Worker -->|"9. UPDATE đơn hàng<br/>SUCCESS"| Postgres
+
+        RabbitMQ -.->|"10. Timeout event<br/>sau 10 phút"| TimeoutWorker
+        TimeoutWorker -.->|"Hủy đơn<br/>cộng lại vé"| Redis
+    end
+
+    %% Style
+    style Gateway fill:#f9f,stroke:#333,stroke-width:2px
+    style Redis fill:#ffcccc,stroke:#ff0000,stroke-width:1px
+    style RabbitMQ fill:#ffffcc,stroke:#ffcc00,stroke-width:2px
+    style Postgres fill:#ccffff,stroke:#0000ff,stroke-width:1px
+    style CB fill:#fff2cc,stroke:#d6b656,stroke-width:2px
+    style Block fill:#f8cecc,stroke:#b85450,stroke-width:1px
+    style LimitReq fill:#e1d5e7,stroke:#9673a6,stroke-width:1px
+    style M_Closed fill:#dae8fc,stroke:#6c8ebf,stroke-width:1px
+    style M_Open fill:#f8cecc,stroke:#b85450,stroke-width:1px
