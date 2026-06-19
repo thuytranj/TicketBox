@@ -3,6 +3,7 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { RedisIoAdapter } from './common/adapters/redis-io.adapter';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -19,6 +20,11 @@ async function bootstrap() {
       `Starting TicketBox Backend in HTTP API mode (INSTANCE_ROLE: ${role})...`,
     );
     const app = await NestFactory.create(AppModule);
+
+    // Setup Socket.io Redis Adapter for cluster scaling
+    const redisIoAdapter = new RedisIoAdapter(app);
+    await redisIoAdapter.connectToRedis();
+    app.useWebSocketAdapter(redisIoAdapter);
 
     // Enable global validation pipe
     app.useGlobalPipes(

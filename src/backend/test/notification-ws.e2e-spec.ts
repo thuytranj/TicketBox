@@ -8,6 +8,7 @@ import {
   NotificationType,
   NotificationChannel,
 } from '../src/notification/entities/notification-log.entity';
+import { RedisIoAdapter } from '../src/common/adapters/redis-io.adapter';
 
 describe('NotificationGateway (e2e WebSockets)', () => {
   let app: INestApplication;
@@ -15,6 +16,7 @@ describe('NotificationGateway (e2e WebSockets)', () => {
   let notificationService: NotificationService;
   let clientSocket: Socket;
   let port: number;
+  let redisIoAdapter: RedisIoAdapter;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -22,6 +24,12 @@ describe('NotificationGateway (e2e WebSockets)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+
+    // Register RedisIoAdapter for the test app so it subscribes to Redis pub/sub
+    redisIoAdapter = new RedisIoAdapter(app);
+    await redisIoAdapter.connectToRedis();
+    app.useWebSocketAdapter(redisIoAdapter);
+
     await app.listen(0);
 
     const address = app.getHttpServer().address();
@@ -32,6 +40,9 @@ describe('NotificationGateway (e2e WebSockets)', () => {
   });
 
   afterAll(async () => {
+    if (redisIoAdapter) {
+      await redisIoAdapter.close();
+    }
     await app.close();
   });
 

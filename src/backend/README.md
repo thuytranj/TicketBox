@@ -88,21 +88,31 @@ Hệ thống được thiết kế theo kiến trúc **Multi-instance Modular Mo
    ```
    *Lúc này ứng dụng chạy ở chế độ All-in-one (`INSTANCE_ROLE=all`), tự động mở cổng HTTP 3000 và chạy toàn bộ consumers/cronjobs chung một tiến trình trên host.*
 
-#### Workflow B: Chạy hoàn toàn trên Docker Compose (Kiểm thử tích hợp & Cận Production)
-*Workflow này mô phỏng chính xác môi trường triển khai thực tế bằng cách chia tách API và Worker thành các container chạy độc lập hoàn toàn trong mạng nội bộ Docker.*
+#### Workflow B: Chạy hoàn toàn trên Docker Compose (Kiểm thử tích hợp, Cân bằng tải & Cận Production)
+*Workflow này mô phỏng chính xác môi trường triển khai thực tế bằng cách chạy nhiều bản sao API phía sau Nginx Load Balancer, đồng thời chia tách cụ thể các vai trò Booking Worker và Background Worker thành các container độc lập.*
 
-1. **Khởi động toàn bộ dịch vụ**:
+1. **Khởi động toàn bộ dịch vụ (chạy mặc định 1 API instance)**:
    ```bash
    # Đứng tại thư mục gốc dự án
    docker compose up --build -d
    ```
-   *Docker Compose sẽ khởi chạy Postgres, Redis, RabbitMQ cùng với `ticketbox-api` (chỉ chạy HTTP API tại port 3000) và `ticketbox-worker` (chỉ chạy background tasks).*
+   *Hệ thống sẽ khởi chạy Postgres, Redis, RabbitMQ cùng với 1 instance `ticketbox-api` (expose cổng 3000 nội bộ), `ticketbox-booking-worker`, `ticketbox-background-worker`, và cổng tiếp nhận duy nhất `nginx-lb` ánh xạ ra cổng `3000` của máy host.*
 
-2. **Theo dõi logs của từng cụm thực thể**:
-   * Xem log API: `docker compose logs -f ticketbox-api`
-   * Xem log Worker: `docker compose logs -f ticketbox-worker`
+2. **Khởi chạy hoặc mở rộng nhiều API instances (Cân bằng tải)**:
+   Nếu muốn test tải hoặc kiểm tra tính đồng bộ của Socket.io Redis Adapter trên nhiều instances chạy song song, bạn có thể scale số lượng API:
+   ```bash
+   # Tăng số lượng API instances lên 3 bản sao
+   docker compose up --scale ticketbox-api=3 -d
+   ```
+   *Nginx Load Balancer sẽ tự động phân phối các request HTTP và kết nối WebSockets (đã đồng bộ qua Redis) đều sang 3 instances API.*
 
-3. **Dừng toàn bộ hệ thống**:
+3. **Theo dõi logs của từng cụm thực thể**:
+   * Xem log Nginx Load Balancer: `docker compose logs -f nginx-lb`
+   * Xem log tất cả API instances: `docker compose logs -f ticketbox-api`
+   * Xem log Booking Worker: `docker compose logs -f ticketbox-booking-worker`
+   * Xem log Background Worker: `docker compose logs -f ticketbox-background-worker`
+
+4. **Dừng toàn bộ hệ thống**:
    ```bash
    # Đứng tại thư mục gốc dự án
    docker compose down

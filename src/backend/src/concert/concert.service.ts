@@ -369,23 +369,23 @@ export class ConcertService {
       throw new NotFoundException(`Not found concert with id: ${id}`);
     }
 
-    // Integrity Check: Check if bookings exist in bookings table (safe check)
-    let bookingsExist = false;
+    // Integrity Check: Check if orders exist in orders table (safe check)
+    let ordersExist = false;
     try {
-      const bookings = await this.entityManager.query(
-        'SELECT 1 FROM bookings WHERE concert_id = $1 LIMIT 1',
+      const orders = await this.entityManager.query(
+        'SELECT 1 FROM orders WHERE concert_id = $1 LIMIT 1',
         [id],
       );
-      bookingsExist = bookings && bookings.length > 0;
+      ordersExist = orders && orders.length > 0;
     } catch (error) {
       this.logger.warn(
-        `Bookings table does not exist or query failed: ${error.message}`,
+        `Orders table does not exist or query failed: ${error.message}`,
       );
     }
 
-    if (bookingsExist) {
+    if (ordersExist) {
       throw new BadRequestException(
-        'Cannot delete concert with existing bookings. Please move concert to cancelled status.',
+        'Cannot delete concert with existing orders. Please move concert to cancelled status.',
       );
     }
 
