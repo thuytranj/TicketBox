@@ -20,6 +20,10 @@ describe('ConcertController', () => {
     remove: jest.fn(),
     createTicketType: jest.fn(),
     findTicketTypes: jest.fn(),
+    generateArtistBio: jest.fn(),
+    regenerateArtistBio: jest.fn(),
+    getArtistBio: jest.fn(),
+    confirmArtistBio: jest.fn(),
   };
 
   const mockCloudinaryService = {
@@ -169,6 +173,56 @@ describe('ConcertController', () => {
 
       await controller.remove('c-1');
       expect(service.remove).toHaveBeenCalledWith('c-1');
+    });
+  });
+
+  describe('generateArtistBio', () => {
+    it('should upload PDF and call service.generateArtistBio', async () => {
+      const mockFile = {
+        buffer: Buffer.from('pdf-data'),
+        mimetype: 'application/pdf',
+      } as Express.Multer.File;
+
+      mockConcertService.generateArtistBio.mockResolvedValue(undefined);
+
+      const result = await controller.generateArtistBio('c-1', mockFile, { user: { userId: 'u-1' } });
+      expect(result).toEqual({ message: 'PDF uploaded successfully, bio generation is in progress' });
+      expect(service.generateArtistBio).toHaveBeenCalledWith('c-1', 'u-1', mockFile.buffer);
+    });
+
+    it('should throw BadRequestException if no file is provided', async () => {
+      await expect(controller.generateArtistBio('c-1', null as any, { user: { userId: 'u-1' } })).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('regenerateArtistBio', () => {
+    it('should request bio regeneration and return success message', async () => {
+      mockConcertService.regenerateArtistBio.mockResolvedValue(undefined);
+
+      const result = await controller.regenerateArtistBio('c-1', { user: { userId: 'u-1' } });
+      expect(result).toEqual({ message: 'Bio regeneration is in progress' });
+      expect(service.regenerateArtistBio).toHaveBeenCalledWith('c-1', 'u-1');
+    });
+  });
+
+  describe('getArtistBio', () => {
+    it('should retrieve artist bio status and details', async () => {
+      const mockBio = { concertId: 'c-1', status: 'completed', draftBio: 'Gemini Bio' };
+      mockConcertService.getArtistBio.mockResolvedValue(mockBio);
+
+      const result = await controller.getArtistBio('c-1');
+      expect(result).toEqual(mockBio);
+      expect(service.getArtistBio).toHaveBeenCalledWith('c-1');
+    });
+  });
+
+  describe('confirmArtistBio', () => {
+    it('should confirm biography and return success message', async () => {
+      mockConcertService.confirmArtistBio.mockResolvedValue(undefined);
+
+      const result = await controller.confirmArtistBio('c-1', { biography: 'Confirmed Bio' });
+      expect(result).toEqual({ message: 'Biography updated successfully' });
+      expect(service.confirmArtistBio).toHaveBeenCalledWith('c-1', 'Confirmed Bio');
     });
   });
 });

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import * as path from 'path';
@@ -12,6 +13,7 @@ import { ormConfig } from './data/ormconfig';
 import { AuthModule } from './auth/auth.module';
 import { NotificationModule } from './notification/notification.module';
 import { ConcertModule } from './concert/concert.module';
+import { AIModule } from './ai/ai.module';
 import { BookingModule } from './booking/booking.module';
 
 @Module({
@@ -24,6 +26,7 @@ import { BookingModule } from './booking/booking.module';
       ],
     }),
     TypeOrmModule.forRoot(ormConfig),
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
       {
         // Global default: 60 requests per minute per IP
@@ -36,6 +39,7 @@ import { BookingModule } from './booking/booking.module';
     AuthModule,
     NotificationModule,
     ConcertModule,
+    AIModule,
     BookingModule,
   ],
   controllers: [AppController],
@@ -48,4 +52,5 @@ import { BookingModule } from './booking/booking.module';
     },
   ],
 })
+
 export class AppModule {}

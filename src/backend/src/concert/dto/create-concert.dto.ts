@@ -25,7 +25,7 @@ export class CreateConcertDto {
 
   @IsOptional()
   @IsString()
-  summary?: string;
+  biography?: string;
 
   @IsOptional()
   @IsArray()

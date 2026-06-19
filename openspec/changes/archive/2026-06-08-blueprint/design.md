@@ -426,25 +426,27 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ##### Đặc tả chi tiết (Table Specification)
 
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| **id** | `uuid` | `PRIMARY KEY` | Khóa chính, ID duy nhất của người dùng dạng UUID v7 |
-| **email** | `varchar(255)` | `UNIQUE`, `NOT NULL` | Địa chỉ email người dùng, dùng làm thông tin đăng nhập chính |
-| **password_hash** | `varchar(255)` | `NOT NULL` | Mật khẩu người dùng đã được băm (hash) bằng bcrypt |
-| **full_name** | `varchar(255)` | `NOT NULL` | Họ và tên của người dùng |
-| **role** | `varchar(50)` | `NOT NULL`, `DEFAULT 'audience'`, `CHECK (role IN ('audience', 'organizer', 'gate_staff'))` | Vai trò của người dùng trong hệ thống (Khán giả, Ban tổ chức, Nhân viên soát vé) |
-| **created_at** | `timestamp` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | Thời điểm tạo tài khoản người dùng |
+| Column            | Type           | Constraints                                                                                 | Description                                                                      |
+| :---------------- | :------------- | :------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------- |
+| **id**            | `uuid`         | `PRIMARY KEY`                                                                               | Khóa chính, ID duy nhất của người dùng dạng UUID v7                              |
+| **email**         | `varchar(255)` | `UNIQUE`, `NOT NULL`                                                                        | Địa chỉ email người dùng, dùng làm thông tin đăng nhập chính                     |
+| **password_hash** | `varchar(255)` | `NOT NULL`                                                                                  | Mật khẩu người dùng đã được băm (hash) bằng bcrypt                               |
+| **full_name**     | `varchar(255)` | `NOT NULL`                                                                                  | Họ và tên của người dùng                                                         |
+| **role**          | `varchar(50)`  | `NOT NULL`, `DEFAULT 'audience'`, `CHECK (role IN ('audience', 'organizer', 'gate_staff'))` | Vai trò của người dùng trong hệ thống (Khán giả, Ban tổ chức, Nhân viên soát vé) |
+| **created_at**    | `timestamp`    | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP`                                                     | Thời điểm tạo tài khoản người dùng                                               |
 
 ##### Business Rules
+
 - Địa chỉ `email` phải duy nhất trên toàn hệ thống và tuân thủ định dạng email chuẩn.
 - `role` bắt buộc phải là một trong các giá trị định sẵn: `audience` (mặc định khi đăng ký), `organizer` (tài khoản quản lý của ban tổ chức), `gate_staff` (nhân viên dùng mobile app quét vé).
 - Một email chỉ được đăng ký tối đa một tài khoản (Unique constraint).
 
 ##### Indexes
-| Index Name | Columns | Type | Purpose |
-| :--- | :--- | :--- | :--- |
-| `pk_users` | `id` | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính |
-| `uq_users_email` | `email` | `UNIQUE (B-Tree)` | Đảm bảo email duy nhất và tối ưu hóa truy vấn đăng nhập |
+
+| Index Name       | Columns | Type                   | Purpose                                                 |
+| :--------------- | :------ | :--------------------- | :------------------------------------------------------ |
+| `pk_users`       | `id`    | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính                              |
+| `uq_users_email` | `email` | `UNIQUE (B-Tree)`      | Đảm bảo email duy nhất và tối ưu hóa truy vấn đăng nhập |
 
 ---
 
@@ -452,33 +454,35 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ##### Đặc tả chi tiết (Table Specification)
 
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| **id** | `uuid` | `PRIMARY KEY` | Khóa chính dạng UUID v7 |
-| **title** | `varchar(255)` | `NOT NULL` | Tên của concert |
-| **description** | `text` | `NOT NULL` | Mô tả chi tiết nội dung buổi biểu diễn |
-| **location** | `varchar(255)` | `NOT NULL` | Địa điểm tổ chức concert |
-| **poster_url** | `varchar(500)` | `NULL` | Đường dẫn CDN ảnh poster của concert lưu trữ trên Cloudinary |
-| **summary** | `text` | `NULL` | Tóm tắt tiểu sử nghệ sĩ hoặc giới thiệu concert (sinh bằng AI) |
-| **tags** | `varchar(50)[]` | `NOT NULL`, `DEFAULT '{}'` | Danh sách tag (mảng chuỗi) hỗ trợ phân loại và tìm kiếm |
-| **svg_stage_map** | `text` | `NULL` | Bản đồ sơ đồ ghế ngồi/sân khấu dạng chuỗi SVG để hiển thị trên client và cache ở Redis |
-| **start_time** | `timestamp` | `NOT NULL` | Thời gian bắt đầu buổi diễn |
-| **end_time** | `timestamp` | `NOT NULL` | Thời gian kết thúc dự kiến |
-| **status** | `varchar(50)` | `NOT NULL`, `DEFAULT 'draft'`, `CHECK (status IN ('draft', 'active', 'cancelled'))` | Trạng thái buổi diễn: nháp (`draft`), đang mở bán (`active`), bị hủy (`cancelled`) |
-| **reminder_sent** | `boolean` | `NOT NULL`, `DEFAULT FALSE` | Đánh dấu đã gửi email nhắc nhở trước sự kiện hay chưa |
-| **created_at** | `timestamp` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | Thời điểm tạo bản ghi concert |
+| Column            | Type            | Constraints                                                                         | Description                                                                            |
+| :---------------- | :-------------- | :---------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------- |
+| **id**            | `uuid`          | `PRIMARY KEY`                                                                       | Khóa chính dạng UUID v7                                                                |
+| **title**         | `varchar(255)`  | `NOT NULL`                                                                          | Tên của concert                                                                        |
+| **description**   | `text`          | `NOT NULL`                                                                          | Mô tả chi tiết nội dung buổi biểu diễn                                                 |
+| **location**      | `varchar(255)`  | `NOT NULL`                                                                          | Địa điểm tổ chức concert                                                               |
+| **poster_url**    | `varchar(500)`  | `NULL`                                                                              | Đường dẫn CDN ảnh poster của concert lưu trữ trên Cloudinary                           |
+| **summary**       | `text`          | `NULL`                                                                              | Tóm tắt tiểu sử nghệ sĩ hoặc giới thiệu concert (sinh bằng AI)                         |
+| **tags**          | `varchar(50)[]` | `NOT NULL`, `DEFAULT '{}'`                                                          | Danh sách tag (mảng chuỗi) hỗ trợ phân loại và tìm kiếm                                |
+| **svg_stage_map** | `text`          | `NULL`                                                                              | Bản đồ sơ đồ ghế ngồi/sân khấu dạng chuỗi SVG để hiển thị trên client và cache ở Redis |
+| **start_time**    | `timestamp`     | `NOT NULL`                                                                          | Thời gian bắt đầu buổi diễn                                                            |
+| **end_time**      | `timestamp`     | `NOT NULL`                                                                          | Thời gian kết thúc dự kiến                                                             |
+| **status**        | `varchar(50)`   | `NOT NULL`, `DEFAULT 'draft'`, `CHECK (status IN ('draft', 'active', 'cancelled'))` | Trạng thái buổi diễn: nháp (`draft`), đang mở bán (`active`), bị hủy (`cancelled`)     |
+| **reminder_sent** | `boolean`       | `NOT NULL`, `DEFAULT FALSE`                                                         | Đánh dấu đã gửi email nhắc nhở trước sự kiện hay chưa                                  |
+| **created_at**    | `timestamp`     | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP`                                             | Thời điểm tạo bản ghi concert                                                          |
 
 ##### Business Rules
+
 - Thời gian kết thúc `end_time` bắt buộc phải lớn hơn thời gian bắt đầu `start_time`.
 - Trạng thái `status` mặc định là `draft` khi khởi tạo. Chỉ những concert có trạng thái `active` mới được phép xuất hiện trên trang chủ cho người dùng tìm kiếm và đặt vé.
 - `tags` là mảng các chuỗi không được chứa ký tự đặc biệt nguy hiểm và dùng để filter nhanh.
 
 ##### Indexes
-| Index Name | Columns | Type | Purpose |
-| :--- | :--- | :--- | :--- |
-| `pk_concerts` | `id` | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính |
-| `idx_concerts_status_start_time` | `status, start_time` | `B-Tree` | Tìm kiếm nhanh các concert đang active và sắp diễn ra, phục vụ cron job gửi nhắc nhở |
-| `idx_concerts_tags` | `tags` | `GIN` | Tối ưu hóa truy vấn tìm kiếm concert theo các phần tử trong mảng tag |
+
+| Index Name                       | Columns              | Type                   | Purpose                                                                              |
+| :------------------------------- | :------------------- | :--------------------- | :----------------------------------------------------------------------------------- |
+| `pk_concerts`                    | `id`                 | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính                                                           |
+| `idx_concerts_status_start_time` | `status, start_time` | `B-Tree`               | Tìm kiếm nhanh các concert đang active và sắp diễn ra, phục vụ cron job gửi nhắc nhở |
+| `idx_concerts_tags`              | `tags`               | `GIN`                  | Tối ưu hóa truy vấn tìm kiếm concert theo các phần tử trong mảng tag                 |
 
 ---
 
@@ -486,27 +490,29 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ##### Đặc tả chi tiết (Table Specification)
 
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| **id** | `uuid` | `PRIMARY KEY` | Khóa chính dạng UUID v7 |
-| **concert_id** | `uuid` | `FOREIGN KEY REFERENCES CONCERTS(id) ON DELETE CASCADE` | Khóa ngoại trỏ đến concert tương ứng |
-| **name** | `varchar(100)` | `NOT NULL` | Tên loại vé (ví dụ: SVIP, VIP, GA, CAT1) |
-| **price** | `decimal(12, 2)` | `NOT NULL`, `CHECK (price >= 0)` | Giá vé |
-| **total_quantity** | `integer` | `NOT NULL`, `CHECK (total_quantity > 0)` | Tổng số lượng vé phát hành cho loại này |
-| **available_quantity** | `integer` | `NOT NULL`, `CHECK (available_quantity >= 0 AND available_quantity <= total_quantity)` | Số lượng vé còn lại trong kho có thể bán |
-| **max_per_user** | `integer` | `NOT NULL`, `DEFAULT 4`, `CHECK (max_per_user > 0)` | Giới hạn số lượng vé tối đa của loại này một người dùng được đặt mua |
+| Column                 | Type             | Constraints                                                                            | Description                                                          |
+| :--------------------- | :--------------- | :------------------------------------------------------------------------------------- | :------------------------------------------------------------------- |
+| **id**                 | `uuid`           | `PRIMARY KEY`                                                                          | Khóa chính dạng UUID v7                                              |
+| **concert_id**         | `uuid`           | `FOREIGN KEY REFERENCES CONCERTS(id) ON DELETE CASCADE`                                | Khóa ngoại trỏ đến concert tương ứng                                 |
+| **name**               | `varchar(100)`   | `NOT NULL`                                                                             | Tên loại vé (ví dụ: SVIP, VIP, GA, CAT1)                             |
+| **price**              | `decimal(12, 2)` | `NOT NULL`, `CHECK (price >= 0)`                                                       | Giá vé                                                               |
+| **total_quantity**     | `integer`        | `NOT NULL`, `CHECK (total_quantity > 0)`                                               | Tổng số lượng vé phát hành cho loại này                              |
+| **available_quantity** | `integer`        | `NOT NULL`, `CHECK (available_quantity >= 0 AND available_quantity <= total_quantity)` | Số lượng vé còn lại trong kho có thể bán                             |
+| **max_per_user**       | `integer`        | `NOT NULL`, `DEFAULT 4`, `CHECK (max_per_user > 0)`                                    | Giới hạn số lượng vé tối đa của loại này một người dùng được đặt mua |
 
 ##### Business Rules
+
 - Tên loại vé `name` phải là duy nhất trong phạm vi một buổi biểu diễn cụ thể (ví dụ: một concert không thể có hai loại vé cùng tên "VIP").
 - `available_quantity` ban đầu phải bằng `total_quantity` và giảm dần khi có người đặt vé. Không bao giờ được phép nhỏ hơn 0.
 - Số vé tối đa một người được đặt (`max_per_user`) dùng để ngăn chặn đầu cơ vé.
 
 ##### Indexes
-| Index Name | Columns | Type | Purpose |
-| :--- | :--- | :--- | :--- |
-| `pk_ticket_types` | `id` | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính |
-| `idx_ticket_types_concert_id` | `concert_id` | `B-Tree` | Lấy nhanh toàn bộ loại vé của một concert |
-| `uq_concert_ticket_type_name` | `concert_id, name` | `UNIQUE (B-Tree)` | Đảm bảo tính duy nhất của tên loại vé trong cùng một concert |
+
+| Index Name                    | Columns            | Type                   | Purpose                                                      |
+| :---------------------------- | :----------------- | :--------------------- | :----------------------------------------------------------- |
+| `pk_ticket_types`             | `id`               | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính                                   |
+| `idx_ticket_types_concert_id` | `concert_id`       | `B-Tree`               | Lấy nhanh toàn bộ loại vé của một concert                    |
+| `uq_concert_ticket_type_name` | `concert_id, name` | `UNIQUE (B-Tree)`      | Đảm bảo tính duy nhất của tên loại vé trong cùng một concert |
 
 ---
 
@@ -514,30 +520,32 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ##### Đặc tả chi tiết (Table Specification)
 
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| **id** | `uuid` | `PRIMARY KEY` | Khóa chính dạng UUID v7 |
-| **user_id** | `uuid` | `FOREIGN KEY REFERENCES USERS(id) ON DELETE RESTRICT` | Khóa ngoại trỏ đến người mua vé |
-| **concert_id** | `uuid` | `FOREIGN KEY REFERENCES CONCERTS(id) ON DELETE RESTRICT` | Khóa ngoại trỏ đến concert được đặt vé |
-| **status** | `varchar(50)` | `NOT NULL`, `DEFAULT 'pending'`, `CHECK (status IN ('pending', 'paid', 'expired', 'cancelled'))` | Trạng thái của đơn hàng: chờ thanh toán (`pending`), đã thanh toán (`paid`), quá hạn hủy tự động (`expired`), bị hủy bởi người dùng (`cancelled`) |
-| **total_amount** | `decimal(12, 2)` | `NOT NULL`, `CHECK (total_amount >= 0)` | Tổng số tiền của đơn hàng |
-| **idempotency_key** | `varchar(255)` | `UNIQUE`, `NOT NULL` | Chuỗi mã định danh do client gửi lên nhằm chống trùng lặp đơn hàng |
-| **expires_at** | `timestamp` | `NOT NULL` | Thời hạn thanh toán của đơn hàng (10 phút kể từ lúc tạo) |
-| **created_at** | `timestamp` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | Thời điểm tạo đơn đặt vé |
+| Column              | Type             | Constraints                                                                                      | Description                                                                                                                                       |
+| :------------------ | :--------------- | :----------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **id**              | `uuid`           | `PRIMARY KEY`                                                                                    | Khóa chính dạng UUID v7                                                                                                                           |
+| **user_id**         | `uuid`           | `FOREIGN KEY REFERENCES USERS(id) ON DELETE RESTRICT`                                            | Khóa ngoại trỏ đến người mua vé                                                                                                                   |
+| **concert_id**      | `uuid`           | `FOREIGN KEY REFERENCES CONCERTS(id) ON DELETE RESTRICT`                                         | Khóa ngoại trỏ đến concert được đặt vé                                                                                                            |
+| **status**          | `varchar(50)`    | `NOT NULL`, `DEFAULT 'pending'`, `CHECK (status IN ('pending', 'paid', 'expired', 'cancelled'))` | Trạng thái của đơn hàng: chờ thanh toán (`pending`), đã thanh toán (`paid`), quá hạn hủy tự động (`expired`), bị hủy bởi người dùng (`cancelled`) |
+| **total_amount**    | `decimal(12, 2)` | `NOT NULL`, `CHECK (total_amount >= 0)`                                                          | Tổng số tiền của đơn hàng                                                                                                                         |
+| **idempotency_key** | `varchar(255)`   | `UNIQUE`, `NOT NULL`                                                                             | Chuỗi mã định danh do client gửi lên nhằm chống trùng lặp đơn hàng                                                                                |
+| **expires_at**      | `timestamp`      | `NOT NULL`                                                                                       | Thời hạn thanh toán của đơn hàng (10 phút kể từ lúc tạo)                                                                                          |
+| **created_at**      | `timestamp`      | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP`                                                          | Thời điểm tạo đơn đặt vé                                                                                                                          |
 
 ##### Business Rules
+
 - Khi khởi tạo, đơn hàng bắt buộc ở trạng thái `pending`.
 - `expires_at` mặc định được gán bằng `created_at + 10 minutes`. Trong trường hợp xảy ra sự cố sập cổng thanh toán trực tuyến (các Circuit Breaker của VNPAY và MoMo đều `OPEN`), đơn hàng sẽ được áp dụng chính sách **Pay Later (Thanh toán sau)** và tự động gia hạn `expires_at` thành `NOW() + 2 hours` để người dùng có cơ hội thanh toán lại từ trang lịch sử mua hàng.
 - Nếu hết thời gian `expires_at` mà đơn hàng chưa sang `paid`, cron job quét sẽ chuyển trạng thái sang `expired` và thực hiện hoàn trả số vé đã giữ về lại kho Redis (compensation).
 - Ràng buộc khóa ngoại không cho phép xóa Concert (`ON DELETE RESTRICT`) hoặc User (`ON DELETE RESTRICT`) khi đã phát sinh đơn hàng.
 
 ##### Indexes
-| Index Name | Columns | Type | Purpose |
-| :--- | :--- | :--- | :--- |
-| `pk_bookings` | `id` | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính |
-| `idx_bookings_user_id` | `user_id` | `B-Tree` | Truy vấn nhanh lịch sử mua vé của người dùng |
-| `idx_bookings_status_expires_at` | `status, expires_at` | `B-Tree` | Hỗ trợ cron job quét định kỳ các đơn hàng pending đã hết hạn để xử lý hủy vé |
-| `uq_bookings_idempotency_key` | `idempotency_key` | `UNIQUE (B-Tree)` | Lớp bảo vệ chống trùng lặp giao dịch đặt vé ở mức Database |
+
+| Index Name                       | Columns              | Type                   | Purpose                                                                      |
+| :------------------------------- | :------------------- | :--------------------- | :--------------------------------------------------------------------------- |
+| `pk_bookings`                    | `id`                 | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính                                                   |
+| `idx_bookings_user_id`           | `user_id`            | `B-Tree`               | Truy vấn nhanh lịch sử mua vé của người dùng                                 |
+| `idx_bookings_status_expires_at` | `status, expires_at` | `B-Tree`               | Hỗ trợ cron job quét định kỳ các đơn hàng pending đã hết hạn để xử lý hủy vé |
+| `uq_bookings_idempotency_key`    | `idempotency_key`    | `UNIQUE (B-Tree)`      | Lớp bảo vệ chống trùng lặp giao dịch đặt vé ở mức Database                   |
 
 ---
 
@@ -545,28 +553,30 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ##### Đặc tả chi tiết (Table Specification)
 
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| **id** | `uuid` | `PRIMARY KEY` | Khóa chính dạng UUID v7 |
-| **booking_id** | `uuid` | `FOREIGN KEY REFERENCES BOOKINGS(id) ON DELETE RESTRICT` | Khóa ngoại liên kết tới đơn đặt vé tương ứng |
-| **method** | `varchar(50)` | `NOT NULL`, `CHECK (method IN ('vnpay', 'momo'))` | Cổng thanh toán sử dụng (VNPAY hoặc MoMo) |
-| **gateway_txn_id** | `varchar(255)` | `UNIQUE`, `NOT NULL` | Mã giao dịch duy nhất do cổng thanh toán trả về |
-| **amount** | `decimal(12, 2)` | `NOT NULL`, `CHECK (amount >= 0)` | Số tiền thực tế giao dịch thanh toán |
-| **status** | `varchar(50)` | `NOT NULL`, `DEFAULT 'pending'`, `CHECK (status IN ('pending', 'success', 'failed', 'refunded'))` | Trạng thái giao dịch thanh toán |
-| **gateway_response** | `jsonb` | `NULL` | Dữ liệu phản hồi nguyên bản (raw response) từ cổng thanh toán lưu dưới dạng JSON |
-| **paid_at** | `timestamp` | `NULL` | Thời điểm thanh toán thành công (nếu giao dịch thành công) |
-| **created_at** | `timestamp` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | Thời điểm tạo bản ghi thanh toán |
+| Column               | Type             | Constraints                                                                                       | Description                                                                      |
+| :------------------- | :--------------- | :------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------- |
+| **id**               | `uuid`           | `PRIMARY KEY`                                                                                     | Khóa chính dạng UUID v7                                                          |
+| **booking_id**       | `uuid`           | `FOREIGN KEY REFERENCES BOOKINGS(id) ON DELETE RESTRICT`                                          | Khóa ngoại liên kết tới đơn đặt vé tương ứng                                     |
+| **method**           | `varchar(50)`    | `NOT NULL`, `CHECK (method IN ('vnpay', 'momo'))`                                                 | Cổng thanh toán sử dụng (VNPAY hoặc MoMo)                                        |
+| **gateway_txn_id**   | `varchar(255)`   | `UNIQUE`, `NOT NULL`                                                                              | Mã giao dịch duy nhất do cổng thanh toán trả về                                  |
+| **amount**           | `decimal(12, 2)` | `NOT NULL`, `CHECK (amount >= 0)`                                                                 | Số tiền thực tế giao dịch thanh toán                                             |
+| **status**           | `varchar(50)`    | `NOT NULL`, `DEFAULT 'pending'`, `CHECK (status IN ('pending', 'success', 'failed', 'refunded'))` | Trạng thái giao dịch thanh toán                                                  |
+| **gateway_response** | `jsonb`          | `NULL`                                                                                            | Dữ liệu phản hồi nguyên bản (raw response) từ cổng thanh toán lưu dưới dạng JSON |
+| **paid_at**          | `timestamp`      | `NULL`                                                                                            | Thời điểm thanh toán thành công (nếu giao dịch thành công)                       |
+| **created_at**       | `timestamp`      | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP`                                                           | Thời điểm tạo bản ghi thanh toán                                                 |
 
 ##### Business Rules
+
 - Một đơn hàng (`booking_id`) có thể có nhiều bản ghi thanh toán nếu các lần thanh toán trước bị thất bại (`failed`), nhưng tối đa chỉ được có duy nhất một giao dịch ở trạng thái thành công (`success`).
 - `gateway_txn_id` hoạt động như một khóa chống trùng lặp (Idempotency Key) cho các cuộc gọi webhook từ phía cổng thanh toán. Webhook chỉ xử lý cập nhật trạng thái đơn đặt vé thành `paid` nếu giao dịch thanh toán chưa từng được ghi nhận thành công trước đó.
 
 ##### Indexes
-| Index Name | Columns | Type | Purpose |
-| :--- | :--- | :--- | :--- |
-| `pk_payments` | `id` | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính |
-| `idx_payments_booking_id` | `booking_id` | `B-Tree` | Truy cập lịch sử các lần thanh toán của một đơn hàng |
-| `uq_payments_gateway_txn_id` | `gateway_txn_id` | `UNIQUE (B-Tree)` | Đảm bảo tính duy nhất của mã giao dịch cổng thanh toán và xử lý webhook idempotent |
+
+| Index Name                   | Columns          | Type                   | Purpose                                                                            |
+| :--------------------------- | :--------------- | :--------------------- | :--------------------------------------------------------------------------------- |
+| `pk_payments`                | `id`             | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính                                                         |
+| `idx_payments_booking_id`    | `booking_id`     | `B-Tree`               | Truy cập lịch sử các lần thanh toán của một đơn hàng                               |
+| `uq_payments_gateway_txn_id` | `gateway_txn_id` | `UNIQUE (B-Tree)`      | Đảm bảo tính duy nhất của mã giao dịch cổng thanh toán và xử lý webhook idempotent |
 
 ---
 
@@ -574,26 +584,28 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ##### Đặc tả chi tiết (Table Specification)
 
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| **id** | `uuid` | `PRIMARY KEY` | Khóa chính dạng UUID v7 |
-| **booking_id** | `uuid` | `FOREIGN KEY REFERENCES BOOKINGS(id) ON DELETE RESTRICT` | Khóa ngoại liên kết tới đơn hàng chứa vé này |
-| **ticket_type_id** | `uuid` | `FOREIGN KEY REFERENCES TICKET_TYPES(id) ON DELETE RESTRICT` | Khóa ngoại liên kết tới cấu hình loại vé |
-| **qr_code_hash** | `varchar(255)` | `UNIQUE`, `NOT NULL` | Chuỗi băm SHA-256 chứa thông tin vé đã ký số (HMAC) dùng in QR Code |
-| **checkin_status** | `varchar(50)` | `NOT NULL`, `DEFAULT 'not_checked_in'`, `CHECK (checkin_status IN ('not_checked_in', 'checked_in'))` | Trạng thái soát vé vào cửa (Chưa soát vé, Đã soát vé) |
-| **checked_in_at** | `timestamp` | `NULL` | Thời điểm soát vé thành công |
+| Column             | Type           | Constraints                                                                                          | Description                                                         |
+| :----------------- | :------------- | :--------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------ |
+| **id**             | `uuid`         | `PRIMARY KEY`                                                                                        | Khóa chính dạng UUID v7                                             |
+| **booking_id**     | `uuid`         | `FOREIGN KEY REFERENCES BOOKINGS(id) ON DELETE RESTRICT`                                             | Khóa ngoại liên kết tới đơn hàng chứa vé này                        |
+| **ticket_type_id** | `uuid`         | `FOREIGN KEY REFERENCES TICKET_TYPES(id) ON DELETE RESTRICT`                                         | Khóa ngoại liên kết tới cấu hình loại vé                            |
+| **qr_code_hash**   | `varchar(255)` | `UNIQUE`, `NOT NULL`                                                                                 | Chuỗi băm SHA-256 chứa thông tin vé đã ký số (HMAC) dùng in QR Code |
+| **checkin_status** | `varchar(50)`  | `NOT NULL`, `DEFAULT 'not_checked_in'`, `CHECK (checkin_status IN ('not_checked_in', 'checked_in'))` | Trạng thái soát vé vào cửa (Chưa soát vé, Đã soát vé)               |
+| **checked_in_at**  | `timestamp`    | `NULL`                                                                                               | Thời điểm soát vé thành công                                        |
 
 ##### Business Rules
+
 - Vé chỉ được tự động tạo bởi Booking Worker sau khi đơn đặt vé `BOOKINGS` tương ứng được cập nhật trạng thái `paid`.
 - `qr_code_hash` là duy nhất trên toàn hệ thống. Đây là chuỗi băm của thông tin vé kèm theo chữ ký HMAC của server để ngăn chặn việc làm giả vé và không lộ thông tin nhạy cảm.
 - Một vé chỉ được check-in tối đa 1 lần. Khi quét thành công, `checkin_status` chuyển sang `checked_in` và ghi lại `checked_in_at`. Mọi lượt quét sau đó trên mã QR này đều sẽ bị báo lỗi trùng lặp.
 
 ##### Indexes
-| Index Name | Columns | Type | Purpose |
-| :--- | :--- | :--- | :--- |
-| `pk_tickets` | `id` | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính |
-| `idx_tickets_booking_id` | `booking_id` | `B-Tree` | Lấy danh sách tất cả các vé thuộc một đơn đặt vé cụ thể |
-| `uq_tickets_qr_code_hash` | `qr_code_hash` | `UNIQUE (B-Tree)` | Phục vụ đối soát nhanh thông tin khi nhân viên soát vé quét mã QR tại cổng vào |
+
+| Index Name                | Columns        | Type                   | Purpose                                                                        |
+| :------------------------ | :------------- | :--------------------- | :----------------------------------------------------------------------------- |
+| `pk_tickets`              | `id`           | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính                                                     |
+| `idx_tickets_booking_id`  | `booking_id`   | `B-Tree`               | Lấy danh sách tất cả các vé thuộc một đơn đặt vé cụ thể                        |
+| `uq_tickets_qr_code_hash` | `qr_code_hash` | `UNIQUE (B-Tree)`      | Phục vụ đối soát nhanh thông tin khi nhân viên soát vé quét mã QR tại cổng vào |
 
 ---
 
@@ -601,28 +613,30 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ##### Đặc tả chi tiết (Table Specification)
 
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| **id** | `uuid` | `PRIMARY KEY` | Khóa chính dạng UUID v7 |
-| **ticket_id** | `uuid` | `NULL`, `FOREIGN KEY REFERENCES TICKETS(id) ON DELETE SET NULL` | Khóa ngoại liên kết tới vé thông thường được quét |
-| **vip_guest_id** | `uuid` | `NULL`, `FOREIGN KEY REFERENCES VIP_GUESTS(id) ON DELETE SET NULL` | Khóa ngoại liên kết tới khách VIP được quét |
-| **checked_by** | `uuid` | `FOREIGN KEY REFERENCES USERS(id) ON DELETE RESTRICT` | Khóa ngoại liên kết đến tài khoản nhân viên thực hiện quét mã |
-| **scan_time** | `timestamp` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | Thời điểm thực hiện quét mã |
-| **is_offline** | `boolean` | `NOT NULL`, `DEFAULT FALSE` | Đánh dấu lượt quét này được ghi nhận offline tại app và đồng bộ lên sau |
-| **device_id** | `varchar(255)` | `NOT NULL` | Định danh thiết bị phần cứng (điện thoại quét) dùng soát vé |
+| Column           | Type           | Constraints                                                        | Description                                                             |
+| :--------------- | :------------- | :----------------------------------------------------------------- | :---------------------------------------------------------------------- |
+| **id**           | `uuid`         | `PRIMARY KEY`                                                      | Khóa chính dạng UUID v7                                                 |
+| **ticket_id**    | `uuid`         | `NULL`, `FOREIGN KEY REFERENCES TICKETS(id) ON DELETE SET NULL`    | Khóa ngoại liên kết tới vé thông thường được quét                       |
+| **vip_guest_id** | `uuid`         | `NULL`, `FOREIGN KEY REFERENCES VIP_GUESTS(id) ON DELETE SET NULL` | Khóa ngoại liên kết tới khách VIP được quét                             |
+| **checked_by**   | `uuid`         | `FOREIGN KEY REFERENCES USERS(id) ON DELETE RESTRICT`              | Khóa ngoại liên kết đến tài khoản nhân viên thực hiện quét mã           |
+| **scan_time**    | `timestamp`    | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP`                            | Thời điểm thực hiện quét mã                                             |
+| **is_offline**   | `boolean`      | `NOT NULL`, `DEFAULT FALSE`                                        | Đánh dấu lượt quét này được ghi nhận offline tại app và đồng bộ lên sau |
+| **device_id**    | `varchar(255)` | `NOT NULL`                                                         | Định danh thiết bị phần cứng (điện thoại quét) dùng soát vé             |
 
 ##### Business Rules
+
 - Để hỗ trợ audit đồng nhất cho cả khách VIP và vé thông thường, bảng này thiết kế hai khóa ngoại nullable: `ticket_id` và `vip_guest_id`. Bắt buộc phải có đúng một trong hai trường này có giá trị (CHECK constraint: `CHECK ((ticket_id IS NOT NULL AND vip_guest_id IS NULL) OR (ticket_id IS NULL AND vip_guest_id IS NOT NULL))`).
 - Bản ghi log check-in là dữ liệu lịch sử mang tính chất audit trail, sau khi insert thành công không được phép cập nhật (`UPDATE`) hoặc xóa (`DELETE`).
 - Tài khoản thực hiện soát vé `checked_by` phải có vai trò `gate_staff` hoặc `organizer`.
 
 ##### Indexes
-| Index Name | Columns | Type | Purpose |
-| :--- | :--- | :--- | :--- |
-| `pk_checkin_logs` | `id` | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính |
-| `idx_checkin_logs_ticket_id` | `ticket_id` | `B-Tree` | Phục vụ tra cứu lịch sử quét của một vé (hỗ trợ điều tra khi có sự cố quét trùng mã) |
-| `idx_checkin_logs_vip_guest_id` | `vip_guest_id` | `B-Tree` | Tra cứu lịch sử check-in của khách mời VIP |
-| `idx_checkin_logs_scan_time` | `scan_time` | `B-Tree` | Thống kê số lượng vé được soát theo thời gian thực tại sự kiện |
+
+| Index Name                      | Columns        | Type                   | Purpose                                                                              |
+| :------------------------------ | :------------- | :--------------------- | :----------------------------------------------------------------------------------- |
+| `pk_checkin_logs`               | `id`           | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính                                                           |
+| `idx_checkin_logs_ticket_id`    | `ticket_id`    | `B-Tree`               | Phục vụ tra cứu lịch sử quét của một vé (hỗ trợ điều tra khi có sự cố quét trùng mã) |
+| `idx_checkin_logs_vip_guest_id` | `vip_guest_id` | `B-Tree`               | Tra cứu lịch sử check-in của khách mời VIP                                           |
+| `idx_checkin_logs_scan_time`    | `scan_time`    | `B-Tree`               | Thống kê số lượng vé được soát theo thời gian thực tại sự kiện                       |
 
 ---
 
@@ -630,29 +644,31 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ##### Đặc tả chi tiết (Table Specification)
 
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| **id** | `uuid` | `PRIMARY KEY` | Khóa chính dạng UUID v7 |
-| **concert_id** | `uuid` | `FOREIGN KEY REFERENCES CONCERTS(id) ON DELETE CASCADE` | Khóa ngoại trỏ đến concert khách VIP được mời tham dự |
-| **full_name** | `varchar(255)` | `NOT NULL` | Họ và tên khách mời VIP |
-| **email** | `varchar(255)` | `NOT NULL` | Địa chỉ email nhận thư mời và mã QR check-in |
-| **phone** | `varchar(20)` | `NULL` | Số điện thoại khách mời VIP |
-| **affiliate_company** | `varchar(255)` | `NULL` | Tên tổ chức/doanh nghiệp hoặc đơn vị công tác của khách mời |
-| **qr_code_hash** | `varchar(255)` | `UNIQUE`, `NOT NULL` | Chuỗi băm mã QR gửi riêng cho khách mời để check-in |
-| **checkin_status** | `varchar(50)` | `NOT NULL`, `DEFAULT 'not_checked_in'`, `CHECK (checkin_status IN ('not_checked_in', 'checked_in'))` | Trạng thái check-in của khách VIP |
-| **checked_in_at** | `timestamp` | `NULL` | Thời điểm khách VIP check-in thành công |
+| Column                | Type           | Constraints                                                                                          | Description                                                 |
+| :-------------------- | :------------- | :--------------------------------------------------------------------------------------------------- | :---------------------------------------------------------- |
+| **id**                | `uuid`         | `PRIMARY KEY`                                                                                        | Khóa chính dạng UUID v7                                     |
+| **concert_id**        | `uuid`         | `FOREIGN KEY REFERENCES CONCERTS(id) ON DELETE CASCADE`                                              | Khóa ngoại trỏ đến concert khách VIP được mời tham dự       |
+| **full_name**         | `varchar(255)` | `NOT NULL`                                                                                           | Họ và tên khách mời VIP                                     |
+| **email**             | `varchar(255)` | `NOT NULL`                                                                                           | Địa chỉ email nhận thư mời và mã QR check-in                |
+| **phone**             | `varchar(20)`  | `NULL`                                                                                               | Số điện thoại khách mời VIP                                 |
+| **affiliate_company** | `varchar(255)` | `NULL`                                                                                               | Tên tổ chức/doanh nghiệp hoặc đơn vị công tác của khách mời |
+| **qr_code_hash**      | `varchar(255)` | `UNIQUE`, `NOT NULL`                                                                                 | Chuỗi băm mã QR gửi riêng cho khách mời để check-in         |
+| **checkin_status**    | `varchar(50)`  | `NOT NULL`, `DEFAULT 'not_checked_in'`, `CHECK (checkin_status IN ('not_checked_in', 'checked_in'))` | Trạng thái check-in của khách VIP                           |
+| **checked_in_at**     | `timestamp`    | `NULL`                                                                                               | Thời điểm khách VIP check-in thành công                     |
 
 ##### Business Rules
+
 - Khách VIP được Ban tổ chức (`organizer`) quản lý bằng cách import tệp CSV danh sách khách mời.
 - `qr_code_hash` của khách VIP là duy nhất trên toàn hệ thống và hoạt động độc lập với bảng vé thông thường.
 - Tương tự như vé, mỗi khách VIP chỉ được phép check-in một lần duy nhất.
 
 ##### Indexes
-| Index Name | Columns | Type | Purpose |
-| :--- | :--- | :--- | :--- |
-| `pk_vip_guests` | `id` | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính |
-| `idx_vip_guests_concert_id` | `concert_id` | `B-Tree` | Lấy toàn bộ danh sách khách VIP của một concert phục vụ đồng bộ dữ liệu check-in |
-| `uq_vip_guests_qr_code_hash` | `qr_code_hash` | `UNIQUE (B-Tree)` | Quét check-in nhanh đối với khách VIP bằng mã QR |
+
+| Index Name                   | Columns        | Type                   | Purpose                                                                          |
+| :--------------------------- | :------------- | :--------------------- | :------------------------------------------------------------------------------- |
+| `pk_vip_guests`              | `id`           | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính                                                       |
+| `idx_vip_guests_concert_id`  | `concert_id`   | `B-Tree`               | Lấy toàn bộ danh sách khách VIP của một concert phục vụ đồng bộ dữ liệu check-in |
+| `uq_vip_guests_qr_code_hash` | `qr_code_hash` | `UNIQUE (B-Tree)`      | Quét check-in nhanh đối với khách VIP bằng mã QR                                 |
 
 ---
 
@@ -660,32 +676,33 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ##### Đặc tả chi tiết (Table Specification)
 
-| Column | Type | Constraints | Description |
-| :--- | :--- | :--- | :--- |
-| **id** | `bigint` | `PRIMARY KEY` | Khóa chính tự tăng dạng `bigserial` để tối ưu dung lượng lưu trữ cho dữ liệu log lớn |
-| **user_id** | `uuid` | `FOREIGN KEY REFERENCES USERS(id) ON DELETE CASCADE` | Khóa ngoại trỏ đến người nhận thông báo |
-| **type** | `varchar(50)` | `NOT NULL`, `CHECK (type IN ('booking_confirmed', 'concert_reminder'))` | Loại thông báo: xác nhận đặt vé (`booking_confirmed`), nhắc nhở concert sắp diễn ra (`concert_reminder`) |
-| **title** | `varchar(255)` | `NOT NULL` | Tiêu đề thông báo |
-| **body** | `text` | `NOT NULL` | Nội dung chi tiết của thông báo |
-| **channel** | `varchar(50)` | `NOT NULL`, `CHECK (channel IN ('in_app', 'email'))` | Kênh gửi thông báo (thông báo trong ứng dụng hoặc email) |
-| **status** | `varchar(50)` | `NOT NULL`, `DEFAULT 'pending'`, `CHECK (status IN ('pending', 'sent', 'failed'))` | Trạng thái gửi thông báo |
-| **reference_id** | `uuid` | `NULL` | Khóa ngoại tham chiếu động (nullable) đến ID của đơn hàng hoặc concert liên quan |
-| **read_at** | `timestamp` | `NULL` | Thời điểm người dùng đọc thông báo (chỉ có ý nghĩa khi `channel` là `in_app`) |
-| **sent_at** | `timestamp` | `NULL` | Thời điểm thực tế gửi thông báo thành công |
-| **created_at** | `timestamp` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | Thời điểm tạo bản ghi log thông báo |
+| Column           | Type           | Constraints                                                                        | Description                                                                                              |
+| :--------------- | :------------- | :--------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------- |
+| **id**           | `bigint`       | `PRIMARY KEY`                                                                      | Khóa chính tự tăng dạng `bigserial` để tối ưu dung lượng lưu trữ cho dữ liệu log lớn                     |
+| **user_id**      | `uuid`         | `FOREIGN KEY REFERENCES USERS(id) ON DELETE CASCADE`                               | Khóa ngoại trỏ đến người nhận thông báo                                                                  |
+| **type**         | `varchar(50)`  | `NOT NULL`, `CHECK (type IN ('booking_confirmed', 'concert_reminder'))`            | Loại thông báo: xác nhận đặt vé (`booking_confirmed`), nhắc nhở concert sắp diễn ra (`concert_reminder`) |
+| **title**        | `varchar(255)` | `NOT NULL`                                                                         | Tiêu đề thông báo                                                                                        |
+| **body**         | `text`         | `NOT NULL`                                                                         | Nội dung chi tiết của thông báo                                                                          |
+| **channel**      | `varchar(50)`  | `NOT NULL`, `CHECK (channel IN ('in_app', 'email'))`                               | Kênh gửi thông báo (thông báo trong ứng dụng hoặc email)                                                 |
+| **status**       | `varchar(50)`  | `NOT NULL`, `DEFAULT 'pending'`, `CHECK (status IN ('pending', 'sent', 'failed'))` | Trạng thái gửi thông báo                                                                                 |
+| **reference_id** | `uuid`         | `NULL`                                                                             | Khóa ngoại tham chiếu động (nullable) đến ID của đơn hàng hoặc concert liên quan                         |
+| **read_at**      | `timestamp`    | `NULL`                                                                             | Thời điểm người dùng đọc thông báo (chỉ có ý nghĩa khi `channel` là `in_app`)                            |
+| **sent_at**      | `timestamp`    | `NULL`                                                                             | Thời điểm thực tế gửi thông báo thành công                                                               |
+| **created_at**   | `timestamp`    | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP`                                            | Thời điểm tạo bản ghi log thông báo                                                                      |
 
 ##### Business Rules
+
 - `read_at` chỉ được phép cập nhật khi thông báo được gửi qua kênh `in_app`. Đối với kênh `email`, trường này luôn là `NULL`.
 - Bảng này sử dụng kiểu khóa chính tự tăng `bigserial` thay vì UUID v7 nhằm tiết kiệm 8 bytes cho mỗi hàng ghi, do bảng này lưu lịch sử log với volume cực lớn.
 
 ##### Indexes
-| Index Name | Columns | Type | Purpose |
-| :--- | :--- | :--- | :--- |
-| `pk_notification_logs` | `id` | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính |
-| `idx_notification_logs_user_id_read_at` | `user_id, read_at` | `B-Tree` | Truy vấn và đếm nhanh số lượng thông báo in-app chưa đọc (`read_at IS NULL`) của một người dùng cụ thể |
+
+| Index Name                              | Columns            | Type                   | Purpose                                                                                                |
+| :-------------------------------------- | :----------------- | :--------------------- | :----------------------------------------------------------------------------------------------------- |
+| `pk_notification_logs`                  | `id`               | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính                                                                             |
+| `idx_notification_logs_user_id_read_at` | `user_id, read_at` | `B-Tree`               | Truy vấn và đếm nhanh số lượng thông báo in-app chưa đọc (`read_at IS NULL`) của một người dùng cụ thể |
 
 ---
-
 
 ## Thiết kế kiểm soát truy cập
 
@@ -766,21 +783,21 @@ flowchart TD
 
 #### Các phương án cân nhắc
 
-| #   | Phương án                                                          | Mô tả                                                                                                                                                                                                                                                                                            |
-| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| A   | **Single-Layer Rate Limiting (chỉ tại Application)**               | Toàn bộ logic rate limiting (theo IP và User ID) được xử lý tại tầng ứng dụng NestJS bằng Token Bucket trên Redis. Mọi request đều đi qua Nginx (chỉ proxy), vào NestJS, parse JWT, rồi mới kiểm tra giới hạn.                                                                                  |
-| B   | **Two-Tiered Rate Limiting (API Gateway + Application)**           | Chia rate limiting thành 2 lớp phòng thủ: Lớp 1 tại API Gateway (Nginx) chặn theo IP bằng Token Bucket in-memory để phòng thủ diện rộng (DDoS, Bot). Lớp 2 tại NestJS chặn theo User ID bằng Sliding Window Counter trên Redis để bảo vệ nghiệp vụ (chống đầu cơ vé).                            |
-| C   | **Thay Nginx bằng Kong API Gateway**                               | Sử dụng Kong (API Gateway chuyên dụng) thay thế Nginx, tận dụng plugin rate-limiting có sẵn hỗ trợ nhiều tiêu chí (IP, Consumer, Header). Kong cần thêm PostgreSQL/Cassandra riêng để lưu cấu hình hoặc chạy DB-less mode.                                                                       |
+| #   | Phương án                                                | Mô tả                                                                                                                                                                                                                                                                 |
+| --- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A   | **Single-Layer Rate Limiting (chỉ tại Application)**     | Toàn bộ logic rate limiting (theo IP và User ID) được xử lý tại tầng ứng dụng NestJS bằng Token Bucket trên Redis. Mọi request đều đi qua Nginx (chỉ proxy), vào NestJS, parse JWT, rồi mới kiểm tra giới hạn.                                                        |
+| B   | **Two-Tiered Rate Limiting (API Gateway + Application)** | Chia rate limiting thành 2 lớp phòng thủ: Lớp 1 tại API Gateway (Nginx) chặn theo IP bằng Token Bucket in-memory để phòng thủ diện rộng (DDoS, Bot). Lớp 2 tại NestJS chặn theo User ID bằng Sliding Window Counter trên Redis để bảo vệ nghiệp vụ (chống đầu cơ vé). |
+| C   | **Thay Nginx bằng Kong API Gateway**                     | Sử dụng Kong (API Gateway chuyên dụng) thay thế Nginx, tận dụng plugin rate-limiting có sẵn hỗ trợ nhiều tiêu chí (IP, Consumer, Header). Kong cần thêm PostgreSQL/Cassandra riêng để lưu cấu hình hoặc chạy DB-less mode.                                            |
 
 #### Đánh giá
 
-| Tiêu chí                               | Single-Layer (NestJS only)                                                                               | Two-Tiered (Nginx + NestJS)                                                                                             | Kong API Gateway                                                            |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Bảo vệ hạ tầng trước DDoS              | ❌ Yếu — request vẫn phải vào NestJS, parse header, kết nối Redis mới bị chặn. Nguy cơ nghẽn Event Loop | ✅ Mạnh — Nginx chặn ngay tại rìa hệ thống (Edge), xử lý bằng C native, không tiêu tốn tài nguyên NestJS               | ✅ Mạnh — Kong xử lý tại Gateway, tương tự Nginx                            |
-| Chống gian lận đặt vé (theo User ID)   | ⚠️ Có nhưng lẫn lộn cùng lớp với IP check                                                               | ✅ Tách biệt rõ ràng — Lớp 2 khóa cứng theo User ID trên Redis, bất kể user đổi IP (VPN/Proxy)                         | ✅ Có plugin hỗ trợ, nhưng cần cấu hình JWT plugin kèm theo                 |
-| Độ phức tạp hạ tầng                     | ✅ Đơn giản — chỉ cần NestJS + Redis                                                                     | ✅ Thấp — Nginx đã có sẵn trong kiến trúc, chỉ thêm 5 dòng config `limit_req`                                           | ❌ Cao — cần thêm container Kong + DB riêng (PostgreSQL/Cassandra), ~150MB   |
-| Phù hợp quy mô đồ án (team nhỏ)        | ✅ Rất phù hợp                                                                                           | ✅ Phù hợp — không tăng độ phức tạp vận hành                                                                             | ❌ Over-engineering cho Modular Monolith                                     |
-| Khả năng mở rộng sau này               | ⚠️ Hạn chế — mọi thứ gói trong NestJS                                                                   | ✅ Tốt — nếu cần chuyển sang Kong sau, chỉ thay Nginx                                                                   | ✅ Rất tốt — plugin ecosystem phong phú                                     |
+| Tiêu chí                             | Single-Layer (NestJS only)                                                                              | Two-Tiered (Nginx + NestJS)                                                                              | Kong API Gateway                                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Bảo vệ hạ tầng trước DDoS            | ❌ Yếu — request vẫn phải vào NestJS, parse header, kết nối Redis mới bị chặn. Nguy cơ nghẽn Event Loop | ✅ Mạnh — Nginx chặn ngay tại rìa hệ thống (Edge), xử lý bằng C native, không tiêu tốn tài nguyên NestJS | ✅ Mạnh — Kong xử lý tại Gateway, tương tự Nginx                           |
+| Chống gian lận đặt vé (theo User ID) | ⚠️ Có nhưng lẫn lộn cùng lớp với IP check                                                               | ✅ Tách biệt rõ ràng — Lớp 2 khóa cứng theo User ID trên Redis, bất kể user đổi IP (VPN/Proxy)           | ✅ Có plugin hỗ trợ, nhưng cần cấu hình JWT plugin kèm theo                |
+| Độ phức tạp hạ tầng                  | ✅ Đơn giản — chỉ cần NestJS + Redis                                                                    | ✅ Thấp — Nginx đã có sẵn trong kiến trúc, chỉ thêm 5 dòng config `limit_req`                            | ❌ Cao — cần thêm container Kong + DB riêng (PostgreSQL/Cassandra), ~150MB |
+| Phù hợp quy mô đồ án (team nhỏ)      | ✅ Rất phù hợp                                                                                          | ✅ Phù hợp — không tăng độ phức tạp vận hành                                                             | ❌ Over-engineering cho Modular Monolith                                   |
+| Khả năng mở rộng sau này             | ⚠️ Hạn chế — mọi thứ gói trong NestJS                                                                   | ✅ Tốt — nếu cần chuyển sang Kong sau, chỉ thay Nginx                                                    | ✅ Rất tốt — plugin ecosystem phong phú                                    |
 
 #### Chốt giải pháp: Phương án B — Two-Tiered Rate Limiting (Nginx + NestJS)
 
@@ -853,12 +870,12 @@ server {
 }
 ```
 
-| Tham số      | Giá trị        | Ý nghĩa                                                              |
-| ------------ | -------------- | -------------------------------------------------------------------- |
-| `rate`       | `30r/s`        | Tối đa 30 request/giây cho mỗi IP address                            |
-| `burst`      | `10`           | Cho phép burst thêm 10 request vượt ngưỡng (phù hợp người dùng thật) |
-| `nodelay`    | —              | Xử lý burst ngay, không delay/queue                                   |
-| `zone`       | `global:10m`   | 10MB shared memory (~160,000 IP addresses đồng thời)                  |
+| Tham số   | Giá trị      | Ý nghĩa                                                              |
+| --------- | ------------ | -------------------------------------------------------------------- |
+| `rate`    | `30r/s`      | Tối đa 30 request/giây cho mỗi IP address                            |
+| `burst`   | `10`         | Cho phép burst thêm 10 request vượt ngưỡng (phù hợp người dùng thật) |
+| `nodelay` | —            | Xử lý burst ngay, không delay/queue                                  |
+| `zone`    | `global:10m` | 10MB shared memory (~160,000 IP addresses đồng thời)                 |
 
 #### Lớp 2 — Application Layer (Redis Sliding Window Counter)
 
@@ -868,10 +885,10 @@ server {
 
 **Chỉ áp dụng cho các endpoint nhạy cảm:**
 
-| Endpoint                      | Window   | Max Requests | Áp dụng theo | Lý do                                                 |
-| ----------------------------- | -------- | ------------ | ------------- | ----------------------------------------------------- |
-| `POST /bookings` (đặt vé)     | 1 phút   | 5            | User ID       | Chống script spam đặt chỗ hàng loạt                   |
-| `POST /payments` (thanh toán) | 1 phút   | 3            | User ID       | Chống gửi request thanh toán lặp lại                  |
+| Endpoint                      | Window | Max Requests | Áp dụng theo | Lý do                                |
+| ----------------------------- | ------ | ------------ | ------------ | ------------------------------------ |
+| `POST /bookings` (đặt vé)     | 1 phút | 5            | User ID      | Chống script spam đặt chỗ hàng loạt  |
+| `POST /payments` (thanh toán) | 1 phút | 3            | User ID      | Chống gửi request thanh toán lặp lại |
 
 > **Lưu ý:** Endpoint đọc dữ liệu (`GET /concerts`) **không cần** rate limit ở Lớp 2 vì đã được bảo vệ bởi Nginx (Lớp 1) và CDN Cache.
 
@@ -909,10 +926,10 @@ return 1  -- CHO PHÉP
 
 **Key Pattern trên Redis:**
 
-| Key Pattern                                | Kiểu         | Mô tả                                    |
-| ------------------------------------------ | ------------ | ---------------------------------------- |
-| `rate_limit:{user_id}:bookings`            | Sorted Set   | Đếm số lần đặt vé trong 1 phút          |
-| `rate_limit:{user_id}:payments`            | Sorted Set   | Đếm số lần thanh toán trong 1 phút       |
+| Key Pattern                     | Kiểu       | Mô tả                              |
+| ------------------------------- | ---------- | ---------------------------------- |
+| `rate_limit:{user_id}:bookings` | Sorted Set | Đếm số lần đặt vé trong 1 phút     |
+| `rate_limit:{user_id}:payments` | Sorted Set | Đếm số lần thanh toán trong 1 phút |
 
 **Hành vi khi vượt ngưỡng:** Trả về `HTTP 429 Too Many Requests` kèm header `X-RateLimit-Source: app-user` và `Retry-After` (giây) để client phân biệt với lỗi 429 từ Nginx Gateway.
 
@@ -939,7 +956,8 @@ return 1  -- CHO PHÉP
 
 #### Chốt giải pháp: Circuit Breaker kết hợp Graceful Degradation (Dynamic Switch & Pay Later)
 
-**Lý do:** 
+**Lý do:**
+
 - **Tách biệt bảo vệ:** Hệ thống sử dụng hai Circuit Breaker độc lập (`vnpayCircuitBreaker` và `momoCircuitBreaker` sử dụng thư viện `opossum`) cho từng cổng thanh toán trực tuyến. Điều này tránh việc sự cố của cổng này ảnh hưởng đến cổng khác.
 - **Graceful Degradation:** Thay vì trả lỗi cứng `HTTP 503` khi cổng lỗi, hệ thống sẽ tự động chuyển cổng (Dynamic Switch) hoặc chuyển sang tùy chọn **Pay Later (Thanh toán sau)** kết hợp tự động gia hạn thời gian giữ vé của `BOOKINGS` từ 10 phút lên 2 giờ. Việc này tối ưu hóa tỷ lệ chuyển đổi (conversion rate) và bảo vệ giao dịch giữ vé hợp lệ của khách hàng.
 
@@ -954,10 +972,10 @@ return 1  -- CHO PHÉP
 
 **Cấu hình Retry (bên trong mỗi Circuit Breaker):**
 
-| Tham số          | Giá trị   | Ý nghĩa                                                                 |
-| ---------------- | --------- | ----------------------------------------------------------------------- |
-| `maxRetries`     | 2         | Tối đa retry 2 lần trước khi tính là failure                            |
-| `retryDelay`     | 1s → 2s   | Exponential Backoff — tránh đánh dồn gateway khi đang quá tải           |
+| Tham số          | Giá trị        | Ý nghĩa                                                                 |
+| ---------------- | -------------- | ----------------------------------------------------------------------- |
+| `maxRetries`     | 2              | Tối đa retry 2 lần trước khi tính là failure                            |
+| `retryDelay`     | 1s → 2s        | Exponential Backoff — tránh đánh dồn gateway khi đang quá tải           |
 | `retryCondition` | 5xx, ETIMEDOUT | Chỉ retry khi lỗi server hoặc timeout, không retry với 4xx (lỗi client) |
 
 **State Machine của Circuit Breaker:**
@@ -982,8 +1000,8 @@ stateDiagram-v2
    - Khi nhận yêu cầu thanh toán cho một phương thức (ví dụ: VNPAY):
      - Nếu CB của cổng đó là `CLOSED` hoặc `HALF-OPEN`: Thực hiện gọi API của gateway bình thường.
      - Nếu CB của cổng đó là `OPEN`: API tự động kiểm tra xem cổng còn lại (MoMo) có khả dụng hay không.
-       - *Trường hợp cổng còn lại khả dụng (Strategy 1):* Trả về `HTTP 422 Unprocessable Entity` gợi ý người dùng đổi sang cổng khả dụng.
-       - *Trường hợp cả hai cổng đều sập (Strategy 2):* API tự động cập nhật đơn hàng thành **Pay Later** (gia hạn `expires_at` của đơn hàng lên `NOW() + 2 hours`), trả về mã `HTTP 202 Accepted` kèm thông báo hướng dẫn người dùng quay lại lịch sử mua hàng để thanh toán sau.
+       - _Trường hợp cổng còn lại khả dụng (Strategy 1):_ Trả về `HTTP 422 Unprocessable Entity` gợi ý người dùng đổi sang cổng khả dụng.
+       - _Trường hợp cả hai cổng đều sập (Strategy 2):_ API tự động cập nhật đơn hàng thành **Pay Later** (gia hạn `expires_at` của đơn hàng lên `NOW() + 2 hours`), trả về mã `HTTP 202 Accepted` kèm thông báo hướng dẫn người dùng quay lại lịch sử mua hàng để thanh toán sau.
 
 #### Luồng xử lý thanh toán thông minh (Sequence Diagram)
 
@@ -1092,12 +1110,12 @@ flowchart TD
 
 **Đối tượng cache và cấu hình:**
 
-| Đối tượng              | Redis Key Pattern                         | TTL       | Invalidation Strategy                                 |
-| ---------------------- | ----------------------------------------- | --------- | ----------------------------------------------------- |
-| Danh sách concert      | `cache:concerts:list:{page}`              | 10 phút   | Xóa key khi admin tạo/sửa/xóa concert                 |
-| Chi tiết concert       | `cache:concerts:{id}`                     | 10 phút   | Xóa key khi admin sửa concert                         |
-| Sơ đồ sân khấu (SVG)  | `cache:concerts:{id}:stagemap`            | 30 phút   | Xóa khi admin cập nhật sơ đồ sân khấu                 |
-| Số vé còn lại          | `inventory:{concert_id}:{ticket_type_id}` | Không TTL | Luôn chính xác vì Lua Script trừ trực tiếp trên Redis |
+| Đối tượng            | Redis Key Pattern                         | TTL       | Invalidation Strategy                                 |
+| -------------------- | ----------------------------------------- | --------- | ----------------------------------------------------- |
+| Danh sách concert    | `cache:concerts:list:{page}`              | 10 phút   | Xóa key khi admin tạo/sửa/xóa concert                 |
+| Chi tiết concert     | `cache:concerts:{id}`                     | 10 phút   | Xóa key khi admin sửa concert                         |
+| Sơ đồ sân khấu (SVG) | `cache:concerts:{id}:stagemap`            | 30 phút   | Xóa khi admin cập nhật sơ đồ sân khấu                 |
+| Số vé còn lại        | `inventory:{concert_id}:{ticket_type_id}` | Không TTL | Luôn chính xác vì Lua Script trừ trực tiếp trên Redis |
 
 **Lưu ý đặc biệt — Số vé còn lại:** Đây không phải cache thông thường. Giá trị tồn kho trên Redis **là source of truth** cho luồng đặt vé (Lua Script trừ trực tiếp), không phải bản sao của DB. Reconciliation Job đối soát Redis ↔ PostgreSQL mỗi 15 phút để xử lý edge case.
 
@@ -1512,7 +1530,7 @@ sequenceDiagram
 ```
 
 - **Trích xuất văn bản (Text Extraction):** Sử dụng thư viện `pdf-parse` để đọc file PDF buffer và lấy ra phần text thô (raw text). Thực hiện chuẩn hóa text (loại bỏ ký tự đặc biệt thừa, khoảng trắng thừa) trước khi gửi đi để tối ưu token.
-- **Tích hợp Google Gemini AI:** Dùng thư viện `@google/generative-ai`. Sử dụng model `gemini-1.5-flash` (hoặc `gemini-pro`) với system prompt được định nghĩa sẵn để định hình phong cách tóm tắt tiểu sử nghệ sĩ (ngắn gọn, chuyên nghiệp, hấp dẫn cho sự kiện âm nhạc, độ dài dưới 300 từ).
+- **Tích hợp Google Gemini AI:** Dùng thư viện `@google/generative-ai`. Sử dụng model `gemini-3.5-flash` (hoặc `gemini-pro`) với system prompt được định nghĩa sẵn để định hình phong cách tóm tắt tiểu sử nghệ sĩ (ngắn gọn, chuyên nghiệp, hấp dẫn cho sự kiện âm nhạc, độ dài dưới 300 từ).
 - **Cơ chế Retry - Fallback:** Cấu hình RabbitMQ retry logic với exponential backoff để đối phó với lỗi Rate Limit (`429 Too Many Requests`) của Gemini API.
 
 ---

@@ -1,8 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, EntityManager } from 'typeorm';
+import { PDFParse } from 'pdf-parse';
 import { Concert, ConcertStatus } from './entities/concert.entity';
 import { TicketType } from './entities/ticket-type.entity';
+import { ConcertAIBio, ConcertAIBioStatus } from './entities/concert-ai-bio.entity';
 import { CreateConcertDto } from './dto/create-concert.dto';
 import { UpdateConcertDto } from './dto/update-concert.dto';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
@@ -10,6 +12,7 @@ import { UpdateTicketTypeDto } from './dto/update-ticket-type.dto';
 import { ConcertQueryDto } from './dto/concert-query.dto';
 import { RedisService } from '../common/redis/redis.service';
 import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
+import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
 
 @Injectable()
 export class ConcertService {
@@ -20,9 +23,12 @@ export class ConcertService {
     private readonly concertRepository: Repository<Concert>,
     @InjectRepository(TicketType)
     private readonly ticketTypeRepository: Repository<TicketType>,
+    @InjectRepository(ConcertAIBio)
+    private readonly concertAIBioRepository: Repository<ConcertAIBio>,
     private readonly entityManager: EntityManager,
     private readonly redisService: RedisService,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly rabbitMQService: RabbitMQService,
   ) {}
 
   private async invalidateListCache() {
@@ -117,7 +123,7 @@ export class ConcertService {
       'concert.description',
       'concert.location',
       'concert.posterUrl',
-      'concert.summary',
+      'concert.biography',
       'concert.tags',
       'concert.startTime',
       'concert.endTime',
@@ -188,7 +194,7 @@ export class ConcertService {
         description: true,
         location: true,
         posterUrl: true,
-        summary: true,
+        biography: true,
         tags: true,
         startTime: true,
         endTime: true,
@@ -444,5 +450,90 @@ export class ConcertService {
 
     await this.ticketTypeRepository.remove(ticketType);
     await this.invalidateCache(ticketType.concertId);
+  }
+
+  async generateArtistBio(concertId: string, userId: string, fileBuffer: Buffer): Promise<void> {
+    const concert = await this.concertRepository.findOne({ where: { id: concertId } });
+    if (!concert) {
+      throw new NotFoundException(`Not found concert with id: ${concertId}`);
+    }
+
+    let rawText = '';
+    try {
+      const parser = new PDFParse({ data: fileBuffer });
+      const pdfData = await parser.getText();
+      rawText = pdfData.text?.trim() || '';
+      await parser.destroy();
+    } catch (err) {
+      this.logger.error('Failed to parse PDF file:', err);
+      throw new BadRequestException('Failed to parse PDF file');
+    }
+
+    if (!rawText) {
+      throw new BadRequestException('PDF file does not contain readable text');
+    }
+
+    let aiBio = await this.concertAIBioRepository.findOne({ where: { concertId } });
+    if (!aiBio) {
+      aiBio = this.concertAIBioRepository.create({ concertId, rawText });
+    } else {
+      aiBio.rawText = rawText;
+      aiBio.draftBio = null;
+      aiBio.error = null;
+    }
+    aiBio.status = ConcertAIBioStatus.PROCESSING;
+    await this.concertAIBioRepository.save(aiBio);
+
+    await this.rabbitMQService.sendToQueue('ai.generate_bio', {
+      concertId,
+      userId,
+      rawText,
+    });
+  }
+
+  async regenerateArtistBio(concertId: string, userId: string): Promise<void> {
+    const aiBio = await this.concertAIBioRepository.findOne({ where: { concertId } });
+    if (!aiBio || !aiBio.rawText) {
+      throw new BadRequestException('No raw text found. Please upload a PDF file first.');
+    }
+
+    aiBio.status = ConcertAIBioStatus.PROCESSING;
+    aiBio.draftBio = null;
+    aiBio.error = null;
+    await this.concertAIBioRepository.save(aiBio);
+
+    await this.rabbitMQService.sendToQueue('ai.generate_bio', {
+      concertId,
+      userId,
+      rawText: aiBio.rawText,
+    });
+  }
+
+  async getArtistBio(concertId: string): Promise<ConcertAIBio> {
+    const aiBio = await this.concertAIBioRepository.findOne({
+      where: { concertId },
+      select: {
+        concertId: true,
+        draftBio: true,
+        status: true,
+        error: true,
+        updatedAt: true,
+      },
+    });
+    if (!aiBio) {
+      throw new NotFoundException('No AI bio request found for this concert');
+    }
+    return aiBio;
+  }
+
+  async confirmArtistBio(concertId: string, biography: string): Promise<void> {
+    const concert = await this.concertRepository.findOne({ where: { id: concertId } });
+    if (!concert) {
+      throw new NotFoundException(`Not found concert with id: ${concertId}`);
+    }
+
+    concert.biography = biography;
+    await this.concertRepository.save(concert);
+    await this.invalidateCache(concertId);
   }
 }

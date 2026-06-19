@@ -1,6 +1,7 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, BeforeInsert, OneToMany } from 'typeorm';
+import { Entity, PrimaryColumn, Column, CreateDateColumn, BeforeInsert, OneToMany, OneToOne } from 'typeorm';
 import { generateUuidV7 } from '../../auth/utils/uuid';
 import { TicketType } from './ticket-type.entity';
+import { ConcertAIBio } from './concert-ai-bio.entity';
 
 export enum ConcertStatus {
   DRAFT = 'draft',
@@ -28,8 +29,8 @@ export class Concert {
   @Column({ type: 'varchar', length: 255, name: 'poster_public_id', nullable: true })
   posterPublicId: string;
 
-  @Column({ type: 'text', nullable: true })
-  summary: string;
+  @Column({ type: 'text', name: 'biography', nullable: true })
+  biography: string;
 
   @Column({ type: 'varchar', length: 50, array: true, default: '{}' })
   tags: string[];
@@ -58,6 +59,9 @@ export class Concert {
 
   @OneToMany(() => TicketType, (ticketType) => ticketType.concert, { cascade: true })
   ticketTypes: TicketType[];
+
+  @OneToOne(() => ConcertAIBio, (aiBio) => aiBio.concert)
+  aiBio: ConcertAIBio;
 
   @BeforeInsert()
   generateId() {

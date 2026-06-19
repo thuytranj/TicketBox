@@ -4,12 +4,29 @@ import { Repository, EntityManager } from 'typeorm';
 import { ConcertService } from './concert.service';
 import { Concert, ConcertStatus } from './entities/concert.entity';
 import { TicketType, TicketTypeName } from './entities/ticket-type.entity';
+import { ConcertAIBio, ConcertAIBioStatus } from './entities/concert-ai-bio.entity';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { UpdateTicketTypeDto } from './dto/update-ticket-type.dto';
 import { ConcertQueryDto } from './dto/concert-query.dto';
 import { RedisService } from '../common/redis/redis.service';
 import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
+import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+const mockGetText = jest.fn();
+const mockDestroy = jest.fn();
+
+jest.mock('pdf-parse', () => {
+  return {
+    PDFParse: jest.fn().mockImplementation(() => {
+      return {
+        getText: mockGetText,
+        destroy: mockDestroy,
+      };
+    }),
+  };
+});
+
+import { PDFParse } from 'pdf-parse';
 
 describe('ConcertService', () => {
   let service: ConcertService;
@@ -17,6 +34,8 @@ describe('ConcertService', () => {
   let ticketTypeRepository: Repository<TicketType>;
   let entityManager: EntityManager;
   let redisService: RedisService;
+  let concertAIBioRepository: Repository<ConcertAIBio>;
+  let rabbitMQService: RabbitMQService;
 
   const mockConcertRepository = {
     create: jest.fn(),
@@ -55,6 +74,16 @@ describe('ConcertService', () => {
     deleteFile: jest.fn(),
   };
 
+  const mockConcertAIBioRepository = {
+    create: jest.fn(),
+    save: jest.fn(),
+    findOne: jest.fn(),
+  };
+
+  const mockRabbitMQService = {
+    sendToQueue: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -68,6 +97,10 @@ describe('ConcertService', () => {
           useValue: mockTicketTypeRepository,
         },
         {
+          provide: getRepositoryToken(ConcertAIBio),
+          useValue: mockConcertAIBioRepository,
+        },
+        {
           provide: EntityManager,
           useValue: mockEntityManager,
         },
@@ -79,14 +112,20 @@ describe('ConcertService', () => {
           provide: CloudinaryService,
           useValue: mockCloudinaryService,
         },
+        {
+          provide: RabbitMQService,
+          useValue: mockRabbitMQService,
+        },
       ],
     }).compile();
 
     service = module.get<ConcertService>(ConcertService);
     concertRepository = module.get<Repository<Concert>>(getRepositoryToken(Concert));
     ticketTypeRepository = module.get<Repository<TicketType>>(getRepositoryToken(TicketType));
+    concertAIBioRepository = module.get<Repository<ConcertAIBio>>(getRepositoryToken(ConcertAIBio));
     entityManager = module.get<EntityManager>(EntityManager);
     redisService = module.get<RedisService>(RedisService);
+    rabbitMQService = module.get<RabbitMQService>(RabbitMQService);
   });
 
   afterEach(() => {
@@ -482,6 +521,120 @@ describe('ConcertService', () => {
       expect(mockQueryBuilder.skip).toHaveBeenCalledWith(5);
       expect(mockQueryBuilder.take).toHaveBeenCalledWith(5);
       expect(mockQueryBuilder.getManyAndCount).toHaveBeenCalled();
+    });
+  });
+
+  describe('generateArtistBio', () => {
+    it('should throw NotFoundException if concert not found', async () => {
+      mockConcertRepository.findOne.mockResolvedValue(null);
+      await expect(service.generateArtistBio('c-1', 'u-1', Buffer.from('pdf'))).rejects.toThrow(NotFoundException);
+    });
+
+    it('should parse PDF, save/update AI bio and send task to queue', async () => {
+      const concert = { id: 'c-1' };
+      mockConcertRepository.findOne.mockResolvedValue(concert);
+      
+      const parsedText = 'Parsed biography text';
+      mockGetText.mockResolvedValue({ text: parsedText });
+
+      mockConcertAIBioRepository.findOne.mockResolvedValue(null);
+      mockConcertAIBioRepository.create.mockReturnValue({ concertId: 'c-1', rawText: parsedText });
+      mockConcertAIBioRepository.save.mockResolvedValue({ concertId: 'c-1', rawText: parsedText, status: ConcertAIBioStatus.PROCESSING });
+
+      await service.generateArtistBio('c-1', 'u-1', Buffer.from('pdf'));
+
+      expect(PDFParse).toHaveBeenCalledWith({ data: Buffer.from('pdf') });
+      expect(mockGetText).toHaveBeenCalled();
+      expect(mockDestroy).toHaveBeenCalled();
+      expect(mockConcertAIBioRepository.create).toHaveBeenCalledWith({ concertId: 'c-1', rawText: parsedText });
+      expect(mockConcertAIBioRepository.save).toHaveBeenCalled();
+      expect(mockRabbitMQService.sendToQueue).toHaveBeenCalledWith('ai.generate_bio', {
+        concertId: 'c-1',
+        userId: 'u-1',
+        rawText: parsedText,
+      });
+    });
+
+    it('should throw BadRequestException if PDF text parsing returns empty text', async () => {
+      const concert = { id: 'c-1' };
+      mockConcertRepository.findOne.mockResolvedValue(concert);
+      mockGetText.mockResolvedValue({ text: '  ' });
+
+      await expect(service.generateArtistBio('c-1', 'u-1', Buffer.from('pdf'))).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if PDF parsing fails', async () => {
+      const concert = { id: 'c-1' };
+      mockConcertRepository.findOne.mockResolvedValue(concert);
+      mockGetText.mockRejectedValue(new Error('PDF error'));
+
+      await expect(service.generateArtistBio('c-1', 'u-1', Buffer.from('pdf'))).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('regenerateArtistBio', () => {
+    it('should throw BadRequestException if no raw text is found', async () => {
+      mockConcertAIBioRepository.findOne.mockResolvedValue(null);
+      await expect(service.regenerateArtistBio('c-1', 'u-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('should send regeneration request if raw text exists', async () => {
+      const aiBio = {
+        concertId: 'c-1',
+        rawText: 'Existing raw text',
+        status: ConcertAIBioStatus.FAILED,
+        draftBio: 'old draft bio',
+        error: 'old error message',
+      };
+      mockConcertAIBioRepository.findOne.mockResolvedValue(aiBio);
+      mockConcertAIBioRepository.save.mockResolvedValue({ ...aiBio, status: ConcertAIBioStatus.PROCESSING });
+
+      await service.regenerateArtistBio('c-1', 'u-1');
+
+      expect(aiBio.status).toBe(ConcertAIBioStatus.PROCESSING);
+      expect(aiBio.draftBio).toBeNull();
+      expect(aiBio.error).toBeNull();
+      expect(mockConcertAIBioRepository.save).toHaveBeenCalledWith(aiBio);
+      expect(mockRabbitMQService.sendToQueue).toHaveBeenCalledWith('ai.generate_bio', {
+        concertId: 'c-1',
+        userId: 'u-1',
+        rawText: 'Existing raw text',
+      });
+    });
+  });
+
+  describe('getArtistBio', () => {
+    it('should return AI bio record if found', async () => {
+      const aiBio = { concertId: 'c-1', status: ConcertAIBioStatus.COMPLETED, draftBio: 'Bio content' };
+      mockConcertAIBioRepository.findOne.mockResolvedValue(aiBio);
+
+      const result = await service.getArtistBio('c-1');
+      expect(result).toEqual(aiBio);
+    });
+
+    it('should throw NotFoundException if no AI bio record exists', async () => {
+      mockConcertAIBioRepository.findOne.mockResolvedValue(null);
+      await expect(service.getArtistBio('c-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('confirmArtistBio', () => {
+    it('should throw NotFoundException if concert not found', async () => {
+      mockConcertRepository.findOne.mockResolvedValue(null);
+      await expect(service.confirmArtistBio('c-1', 'biography text')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should update biography and invalidate cache', async () => {
+      const concert = { id: 'c-1', biography: null };
+      mockConcertRepository.findOne.mockResolvedValue(concert);
+      mockConcertRepository.save.mockResolvedValue({ ...concert, biography: 'confirmed biography' });
+      mockRedisService.keys.mockResolvedValue([]);
+
+      await service.confirmArtistBio('c-1', 'confirmed biography');
+
+      expect(concert.biography).toBe('confirmed biography');
+      expect(mockConcertRepository.save).toHaveBeenCalledWith(concert);
+      expect(mockRedisService.del).toHaveBeenCalledWith('cache:concerts:c-1');
     });
   });
 });

@@ -73,6 +73,9 @@ Tính năng này cung cấp giải pháp đẩy thông báo trong ứng dụng (
 - **Xem danh sách**: 
   - API `GET /notifications` trả về đúng định dạng JSON có phân trang (chứa mảng `data` và thông tin `meta` như `totalPages`, `totalItems`, `currentPage`).
   - Danh sách chỉ chứa thông báo thuộc về chính user đang đăng nhập và sắp xếp mới nhất lên đầu.
+  - Khi truyền `status = unread`, danh sách trả về chỉ chứa thông báo có `status = 'unread'`.
+  - Khi truyền `status = read`, danh sách trả về chỉ chứa thông báo có `status = 'read'`.
+  - Khi không truyền `status` hoặc truyền giá trị khác, danh sách trả về chứa tất cả thông báo của user (cả `read` và `unread`).
 - **Đánh dấu đã đọc**:
   - Gọi API `PATCH /notifications/:id/read` cập nhật đúng trạng thái `read` và trường `readAt` trên DB, trả về HTTP 200 kèm bản ghi đã cập nhật.
   - Gọi API `PATCH /notifications/read-all` cập nhật thành công tất cả thông báo của user đó sang trạng thái `read` trên DB, trả về kết quả thành công.
