@@ -8,6 +8,7 @@ import { NotificationLog } from './entities/notification-log.entity';
 import { NotificationGateway } from './notification.gateway';
 import { NotificationService } from './notification.service';
 import { NotificationController } from './notification.controller';
+import { NotificationCleanupService } from './notification-cleanup.service';
 
 @Module({
   imports: [
@@ -16,7 +17,20 @@ import { NotificationController } from './notification.controller';
     AuthModule,
   ],
   controllers: [NotificationController],
-  providers: [EmailService, NotificationConsumer, NotificationGateway, NotificationService],
-  exports: [EmailService, TypeOrmModule, NotificationGateway, NotificationService],
+  providers: [
+    EmailService,
+    NotificationConsumer,
+    NotificationGateway,
+    NotificationService,
+    NotificationCleanupService,
+  ],
+  exports: [
+    EmailService,
+    TypeOrmModule,
+    NotificationGateway,
+    NotificationService,
+    NotificationCleanupService,
+  ],
 })
 export class NotificationModule {}
+

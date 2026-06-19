@@ -31,8 +31,11 @@
 
 ## 6. Tự động dọn dẹp dữ liệu thông báo
 
-- [ ] 6.1 Triển khai Cron Job (`@Cron`) chạy định kỳ lúc 2:00 AM hàng ngày để xóa các thông báo `in_app` đã đọc quá 30 ngày (`status = 'read'` và `read_at < thirtyDaysAgo`) sử dụng cơ chế Batching (chia nhỏ thành các lô 5,000 bản ghi, giãn cách thời gian để tránh lock bảng).
-- [ ] 6.2 Tạo database migration để thêm Partial Index trên trường `read_at` với điều kiện `status = 'read'`.
-- [ ] 6.3 Tích hợp cơ chế khóa phân tán (Redis Lock) để đảm bảo an toàn khi chạy đa instance.
+- [x] 6.1 Triển khai Cron Job (`@Cron`) chạy định kỳ lúc 2:00 AM hàng ngày để xóa các thông báo `in_app` đã đọc quá 30 ngày (`status = 'read'` và `read_at < thirtyDaysAgo`) sử dụng cơ chế Batching (chia nhỏ thành các lô 5,000 bản ghi, giãn cách thời gian để tránh lock bảng).
+- [x] 6.2 Tạo database migration để thêm Partial Index trên trường `read_at` với điều kiện `status = 'read'`.
+- [x] 6.3 Tích hợp cơ chế khóa phân tán (Redis Lock) để đảm bảo an toàn khi chạy đa instance.
+
+
+
 
 

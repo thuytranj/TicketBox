@@ -25,8 +25,18 @@ export class RedisService extends Redis implements OnModuleDestroy {
     });
   }
 
+  async acquireLock(key: string, ttlMs: number): Promise<boolean> {
+    const result = await this.set(key, 'locked', 'PX', ttlMs, 'NX');
+    return result === 'OK';
+  }
+
+  async releaseLock(key: string): Promise<void> {
+    await this.del(key);
+  }
+
   onModuleDestroy() {
     this.logger.log('Disconnecting from Redis...');
     this.disconnect();
   }
 }
+

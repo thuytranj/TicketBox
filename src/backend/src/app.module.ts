@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import * as path from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -22,6 +23,7 @@ import { AIModule } from './ai/ai.module';
       ],
     }),
     TypeOrmModule.forRoot(ormConfig),
+    ScheduleModule.forRoot(),
     RedisModule,
     RabbitMQModule,
     AuthModule,
@@ -32,4 +34,5 @@ import { AIModule } from './ai/ai.module';
   controllers: [AppController],
   providers: [AppService],
 })
+
 export class AppModule {}
