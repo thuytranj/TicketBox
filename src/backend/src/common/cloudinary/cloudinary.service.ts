@@ -34,7 +34,9 @@ export class CloudinaryService {
       cloudinary.uploader.destroy(publicId, (error, result) => {
         if (error) {
           return reject(
-            new BadRequestException(`Cloudinary delete failed: ${error.message}`),
+            new BadRequestException(
+              `Cloudinary delete failed: ${error.message}`,
+            ),
           );
         }
         resolve(result);

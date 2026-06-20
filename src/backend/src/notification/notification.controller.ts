@@ -25,9 +25,13 @@ export class NotificationController {
   ) {
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
-    return this.notificationService.getUserNotifications(req.user.userId, pageNum, limitNum, status);
+    return this.notificationService.getUserNotifications(
+      req.user.userId,
+      pageNum,
+      limitNum,
+      status,
+    );
   }
-
 
   @Patch('read-all')
   async markAllAsRead(@Request() req) {
@@ -36,10 +40,7 @@ export class NotificationController {
   }
 
   @Patch(':id/read')
-  async markAsRead(
-    @Request() req,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
+  async markAsRead(@Request() req, @Param('id', ParseIntPipe) id: number) {
     return this.notificationService.markAsRead(req.user.userId, id);
   }
 }

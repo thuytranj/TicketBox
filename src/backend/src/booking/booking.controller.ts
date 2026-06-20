@@ -18,7 +18,7 @@ import { BookingService } from './booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor';
 
-@Controller('api/v1/bookings')
+@Controller('bookings')
 @UseGuards(AuthGuard('jwt'))
 export class BookingController {
   constructor(private readonly bookingService: BookingService) {}

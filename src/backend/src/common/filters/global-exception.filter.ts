@@ -1,4 +1,10 @@
-import { ExceptionFilter, Catch, ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  ExceptionFilter,
+  Catch,
+  ArgumentsHost,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { Request, Response } from 'express';
 
 @Catch()
@@ -20,7 +26,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         message = resBody;
       } else if (typeof resBody === 'object' && resBody !== null) {
         const body = resBody as any;
-        
+
         if (Array.isArray(body.message)) {
           errors = body.message;
           message = 'Validation failed';

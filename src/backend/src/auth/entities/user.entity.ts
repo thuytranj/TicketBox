@@ -1,4 +1,10 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, BeforeInsert } from 'typeorm';
+import {
+  Entity,
+  PrimaryColumn,
+  Column,
+  CreateDateColumn,
+  BeforeInsert,
+} from 'typeorm';
 import { generateUuidV7 } from '../utils/uuid';
 
 export enum UserRole {

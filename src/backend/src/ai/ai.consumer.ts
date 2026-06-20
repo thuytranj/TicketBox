@@ -3,10 +3,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
 import { AIService } from './ai.service';
-import { ConcertAIBio, ConcertAIBioStatus } from '../concert/entities/concert-ai-bio.entity';
+import {
+  ConcertAIBio,
+  ConcertAIBioStatus,
+} from '../concert/entities/concert-ai-bio.entity';
 import { Concert } from '../concert/entities/concert.entity';
 import { NotificationService } from '../notification/notification.service';
-import { NotificationType, NotificationChannel, NotificationStatus } from '../notification/entities/notification-log.entity';
+import {
+  NotificationType,
+  NotificationChannel,
+  NotificationStatus,
+} from '../notification/entities/notification-log.entity';
 
 @Injectable()
 export class AIConsumer implements OnModuleInit {
@@ -23,6 +30,16 @@ export class AIConsumer implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    const role = process.env.INSTANCE_ROLE ?? 'all';
+    const isEnabled = ['all', 'worker', 'worker:background'].includes(role);
+
+    if (!isEnabled) {
+      this.logger.log(
+        `Skipped starting AI bio queue consumer due to INSTANCE_ROLE: ${role}`,
+      );
+      return;
+    }
+
     this.startConsuming().catch((err) => {
       this.logger.error('Failed to start consuming AI bio queue:', err);
     });
@@ -46,10 +63,14 @@ export class AIConsumer implements OnModuleInit {
       }
 
       const { concertId, userId, rawText } = content;
-      this.logger.log(`Received task to generate AI bio for concert: ${concertId}`);
+      this.logger.log(
+        `Received task to generate AI bio for concert: ${concertId}`,
+      );
 
       try {
-        const concert = await this.concertRepository.findOne({ where: { id: concertId } });
+        const concert = await this.concertRepository.findOne({
+          where: { id: concertId },
+        });
         if (!concert) {
           this.logger.error(`Concert with ID ${concertId} not found`);
           channel.ack(msg);
@@ -69,7 +90,9 @@ export class AIConsumer implements OnModuleInit {
           } catch (err) {
             retries++;
             errorMsg = err.message || 'Unknown error';
-            this.logger.warn(`Gemini API call failed (attempt ${retries}/${maxRetries}): ${errorMsg}`);
+            this.logger.warn(
+              `Gemini API call failed (attempt ${retries}/${maxRetries}): ${errorMsg}`,
+            );
             if (retries < maxRetries) {
               const delay = Math.pow(2, retries) * 1000;
               await new Promise((resolve) => setTimeout(resolve, delay));
@@ -77,9 +100,13 @@ export class AIConsumer implements OnModuleInit {
           }
         }
 
-        const aiBio = await this.concertAIBioRepository.findOne({ where: { concertId } });
+        const aiBio = await this.concertAIBioRepository.findOne({
+          where: { concertId },
+        });
         if (!aiBio) {
-          this.logger.error(`ConcertAIBio record for concert ID ${concertId} not found`);
+          this.logger.error(
+            `ConcertAIBio record for concert ID ${concertId} not found`,
+          );
           channel.ack(msg);
           return;
         }
@@ -119,7 +146,10 @@ export class AIConsumer implements OnModuleInit {
 
         channel.ack(msg);
       } catch (error) {
-        this.logger.error('Error processing AI bio message from RabbitMQ:', error);
+        this.logger.error(
+          'Error processing AI bio message from RabbitMQ:',
+          error,
+        );
         // nack with requeue=false to avoid infinite loop on bad messages
         channel.nack(msg, false, false);
       }

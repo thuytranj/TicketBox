@@ -24,6 +24,16 @@ export class BookingDlxConsumer implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    const role = process.env.INSTANCE_ROLE ?? 'all';
+    const isEnabled = ['all', 'worker', 'worker:booking'].includes(role);
+
+    if (!isEnabled) {
+      this.logger.log(
+        `Skipped starting DLX booking consumer due to INSTANCE_ROLE: ${role}`,
+      );
+      return;
+    }
+
     this.startConsuming().catch((err) => {
       this.logger.error('Failed to start DLX booking consumer:', err);
     });
@@ -66,7 +76,9 @@ export class BookingDlxConsumer implements OnModuleInit {
           }
 
           // Mark order as expired in DB
-          await this.orderRepo.update(order.id, { status: OrderStatus.EXPIRED });
+          await this.orderRepo.update(order.id, {
+            status: OrderStatus.EXPIRED,
+          });
           this.logger.log(`DLX: Order ${order.id} marked as EXPIRED`);
 
           // Release inventory on Redis

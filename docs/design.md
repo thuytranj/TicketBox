@@ -55,21 +55,25 @@
 | Dễ chuyển sang Microservices sau | —                                                                  | ✅ Module boundary rõ ràng, dễ tách           | ❌ Phải refactor toàn bộ            |
 | Transaction xuyên module         | ❌ Cần Saga pattern phức tạp                                       | ✅ Dùng DB transaction thông thường           | ✅ Dùng DB transaction thông thường |
 
-### Chốt giải pháp: Phương án B — Modular Monolith (NestJS)
+### Chốt giải pháp: Phương án B — Multi-instance Modular Monolith (NestJS)
 
 **Lý do:**
 
 - Đồ án do team nhỏ thực hiện, Microservices gây quá tải về hạ tầng và vận hành (service mesh, distributed tracing, Saga pattern). Chi phí không xứng đáng với lợi ích.
-- Modular Monolith giữ được **ranh giới module rõ ràng** (mỗi NestJS Module là một domain context) giống Microservices về mặt kiến trúc logic, nhưng triển khai đơn giản chỉ cần 1 container.
-- Các tác vụ nặng (booking, notification) đã được tách ra xử lý bất đồng bộ qua RabbitMQ Worker, nên không bị nghẽn cổ chai tại API thread.
-- Nếu sau này cần scale, có thể tách module thành service độc lập mà không phải viết lại — đây chính là ưu điểm của Modular Monolith so với Monolith truyền thống.
+- Modular Monolith giữ được **ranh giới module rõ ràng** (mỗi NestJS Module là một domain context) giống Microservices về mặt kiến trúc logic.
+- **Kiến trúc Multi-instance**: Toàn bộ hệ thống chạy chung một codebase duy nhất, nhưng khi triển khai (Docker Compose / Production) sẽ được chia tách thành các thực thể chuyên biệt thông qua cấu hình biến môi trường `INSTANCE_ROLE` (`api`, `worker:booking`, `worker:background`, `worker`, `all`). Điều này giúp cô lập hoàn toàn tải xử lý và đảm bảo hiệu năng tối đa cho luồng đặt vé chính (Critical Booking Path) mà không tăng độ phức tạp trong quản lý mã nguồn.
+- Các tác vụ nặng (booking, notification, AI) đã được tách ra xử lý bất đồng bộ qua các cụm RabbitMQ Worker chuyên biệt, tránh việc nghẽn cổ chai tại tiến trình phục vụ HTTP API.
+- Nếu sau này cần scale, có thể tách module thành service độc lập hoàn toàn mà không phải viết lại mã nguồn từ đầu.
 
 **Kiến trúc bao gồm:**
 
-- **1 NestJS Application** chứa các module: Auth, Concert, Booking, Payment, Check-in, Guest List, AI Bio, Notification.
+- **NestJS Application** được đóng gói và cấu hình chạy theo các vai trò:
+  - **API Instance** (`INSTANCE_ROLE=api`): Chuyên xử lý các HTTP API request đồng bộ, vô hiệu hóa các background consumers và crons. Có thể scale ngang thành nhiều bản sao ($N$ instances) phía sau Nginx Load Balancer để chia sẻ tải.
+  - **Booking Worker** (`INSTANCE_ROLE=worker:booking`): Chỉ tiêu thụ hàng đợi `booking_queue`, `booking_dlx_queue` và chạy cron hủy đơn hàng quá hạn nhằm bảo vệ luồng xác nhận đơn hàng trọng yếu.
+  - **Background Worker** (`INSTANCE_ROLE=worker:background`): Tiêu thụ hàng đợi AI (`ai.generate_bio`), email/sms (`notification_queue`) và chạy cron dọn dẹp định kỳ.
 - **PostgreSQL** làm persistent storage chính.
 - **Redis** làm cache layer + atomic inventory operations + rate limiting.
-- **RabbitMQ** làm message broker cho xử lý bất đồng bộ (booking queue, notification exchange).
+- **RabbitMQ** làm message broker cho xử lý bất đồng bộ.
 - **Mailtrap SMTP** (mock) cho gửi email trong môi trường Dev.
 
 ---
@@ -121,8 +125,12 @@ flowchart TD
         %% Gateway
         Nginx["Nginx<br/>(Reverse Proxy / Load Balancer)"]:::gateway
 
-        %% API App
-        NestJS["NestJS API Application<br/>(Modular Monolith)"]:::app
+        %% API Instances
+        NestJSAPI["NestJS API Instance<br/>(HTTP Server)"]:::app
+
+        %% Worker Instances
+        BookingWorker["Booking Worker<br/>(Queue Consumer - Cron)"]:::app
+        BackgroundWorker["Background Worker<br/>(AI - Notification)"]:::app
 
         %% Databases - Broker
         Postgres[("PostgreSQL Database<br/>(Primary Storage — UUID v7)")]:::db
@@ -145,19 +153,30 @@ flowchart TD
     %% Kết nối từ Client tới Gateway/Backend
     WebApp -->|"Gửi API requests (HTTPS)"| Nginx
     MobileApp -->|"Gửi API requests - Đồng bộ (HTTPS)"| Nginx
-    Nginx -->|"Chuyển tiếp requests"| NestJS
+    Nginx -->|"Chuyển tiếp requests (Round-Robin)"| NestJSAPI
 
-    %% Kết nối từ Backend tới các Container dữ liệu
-    NestJS -->|"Đọc/Ghi dữ liệu (TypeORM)"| Postgres
-    NestJS -->|"Đọc/Ghi Cache, Lua Script, Rate Limit"| Redis
-    NestJS -->|"Publish / Subscribe message tasks"| RabbitMQ
+    %% Kết nối từ API Instance tới các Container dữ liệu - hàng đợi
+    NestJSAPI -->|"Đọc/Ghi dữ liệu (TypeORM)"| Postgres
+    NestJSAPI -->|"Đọc/Ghi Cache, Lua Script, Rate Limit"| Redis
+    NestJSAPI -->|"Publish message tasks"| RabbitMQ
 
-    %% Kết nối tới các Hệ thống bên ngoài
-    NestJS -->|"Tạo giao dịch - Nhận webhook"| VNPAY
-    NestJS -->|"Tạo giao dịch - Nhận webhook"| MoMo
-    NestJS -->|"Gửi thông tin nghệ sĩ để tóm tắt"| GeminiAPI
-    NestJS -->|"Gửi email xác nhận / nhắc nhở"| SMTP
-    NestJS -->|"Upload ảnh poster, Nhận CDN URL"| Cloudinary
+    %% Kết nối từ Booking Worker tới các dữ liệu - hàng đợi
+    BookingWorker -->|"Đọc/Ghi dữ liệu (TypeORM)"| Postgres
+    BookingWorker -->|"Hồi kho / Đọc ghi cache"| Redis
+    BookingWorker -->|"Consume booking queues"| RabbitMQ
+
+    %% Kết nối từ Background Worker tới các dữ liệu - hàng đợi
+    BackgroundWorker -->|"Đọc/Ghi dữ liệu (TypeORM)"| Postgres
+    BackgroundWorker -->|"Consume AI/Notification queues"| RabbitMQ
+
+    %% Kết nối tới các Hệ thống bên ngoài từ API
+    NestJSAPI -->|"Tạo giao dịch - Nhận webhook"| VNPAY
+    NestJSAPI -->|"Tạo giao dịch - Nhận webhook"| MoMo
+    NestJSAPI -->|"Upload ảnh poster, Nhận CDN URL"| Cloudinary
+
+    %% Kết nối tới các Hệ thống bên ngoài từ Background Worker
+    BackgroundWorker -->|"Gửi văn bản cần tóm tắt"| GeminiAPI
+    BackgroundWorker -->|"Gửi email xác nhận / nhắc nhở"| SMTP
     SMTP -.->|"Gửi email thông báo tới"| KhanGia
 ```
 
@@ -1336,6 +1355,7 @@ redis.call('DECRBY', KEYS[2], ARGV[1])  -- Giảm user count
 - NestJS `@Cron('*/1 * * * *')` quét mỗi phút.
 - Query: `SELECT * FROM bookings WHERE status = 'pending' AND expires_at < NOW()`
 - Với mỗi booking hết hạn: cập nhật `status = 'expired'`, chạy Lua Script hồi kho trên Redis.
+- **Bảo vệ trong môi trường phân tán (Distributed Lock)**: Tác vụ cronjob này được bảo vệ bằng khóa phân tán Redis `lock:order-expiration` với TTL 60s, đảm bảo chỉ có tối đa một thực thể Booking Worker chạy xử lý tại một thời điểm, tránh race condition cập nhật DB trùng lặp hoặc hồi kho Redis sai.
 
 ---
 
@@ -1504,6 +1524,17 @@ sequenceDiagram
 
 Dùng **BIGSERIAL** (8 bytes) thay vì UUID v7 (16 bytes) cho bảng log — tiết kiệm 50% dung lượng PK trong bảng có volume ghi cao. Các FK liên kết vẫn dùng UUID v7 để đồng bộ schema chính.
 
+### Đồng bộ WebSockets trong cụm API (WebSocket Cluster Synchronization)
+
+Để hỗ trợ đẩy thông báo in-app thời gian thực khi chạy nhiều API instances phân tán sau Nginx, hệ thống cấu hình `RedisIoAdapter` kế thừa từ `IoAdapter` của NestJS.
+- **Thư viện sử dụng**: `@socket.io/redis-adapter` kết hợp driver kết nối Redis client (`ioredis`).
+- **Cơ chế Room-based Routing**: Thay vì quản lý kết nối thủ công bằng Map trong bộ nhớ RAM (gây cô lập và bỏ sót kết nối giữa các instance), khi Client kết nối thành công qua WebSocket Gateway, Socket.io sẽ tự động tham gia (join) vào phòng (room) định danh theo User ID: `user:${userId}`.
+- **Hỗ trợ Standalone Worker (Redis Emitter)**: Do các tiến trình Worker (Booking Worker, Background Worker) chạy dưới dạng standalone NestJS context và không khởi tạo WebSocket server, hệ thống tích hợp thêm thư viện `@socket.io/redis-emitter`. Thư viện này cho phép Worker xuất bản (publish) sự kiện real-time trực tiếp lên kênh Redis của cụm Socket.io Adapter.
+- **Luồng phát sự kiện**:
+  * **Tại API Instance**: Gọi `this.server.to("user:" + userId).emit(...)` để đẩy trực tiếp qua adapter.
+  * **Tại Worker Instance**: Gọi `this.redisEmitter.to("user:" + userId).emit(...)` để bắn chéo sang cụm API qua Redis.
+  * Hệ thống Redis Adapter trên các API instances sẽ tự động nhận diện và chỉ truyền tải xuống client tại máy đang giữ kết nối active của user đó, loại bỏ nguy cơ trùng lặp thông điệp.
+
 ---
 
 ## Nhập danh sách khách mời VIP từ CSV (VIP Guest List Import)
@@ -1617,9 +1648,9 @@ sequenceDiagram
         W->>DB: Tạo bản ghi thất bại trong notification_logs (type="ai_bio_failed")
     end
 
-    Note over Admin, API: Quy trình duyệt của Admin (Draft & Approve)
+    Note over Admin, API: Quy trình duyệt của Admin (Draft - Approve)
     Admin->>API: GET /concerts/:id/artist-bio
-    API-->>Admin: Trả về trạng thái & draft_bio
+    API-->>Admin: Trả về trạng thái - draft_bio
 
     Admin->>API: PUT /concerts/:id/artist-bio/confirm (payload: { biography })
     API->>DB: Cập nhật biography chính thức vào bảng concerts
@@ -1708,3 +1739,5 @@ sequenceDiagram
 | R6  | **Soát vé thất bại khi mất kết nối mạng**    | Nhân viên soát vé không thể kiểm tra vé real-time tại SVĐ do nghẽn sóng.                                      | Dữ liệu soát vé được tải sẵn xuống SQLite nội bộ trên Mobile App. Nhân viên soát vé quét và kiểm tra chữ ký HMAC-SHA256 ngoại tuyến. Khi có mạng trở lại, Mobile App sẽ gửi log check-in ngoại tuyến thông qua API `/checkin/sync` để ghi nhận và đối soát trùng lặp ở database chính. |
 | R7  | **Tệp CSV VIP bị lỗi hoặc chứa dữ liệu bẩn** | File CSV lớn của đối tác có thể chứa dữ liệu sai định dạng hoặc trùng lặp, gây crash luồng import.            | Sử dụng Background Job để xử lý bất đồng bộ từng dòng (row-by-row validation). Ghi nhận log dòng lỗi riêng biệt để admin sửa đổi thủ công sau, đảm bảo các dòng hợp lệ vẫn được nhập thành công.                                                                                       |
 | R8  | **Gemini AI API bị timeout hoặc rate limit** | Khi admin tạo bio nghệ sĩ, dịch vụ bên thứ ba bị gián đoạn làm treo hoặc lỗi trang admin.                     | Đẩy tác vụ gọi AI vào RabbitMQ xử lý bất đồng bộ. Áp dụng cơ chế Circuit Breaker và retry với exponential backoff. Cập nhật trạng thái bio vào DB để admin theo dõi quá trình sinh bio ở giao diện.                                                                                    |
+| R9  | **Trùng lặp chạy Cronjob khi chạy đa instances (Cronjob Concurrency)** | Nhiều container worker chạy song song cùng kích hoạt các tác vụ định kỳ quét đơn hàng hay dọn dẹp, gây race condition và trùng lặp bản ghi. | Áp dụng khóa phân tán **Redis Distributed Lock** trước khi chạy. Chỉ thực thể giành được khóa mới thực thi xử lý thực tế, các thực thể khác tự động bỏ qua.                                                                                               |
+| R10 | **Thất lạc thông báo WebSocket khi Client kết nối phân tán** | Client kết nối đến các instance API khác nhau. Khi Worker hoặc một instance khác tạo và gửi thông báo, tin nhắn không truyền được chéo máy cục bộ do lệch bộ nhớ RAM giữa các container. | Tích hợp **Socket.io Redis Adapter** kết hợp **Socket.io Redis Emitter** cho các standalone background workers. Sử dụng cơ chế Room-based routing (mỗi client join room `user:${userId}`) thay vì kiểm tra Map in-memory cục bộ. Khi Worker phát thông báo qua Emitter hoặc API phát thông báo qua Server, sự kiện sẽ được đẩy vào Redis channel chung. Cụm API instances sẽ tự động điều phối để chỉ instance đang kết nối trực tiếp với client đó thực hiện gửi tin. |

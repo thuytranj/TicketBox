@@ -12,7 +12,9 @@ export class AIService {
     if (apiKey) {
       this.genAI = new GoogleGenerativeAI(apiKey);
     } else {
-      this.logger.error('GEMINI_API_KEY is not defined in environment variables');
+      this.logger.error(
+        'GEMINI_API_KEY is not defined in environment variables',
+      );
     }
   }
 
@@ -22,8 +24,12 @@ export class AIService {
     }
 
     try {
-      this.logger.log('Calling Google Gemini API to generate biography summary...');
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
+      this.logger.log(
+        'Calling Google Gemini API to generate biography summary...',
+      );
+      const model = this.genAI.getGenerativeModel({
+        model: 'gemini-3.5-flash',
+      });
 
       const prompt = `Summarize the following artist biography in a concise, professional, and appealing manner suitable for a music event. 
 
@@ -42,10 +48,15 @@ ${rawText}`;
         throw new Error('Gemini API returned an empty response');
       }
 
-      this.logger.log('Successfully generated biography summary from Gemini API');
+      this.logger.log(
+        'Successfully generated biography summary from Gemini API',
+      );
       return text;
     } catch (error) {
-      this.logger.error('Error generating biography summary from Gemini API:', error);
+      this.logger.error(
+        'Error generating biography summary from Gemini API:',
+        error,
+      );
       throw error;
     }
   }

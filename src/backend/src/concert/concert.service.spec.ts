@@ -4,7 +4,10 @@ import { Repository, EntityManager } from 'typeorm';
 import { ConcertService } from './concert.service';
 import { Concert, ConcertStatus } from './entities/concert.entity';
 import { TicketType, TicketTypeName } from './entities/ticket-type.entity';
-import { ConcertAIBio, ConcertAIBioStatus } from './entities/concert-ai-bio.entity';
+import {
+  ConcertAIBio,
+  ConcertAIBioStatus,
+} from './entities/concert-ai-bio.entity';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { UpdateTicketTypeDto } from './dto/update-ticket-type.dto';
 import { ConcertQueryDto } from './dto/concert-query.dto';
@@ -120,9 +123,15 @@ describe('ConcertService', () => {
     }).compile();
 
     service = module.get<ConcertService>(ConcertService);
-    concertRepository = module.get<Repository<Concert>>(getRepositoryToken(Concert));
-    ticketTypeRepository = module.get<Repository<TicketType>>(getRepositoryToken(TicketType));
-    concertAIBioRepository = module.get<Repository<ConcertAIBio>>(getRepositoryToken(ConcertAIBio));
+    concertRepository = module.get<Repository<Concert>>(
+      getRepositoryToken(Concert),
+    );
+    ticketTypeRepository = module.get<Repository<TicketType>>(
+      getRepositoryToken(TicketType),
+    );
+    concertAIBioRepository = module.get<Repository<ConcertAIBio>>(
+      getRepositoryToken(ConcertAIBio),
+    );
     entityManager = module.get<EntityManager>(EntityManager);
     redisService = module.get<RedisService>(RedisService);
     rabbitMQService = module.get<RabbitMQService>(RabbitMQService);
@@ -140,22 +149,29 @@ describe('ConcertService', () => {
         location: 'Hanoi',
         startTime: '2026-07-01T19:00:00Z',
         endTime: '2026-07-01T22:00:00Z',
-        ticketTypes: [
-          { name: 'VIP', price: 500000, totalQuantity: 100 },
-        ],
+        ticketTypes: [{ name: 'VIP', price: 500000, totalQuantity: 100 }],
       };
 
       mockConcertRepository.create.mockReturnValue(dto);
-      mockConcertRepository.save.mockResolvedValue({ id: 'concert-id', ...dto });
+      mockConcertRepository.save.mockResolvedValue({
+        id: 'concert-id',
+        ...dto,
+      });
 
-      mockRedisService.keys.mockResolvedValue(['cache:concerts:list:default:page:1:limit:10']);
+      mockRedisService.keys.mockResolvedValue([
+        'cache:concerts:list:default:page:1:limit:10',
+      ]);
 
       const result = await service.create(dto as any);
       expect(result).toBeDefined();
       expect(result.id).toBe('concert-id');
       expect(concertRepository.save).toHaveBeenCalled();
-      expect(redisService.keys).toHaveBeenCalledWith('cache:concerts:list:default:*');
-      expect(redisService.del).toHaveBeenCalledWith('cache:concerts:list:default:page:1:limit:10');
+      expect(redisService.keys).toHaveBeenCalledWith(
+        'cache:concerts:list:default:*',
+      );
+      expect(redisService.del).toHaveBeenCalledWith(
+        'cache:concerts:list:default:page:1:limit:10',
+      );
     });
 
     it('should throw BadRequestException if endTime <= startTime', async () => {
@@ -165,7 +181,9 @@ describe('ConcertService', () => {
         endTime: '2026-07-01T19:00:00Z',
       };
 
-      await expect(service.create(dto as any)).rejects.toThrow(BadRequestException);
+      await expect(service.create(dto as any)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw BadRequestException if duplicate ticket type names provided', async () => {
@@ -179,7 +197,9 @@ describe('ConcertService', () => {
         ],
       };
 
-      await expect(service.create(dto as any)).rejects.toThrow(BadRequestException);
+      await expect(service.create(dto as any)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw BadRequestException if saleEndTime <= saleStartTime', async () => {
@@ -198,7 +218,9 @@ describe('ConcertService', () => {
         ],
       };
 
-      await expect(service.create(dto as any)).rejects.toThrow(BadRequestException);
+      await expect(service.create(dto as any)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -220,14 +242,20 @@ describe('ConcertService', () => {
       const result = await service.findOne('c-1');
       expect(result).toEqual(dbVal);
       expect(concertRepository.findOne).toHaveBeenCalled();
-      expect(redisService.setex).toHaveBeenCalledWith('cache:concerts:c-1', 600, expect.any(String));
+      expect(redisService.setex).toHaveBeenCalledWith(
+        'cache:concerts:c-1',
+        600,
+        expect.any(String),
+      );
     });
 
     it('should throw NotFoundException if not in DB', async () => {
       mockRedisService.get.mockResolvedValue(null);
       mockConcertRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.findOne('invalid-id')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('invalid-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -242,12 +270,19 @@ describe('ConcertService', () => {
 
     it('should query DB and save to Redis on Cache Miss', async () => {
       mockRedisService.get.mockResolvedValue(null);
-      mockConcertRepository.findOne.mockResolvedValue({ id: 'c-1', svgStageMap: '<svg>Stage</svg>' });
+      mockConcertRepository.findOne.mockResolvedValue({
+        id: 'c-1',
+        svgStageMap: '<svg>Stage</svg>',
+      });
 
       const result = await service.findStageMap('c-1');
       expect(result).toBe('<svg>Stage</svg>');
       expect(concertRepository.findOne).toHaveBeenCalled();
-      expect(redisService.setex).toHaveBeenCalledWith('cache:concerts:c-1:stagemap', 1800, '<svg>Stage</svg>');
+      expect(redisService.setex).toHaveBeenCalledWith(
+        'cache:concerts:c-1:stagemap',
+        1800,
+        '<svg>Stage</svg>',
+      );
     });
   });
 
@@ -256,14 +291,18 @@ describe('ConcertService', () => {
       const concert = { id: 'c-1' };
       mockConcertRepository.findOne.mockResolvedValue(concert);
 
-      const cachedTicketTypes = [{ id: 'tt-1', name: 'VIP', price: 100, availableQuantity: 50 }];
+      const cachedTicketTypes = [
+        { id: 'tt-1', name: 'VIP', price: 100, availableQuantity: 50 },
+      ];
       mockRedisService.get.mockResolvedValue(JSON.stringify(cachedTicketTypes));
       mockRedisService.mget.mockResolvedValue(['42']);
 
       const result = await service.findTicketTypes('c-1');
       expect(result).toBeDefined();
       expect(result[0].availableQuantity).toBe(42);
-      expect(redisService.get).toHaveBeenCalledWith('cache:concerts:c-1:ticket-types');
+      expect(redisService.get).toHaveBeenCalledWith(
+        'cache:concerts:c-1:ticket-types',
+      );
       expect(redisService.mget).toHaveBeenCalledWith('inventory:c-1:tt-1');
     });
 
@@ -272,59 +311,89 @@ describe('ConcertService', () => {
       mockConcertRepository.findOne.mockResolvedValue(concert);
 
       mockRedisService.get.mockResolvedValue(null);
-      const dbTicketTypes = [{ id: 'tt-1', name: 'VIP', price: 100, availableQuantity: 50 }];
+      const dbTicketTypes = [
+        { id: 'tt-1', name: 'VIP', price: 100, availableQuantity: 50 },
+      ];
       mockTicketTypeRepository.find.mockResolvedValue(dbTicketTypes);
       mockRedisService.mget.mockResolvedValue(['10']);
 
       const result = await service.findTicketTypes('c-1');
       expect(result).toBeDefined();
       expect(result[0].availableQuantity).toBe(10);
-      expect(redisService.setex).toHaveBeenCalledWith('cache:concerts:c-1:ticket-types', 600, expect.any(String));
+      expect(redisService.setex).toHaveBeenCalledWith(
+        'cache:concerts:c-1:ticket-types',
+        600,
+        expect.any(String),
+      );
       expect(redisService.mget).toHaveBeenCalledWith('inventory:c-1:tt-1');
     });
 
     it('should throw NotFoundException if concert does not exist', async () => {
       mockConcertRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.findTicketTypes('invalid-id')).rejects.toThrow(NotFoundException);
+      await expect(service.findTicketTypes('invalid-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
   describe('update', () => {
     it('should update concert details and invalidate cache', async () => {
-      const concert = { id: 'c-1', title: 'Old Title', startTime: new Date('2026-07-01T19:00:00Z'), endTime: new Date('2026-07-01T22:00:00Z') };
+      const concert = {
+        id: 'c-1',
+        title: 'Old Title',
+        startTime: new Date('2026-07-01T19:00:00Z'),
+        endTime: new Date('2026-07-01T22:00:00Z'),
+      };
       mockConcertRepository.findOne.mockResolvedValue(concert);
-      mockConcertRepository.save.mockResolvedValue({ ...concert, title: 'New Title' });
+      mockConcertRepository.save.mockResolvedValue({
+        ...concert,
+        title: 'New Title',
+      });
 
-      mockRedisService.keys.mockResolvedValue(['cache:concerts:list:default:page:1:limit:10']);
+      mockRedisService.keys.mockResolvedValue([
+        'cache:concerts:list:default:page:1:limit:10',
+      ]);
 
       const result = await service.update('c-1', { title: 'New Title' });
       expect(result.title).toBe('New Title');
       expect(redisService.del).toHaveBeenCalledWith('cache:concerts:c-1');
-      expect(redisService.del).toHaveBeenCalledWith('cache:concerts:c-1:stagemap');
-      expect(redisService.keys).toHaveBeenCalledWith('cache:concerts:list:default:*');
-      expect(redisService.del).toHaveBeenCalledWith('cache:concerts:list:default:page:1:limit:10');
+      expect(redisService.del).toHaveBeenCalledWith(
+        'cache:concerts:c-1:stagemap',
+      );
+      expect(redisService.keys).toHaveBeenCalledWith(
+        'cache:concerts:list:default:*',
+      );
+      expect(redisService.del).toHaveBeenCalledWith(
+        'cache:concerts:list:default:page:1:limit:10',
+      );
     });
 
     it('should delete old poster from Cloudinary if posterUrl changes', async () => {
-      const concert = { 
-        id: 'c-1', 
-        title: 'Old Title', 
+      const concert = {
+        id: 'c-1',
+        title: 'Old Title',
         posterUrl: 'https://cloudinary.com/old.png',
         posterPublicId: 'ticketbox/posters/old_id',
-        startTime: new Date('2026-07-01T19:00:00Z'), 
-        endTime: new Date('2026-07-01T22:00:00Z') 
+        startTime: new Date('2026-07-01T19:00:00Z'),
+        endTime: new Date('2026-07-01T22:00:00Z'),
       };
       mockConcertRepository.findOne.mockResolvedValue(concert);
-      mockConcertRepository.save.mockResolvedValue({ ...concert, posterUrl: 'https://cloudinary.com/new.png', posterPublicId: 'ticketbox/posters/new_id' });
+      mockConcertRepository.save.mockResolvedValue({
+        ...concert,
+        posterUrl: 'https://cloudinary.com/new.png',
+        posterPublicId: 'ticketbox/posters/new_id',
+      });
       mockRedisService.keys.mockResolvedValue([]);
 
-      await service.update('c-1', { 
+      await service.update('c-1', {
         posterUrl: 'https://cloudinary.com/new.png',
-        posterPublicId: 'ticketbox/posters/new_id'
+        posterPublicId: 'ticketbox/posters/new_id',
       });
 
-      expect(mockCloudinaryService.deleteFile).toHaveBeenCalledWith('ticketbox/posters/old_id');
+      expect(mockCloudinaryService.deleteFile).toHaveBeenCalledWith(
+        'ticketbox/posters/old_id',
+      );
     });
   });
 
@@ -349,15 +418,17 @@ describe('ConcertService', () => {
     });
 
     it('should delete poster from Cloudinary when concert is removed', async () => {
-      const concert = { 
-        id: 'c-1', 
-        posterPublicId: 'ticketbox/posters/some_id' 
+      const concert = {
+        id: 'c-1',
+        posterPublicId: 'ticketbox/posters/some_id',
       };
       mockConcertRepository.findOne.mockResolvedValue(concert);
       mockEntityManager.query.mockResolvedValue([]); // No bookings
 
       await service.remove('c-1');
-      expect(mockCloudinaryService.deleteFile).toHaveBeenCalledWith('ticketbox/posters/some_id');
+      expect(mockCloudinaryService.deleteFile).toHaveBeenCalledWith(
+        'ticketbox/posters/some_id',
+      );
       expect(concertRepository.remove).toHaveBeenCalled();
     });
   });
@@ -365,19 +436,36 @@ describe('ConcertService', () => {
   describe('TicketType management', () => {
     describe('createTicketType', () => {
       it('should create ticket type successfully', async () => {
-        const concert = { id: 'c-1', endTime: new Date('2026-07-01T22:00:00Z') };
+        const concert = {
+          id: 'c-1',
+          endTime: new Date('2026-07-01T22:00:00Z'),
+        };
         mockConcertRepository.findOne.mockResolvedValue(concert);
         mockTicketTypeRepository.findOne.mockResolvedValue(null);
-        mockTicketTypeRepository.create.mockReturnValue({ name: TicketTypeName.VIP, price: 100 });
-        mockTicketTypeRepository.save.mockResolvedValue({ id: 'tt-1', name: TicketTypeName.VIP, price: 100 });
+        mockTicketTypeRepository.create.mockReturnValue({
+          name: TicketTypeName.VIP,
+          price: 100,
+        });
+        mockTicketTypeRepository.save.mockResolvedValue({
+          id: 'tt-1',
+          name: TicketTypeName.VIP,
+          price: 100,
+        });
 
-        const result = await service.createTicketType('c-1', { name: TicketTypeName.VIP, price: 100, totalQuantity: 50 });
+        const result = await service.createTicketType('c-1', {
+          name: TicketTypeName.VIP,
+          price: 100,
+          totalQuantity: 50,
+        });
         expect(result).toBeDefined();
         expect(redisService.del).toHaveBeenCalledWith('cache:concerts:c-1');
       });
 
       it('should throw BadRequestException if saleStartTime >= saleEndTime', async () => {
-        const concert = { id: 'c-1', endTime: new Date('2026-07-01T22:00:00Z') };
+        const concert = {
+          id: 'c-1',
+          endTime: new Date('2026-07-01T22:00:00Z'),
+        };
         mockConcertRepository.findOne.mockResolvedValue(concert);
         mockTicketTypeRepository.findOne.mockResolvedValue(null);
 
@@ -389,11 +477,16 @@ describe('ConcertService', () => {
           saleEndTime: '2026-07-01T19:00:00Z',
         };
 
-        await expect(service.createTicketType('c-1', dto)).rejects.toThrow(BadRequestException);
+        await expect(service.createTicketType('c-1', dto)).rejects.toThrow(
+          BadRequestException,
+        );
       });
 
       it('should throw BadRequestException if saleStartTime >= concert.endTime', async () => {
-        const concert = { id: 'c-1', endTime: new Date('2026-07-01T22:00:00Z') };
+        const concert = {
+          id: 'c-1',
+          endTime: new Date('2026-07-01T22:00:00Z'),
+        };
         mockConcertRepository.findOne.mockResolvedValue(concert);
         mockTicketTypeRepository.findOne.mockResolvedValue(null);
 
@@ -404,17 +497,31 @@ describe('ConcertService', () => {
           saleStartTime: '2026-07-01T23:00:00Z', // After concert end
         };
 
-        await expect(service.createTicketType('c-1', dto)).rejects.toThrow(BadRequestException);
+        await expect(service.createTicketType('c-1', dto)).rejects.toThrow(
+          BadRequestException,
+        );
       });
     });
 
     describe('updateTicketType', () => {
       it('should update ticket type and invalidate cache', async () => {
-        const concert = { id: 'c-1', endTime: new Date('2026-07-01T22:00:00Z') };
-        const ticketType = { id: 'tt-1', concertId: 'c-1', name: TicketTypeName.VIP, totalQuantity: 50, availableQuantity: 50 };
+        const concert = {
+          id: 'c-1',
+          endTime: new Date('2026-07-01T22:00:00Z'),
+        };
+        const ticketType = {
+          id: 'tt-1',
+          concertId: 'c-1',
+          name: TicketTypeName.VIP,
+          totalQuantity: 50,
+          availableQuantity: 50,
+        };
         mockTicketTypeRepository.findOne.mockResolvedValue(ticketType);
         mockConcertRepository.findOne.mockResolvedValue(concert);
-        mockTicketTypeRepository.save.mockResolvedValue({ ...ticketType, price: 150 });
+        mockTicketTypeRepository.save.mockResolvedValue({
+          ...ticketType,
+          price: 150,
+        });
 
         const result = await service.updateTicketType('tt-1', { price: 150 });
         expect(result).toBeDefined();
@@ -425,10 +532,12 @@ describe('ConcertService', () => {
 
   describe('findAll', () => {
     it('should return cached concerts and metadata on default request Cache Hit', async () => {
-      mockRedisService.get.mockResolvedValue(JSON.stringify({
-        concerts: [{ id: 'c-1', title: 'Cached Concert' }],
-        meta: { totalItems: 1, currentPage: 1 },
-      }));
+      mockRedisService.get.mockResolvedValue(
+        JSON.stringify({
+          concerts: [{ id: 'c-1', title: 'Cached Concert' }],
+          meta: { totalItems: 1, currentPage: 1 },
+        }),
+      );
 
       const result = await service.findAll({
         page: 1,
@@ -439,7 +548,9 @@ describe('ConcertService', () => {
         concerts: [{ id: 'c-1', title: 'Cached Concert' }],
         meta: { totalItems: 1, currentPage: 1 },
       });
-      expect(redisService.get).toHaveBeenCalledWith('cache:concerts:list:default:page:1:limit:10');
+      expect(redisService.get).toHaveBeenCalledWith(
+        'cache:concerts:list:default:page:1:limit:10',
+      );
       expect(concertRepository.createQueryBuilder).not.toHaveBeenCalled();
     });
 
@@ -456,7 +567,9 @@ describe('ConcertService', () => {
         take: jest.fn().mockReturnThis(),
         getManyAndCount: jest.fn().mockResolvedValue([concerts, total]),
       };
-      mockConcertRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+      mockConcertRepository.createQueryBuilder.mockReturnValue(
+        mockQueryBuilder,
+      );
 
       const result = await service.findAll({
         page: 1,
@@ -473,7 +586,9 @@ describe('ConcertService', () => {
           currentPage: 1,
         },
       });
-      expect(redisService.get).toHaveBeenCalledWith('cache:concerts:list:default:page:1:limit:10');
+      expect(redisService.get).toHaveBeenCalledWith(
+        'cache:concerts:list:default:page:1:limit:10',
+      );
       expect(redisService.setex).toHaveBeenCalledWith(
         'cache:concerts:list:default:page:1:limit:10',
         600,
@@ -493,7 +608,9 @@ describe('ConcertService', () => {
         take: jest.fn().mockReturnThis(),
         getManyAndCount: jest.fn().mockResolvedValue([concerts, total]),
       };
-      mockConcertRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+      mockConcertRepository.createQueryBuilder.mockReturnValue(
+        mockQueryBuilder,
+      );
 
       const result = await service.findAll({
         page: 2,
@@ -516,7 +633,9 @@ describe('ConcertService', () => {
       });
       expect(redisService.get).not.toHaveBeenCalled();
       expect(redisService.setex).not.toHaveBeenCalled();
-      expect(mockConcertRepository.createQueryBuilder).toHaveBeenCalledWith('concert');
+      expect(mockConcertRepository.createQueryBuilder).toHaveBeenCalledWith(
+        'concert',
+      );
       expect(mockQueryBuilder.select).toHaveBeenCalled();
       expect(mockQueryBuilder.skip).toHaveBeenCalledWith(5);
       expect(mockQueryBuilder.take).toHaveBeenCalledWith(5);
@@ -527,32 +646,47 @@ describe('ConcertService', () => {
   describe('generateArtistBio', () => {
     it('should throw NotFoundException if concert not found', async () => {
       mockConcertRepository.findOne.mockResolvedValue(null);
-      await expect(service.generateArtistBio('c-1', 'u-1', Buffer.from('pdf'))).rejects.toThrow(NotFoundException);
+      await expect(
+        service.generateArtistBio('c-1', 'u-1', Buffer.from('pdf')),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should parse PDF, save/update AI bio and send task to queue', async () => {
       const concert = { id: 'c-1' };
       mockConcertRepository.findOne.mockResolvedValue(concert);
-      
+
       const parsedText = 'Parsed biography text';
       mockGetText.mockResolvedValue({ text: parsedText });
 
       mockConcertAIBioRepository.findOne.mockResolvedValue(null);
-      mockConcertAIBioRepository.create.mockReturnValue({ concertId: 'c-1', rawText: parsedText });
-      mockConcertAIBioRepository.save.mockResolvedValue({ concertId: 'c-1', rawText: parsedText, status: ConcertAIBioStatus.PROCESSING });
+      mockConcertAIBioRepository.create.mockReturnValue({
+        concertId: 'c-1',
+        rawText: parsedText,
+      });
+      mockConcertAIBioRepository.save.mockResolvedValue({
+        concertId: 'c-1',
+        rawText: parsedText,
+        status: ConcertAIBioStatus.PROCESSING,
+      });
 
       await service.generateArtistBio('c-1', 'u-1', Buffer.from('pdf'));
 
       expect(PDFParse).toHaveBeenCalledWith({ data: Buffer.from('pdf') });
       expect(mockGetText).toHaveBeenCalled();
       expect(mockDestroy).toHaveBeenCalled();
-      expect(mockConcertAIBioRepository.create).toHaveBeenCalledWith({ concertId: 'c-1', rawText: parsedText });
-      expect(mockConcertAIBioRepository.save).toHaveBeenCalled();
-      expect(mockRabbitMQService.sendToQueue).toHaveBeenCalledWith('ai.generate_bio', {
+      expect(mockConcertAIBioRepository.create).toHaveBeenCalledWith({
         concertId: 'c-1',
-        userId: 'u-1',
         rawText: parsedText,
       });
+      expect(mockConcertAIBioRepository.save).toHaveBeenCalled();
+      expect(mockRabbitMQService.sendToQueue).toHaveBeenCalledWith(
+        'ai.generate_bio',
+        {
+          concertId: 'c-1',
+          userId: 'u-1',
+          rawText: parsedText,
+        },
+      );
     });
 
     it('should throw BadRequestException if PDF text parsing returns empty text', async () => {
@@ -560,7 +694,9 @@ describe('ConcertService', () => {
       mockConcertRepository.findOne.mockResolvedValue(concert);
       mockGetText.mockResolvedValue({ text: '  ' });
 
-      await expect(service.generateArtistBio('c-1', 'u-1', Buffer.from('pdf'))).rejects.toThrow(BadRequestException);
+      await expect(
+        service.generateArtistBio('c-1', 'u-1', Buffer.from('pdf')),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw BadRequestException if PDF parsing fails', async () => {
@@ -568,14 +704,18 @@ describe('ConcertService', () => {
       mockConcertRepository.findOne.mockResolvedValue(concert);
       mockGetText.mockRejectedValue(new Error('PDF error'));
 
-      await expect(service.generateArtistBio('c-1', 'u-1', Buffer.from('pdf'))).rejects.toThrow(BadRequestException);
+      await expect(
+        service.generateArtistBio('c-1', 'u-1', Buffer.from('pdf')),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('regenerateArtistBio', () => {
     it('should throw BadRequestException if no raw text is found', async () => {
       mockConcertAIBioRepository.findOne.mockResolvedValue(null);
-      await expect(service.regenerateArtistBio('c-1', 'u-1')).rejects.toThrow(BadRequestException);
+      await expect(service.regenerateArtistBio('c-1', 'u-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should send regeneration request if raw text exists', async () => {
@@ -587,7 +727,10 @@ describe('ConcertService', () => {
         error: 'old error message',
       };
       mockConcertAIBioRepository.findOne.mockResolvedValue(aiBio);
-      mockConcertAIBioRepository.save.mockResolvedValue({ ...aiBio, status: ConcertAIBioStatus.PROCESSING });
+      mockConcertAIBioRepository.save.mockResolvedValue({
+        ...aiBio,
+        status: ConcertAIBioStatus.PROCESSING,
+      });
 
       await service.regenerateArtistBio('c-1', 'u-1');
 
@@ -595,17 +738,24 @@ describe('ConcertService', () => {
       expect(aiBio.draftBio).toBeNull();
       expect(aiBio.error).toBeNull();
       expect(mockConcertAIBioRepository.save).toHaveBeenCalledWith(aiBio);
-      expect(mockRabbitMQService.sendToQueue).toHaveBeenCalledWith('ai.generate_bio', {
-        concertId: 'c-1',
-        userId: 'u-1',
-        rawText: 'Existing raw text',
-      });
+      expect(mockRabbitMQService.sendToQueue).toHaveBeenCalledWith(
+        'ai.generate_bio',
+        {
+          concertId: 'c-1',
+          userId: 'u-1',
+          rawText: 'Existing raw text',
+        },
+      );
     });
   });
 
   describe('getArtistBio', () => {
     it('should return AI bio record if found', async () => {
-      const aiBio = { concertId: 'c-1', status: ConcertAIBioStatus.COMPLETED, draftBio: 'Bio content' };
+      const aiBio = {
+        concertId: 'c-1',
+        status: ConcertAIBioStatus.COMPLETED,
+        draftBio: 'Bio content',
+      };
       mockConcertAIBioRepository.findOne.mockResolvedValue(aiBio);
 
       const result = await service.getArtistBio('c-1');
@@ -614,20 +764,27 @@ describe('ConcertService', () => {
 
     it('should throw NotFoundException if no AI bio record exists', async () => {
       mockConcertAIBioRepository.findOne.mockResolvedValue(null);
-      await expect(service.getArtistBio('c-1')).rejects.toThrow(NotFoundException);
+      await expect(service.getArtistBio('c-1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
   describe('confirmArtistBio', () => {
     it('should throw NotFoundException if concert not found', async () => {
       mockConcertRepository.findOne.mockResolvedValue(null);
-      await expect(service.confirmArtistBio('c-1', 'biography text')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.confirmArtistBio('c-1', 'biography text'),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should update biography and invalidate cache', async () => {
       const concert = { id: 'c-1', biography: null };
       mockConcertRepository.findOne.mockResolvedValue(concert);
-      mockConcertRepository.save.mockResolvedValue({ ...concert, biography: 'confirmed biography' });
+      mockConcertRepository.save.mockResolvedValue({
+        ...concert,
+        biography: 'confirmed biography',
+      });
       mockRedisService.keys.mockResolvedValue([]);
 
       await service.confirmArtistBio('c-1', 'confirmed biography');
@@ -638,4 +795,3 @@ describe('ConcertService', () => {
     });
   });
 });
-

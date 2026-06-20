@@ -1,10 +1,18 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, EntityManager } from 'typeorm';
 import { PDFParse } from 'pdf-parse';
 import { Concert, ConcertStatus } from './entities/concert.entity';
 import { TicketType } from './entities/ticket-type.entity';
-import { ConcertAIBio, ConcertAIBioStatus } from './entities/concert-ai-bio.entity';
+import {
+  ConcertAIBio,
+  ConcertAIBioStatus,
+} from './entities/concert-ai-bio.entity';
 import { CreateConcertDto } from './dto/create-concert.dto';
 import { UpdateConcertDto } from './dto/update-concert.dto';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
@@ -58,11 +66,15 @@ export class ConcertService {
     const saleEnd = endTimeStr ? new Date(endTimeStr) : null;
 
     if (saleStart && saleEnd && saleEnd <= saleStart) {
-      throw new BadRequestException('Ticket sale end time must be after sale start time');
+      throw new BadRequestException(
+        'Ticket sale end time must be after sale start time',
+      );
     }
 
     if (saleStart && concertEndTime && saleStart >= concertEndTime) {
-      throw new BadRequestException('Ticket sale start time must be before the concert ends');
+      throw new BadRequestException(
+        'Ticket sale start time must be before the concert ends',
+      );
     }
   }
 
@@ -75,16 +87,27 @@ export class ConcertService {
     }
 
     // Check duplicate ticket type names if provided
-    if (createConcertDto.ticketTypes && createConcertDto.ticketTypes.length > 0) {
-      const names = createConcertDto.ticketTypes.map(t => t.name.trim().toLowerCase());
+    if (
+      createConcertDto.ticketTypes &&
+      createConcertDto.ticketTypes.length > 0
+    ) {
+      const names = createConcertDto.ticketTypes.map((t) =>
+        t.name.trim().toLowerCase(),
+      );
       const uniqueNames = new Set(names);
       if (uniqueNames.size !== names.length) {
-        throw new BadRequestException('Ticket type names must be unique within a concert');
+        throw new BadRequestException(
+          'Ticket type names must be unique within a concert',
+        );
       }
 
       // Validate ticket type sale times
       for (const t of createConcertDto.ticketTypes) {
-        this.validateTicketTypeSaleTimes(t.saleStartTime, t.saleEndTime, endTime);
+        this.validateTicketTypeSaleTimes(
+          t.saleStartTime,
+          t.saleEndTime,
+          endTime,
+        );
       }
     }
 
@@ -99,12 +122,17 @@ export class ConcertService {
     return saved;
   }
 
-  async findAll(filters: ConcertQueryDto): Promise<{ concerts: Concert[]; meta: any }> {
+  async findAll(
+    filters: ConcertQueryDto,
+  ): Promise<{ concerts: Concert[]; meta: any }> {
     const page = filters.page ? Math.max(1, filters.page) : 1;
-    const limit = filters.limit ? Math.min(100, Math.max(1, filters.limit)) : 10;
+    const limit = filters.limit
+      ? Math.min(100, Math.max(1, filters.limit))
+      : 10;
     const offset = (page - 1) * limit;
 
-    const isDefaultRequest = !filters.search && !filters.location && !filters.tag && !filters.status;
+    const isDefaultRequest =
+      !filters.search && !filters.location && !filters.tag && !filters.status;
     const cacheKey = `cache:concerts:list:default:page:${page}:limit:${limit}`;
 
     if (isDefaultRequest) {
@@ -136,7 +164,9 @@ export class ConcertService {
       query.andWhere('concert.status = :status', { status: filters.status });
     } else {
       // Default to active status for public discovery if not specified
-      query.andWhere('concert.status = :status', { status: ConcertStatus.ACTIVE });
+      query.andWhere('concert.status = :status', {
+        status: ConcertStatus.ACTIVE,
+      });
     }
 
     if (filters.search) {
@@ -147,7 +177,9 @@ export class ConcertService {
     }
 
     if (filters.location) {
-      query.andWhere('concert.location = :location', { location: filters.location });
+      query.andWhere('concert.location = :location', {
+        location: filters.location,
+      });
     }
 
     if (filters.tag) {
@@ -281,14 +313,21 @@ export class ConcertService {
     return ticketTypes;
   }
 
-  async update(id: string, updateConcertDto: UpdateConcertDto): Promise<Concert> {
+  async update(
+    id: string,
+    updateConcertDto: UpdateConcertDto,
+  ): Promise<Concert> {
     const concert = await this.concertRepository.findOne({ where: { id } });
     if (!concert) {
       throw new NotFoundException(`Not found concert with id: ${id}`);
     }
 
-    const startTime = updateConcertDto.startTime ? new Date(updateConcertDto.startTime) : concert.startTime;
-    const endTime = updateConcertDto.endTime ? new Date(updateConcertDto.endTime) : concert.endTime;
+    const startTime = updateConcertDto.startTime
+      ? new Date(updateConcertDto.startTime)
+      : concert.startTime;
+    const endTime = updateConcertDto.endTime
+      ? new Date(updateConcertDto.endTime)
+      : concert.endTime;
 
     if (endTime <= startTime) {
       throw new BadRequestException('End time must be after start time');
@@ -306,7 +345,9 @@ export class ConcertService {
       try {
         await this.cloudinaryService.deleteFile(concert.posterPublicId);
       } catch (err) {
-        this.logger.warn(`Failed to delete old poster from Cloudinary: ${err.message}`);
+        this.logger.warn(
+          `Failed to delete old poster from Cloudinary: ${err.message}`,
+        );
       }
     }
 
@@ -328,21 +369,23 @@ export class ConcertService {
       throw new NotFoundException(`Not found concert with id: ${id}`);
     }
 
-    // Integrity Check: Check if bookings exist in bookings table (safe check)
-    let bookingsExist = false;
+    // Integrity Check: Check if orders exist in orders table (safe check)
+    let ordersExist = false;
     try {
-      const bookings = await this.entityManager.query(
-        'SELECT 1 FROM bookings WHERE concert_id = $1 LIMIT 1',
+      const orders = await this.entityManager.query(
+        'SELECT 1 FROM orders WHERE concert_id = $1 LIMIT 1',
         [id],
       );
-      bookingsExist = bookings && bookings.length > 0;
+      ordersExist = orders && orders.length > 0;
     } catch (error) {
-      this.logger.warn(`Bookings table does not exist or query failed: ${error.message}`);
+      this.logger.warn(
+        `Orders table does not exist or query failed: ${error.message}`,
+      );
     }
 
-    if (bookingsExist) {
+    if (ordersExist) {
       throw new BadRequestException(
-        'Cannot delete concert with existing bookings. Please move concert to cancelled status.',
+        'Cannot delete concert with existing orders. Please move concert to cancelled status.',
       );
     }
 
@@ -350,7 +393,9 @@ export class ConcertService {
       try {
         await this.cloudinaryService.deleteFile(concert.posterPublicId);
       } catch (err) {
-        this.logger.warn(`Failed to delete poster from Cloudinary on concert removal: ${err.message}`);
+        this.logger.warn(
+          `Failed to delete poster from Cloudinary on concert removal: ${err.message}`,
+        );
       }
     }
 
@@ -360,8 +405,13 @@ export class ConcertService {
 
   // --- TicketType CRUD ---
 
-  async createTicketType(concertId: string, createDto: CreateTicketTypeDto): Promise<TicketType> {
-    const concert = await this.concertRepository.findOne({ where: { id: concertId } });
+  async createTicketType(
+    concertId: string,
+    createDto: CreateTicketTypeDto,
+  ): Promise<TicketType> {
+    const concert = await this.concertRepository.findOne({
+      where: { id: concertId },
+    });
     if (!concert) {
       throw new NotFoundException(`Not found concert with id: ${concertId}`);
     }
@@ -371,11 +421,17 @@ export class ConcertService {
       where: { concertId, name: createDto.name },
     });
     if (existing) {
-      throw new BadRequestException(`Concert already has ticket type with name "${createDto.name}"`);
+      throw new BadRequestException(
+        `Concert already has ticket type with name "${createDto.name}"`,
+      );
     }
 
     // Validate sale times
-    this.validateTicketTypeSaleTimes(createDto.saleStartTime, createDto.saleEndTime, concert.endTime);
+    this.validateTicketTypeSaleTimes(
+      createDto.saleStartTime,
+      createDto.saleEndTime,
+      concert.endTime,
+    );
 
     const ticketType = this.ticketTypeRepository.create({
       ...createDto,
@@ -388,8 +444,13 @@ export class ConcertService {
     return saved;
   }
 
-  async updateTicketType(id: string, updateDto: UpdateTicketTypeDto): Promise<TicketType> {
-    const ticketType = await this.ticketTypeRepository.findOne({ where: { id } });
+  async updateTicketType(
+    id: string,
+    updateDto: UpdateTicketTypeDto,
+  ): Promise<TicketType> {
+    const ticketType = await this.ticketTypeRepository.findOne({
+      where: { id },
+    });
     if (!ticketType) {
       throw new NotFoundException(`Not found ticket type with id: ${id}`);
     }
@@ -400,14 +461,24 @@ export class ConcertService {
         where: { concertId: ticketType.concertId, name: updateDto.name },
       });
       if (existing) {
-        throw new BadRequestException(`Ticket type name "${updateDto.name}" already exists in this concert`);
+        throw new BadRequestException(
+          `Ticket type name "${updateDto.name}" already exists in this concert`,
+        );
       }
     }
 
     // Validate sale times
-    const concert = await this.concertRepository.findOne({ where: { id: ticketType.concertId } });
-    const saleStart = updateDto.saleStartTime !== undefined ? updateDto.saleStartTime : ticketType.saleStartTime;
-    const saleEnd = updateDto.saleEndTime !== undefined ? updateDto.saleEndTime : ticketType.saleEndTime;
+    const concert = await this.concertRepository.findOne({
+      where: { id: ticketType.concertId },
+    });
+    const saleStart =
+      updateDto.saleStartTime !== undefined
+        ? updateDto.saleStartTime
+        : ticketType.saleStartTime;
+    const saleEnd =
+      updateDto.saleEndTime !== undefined
+        ? updateDto.saleEndTime
+        : ticketType.saleEndTime;
     this.validateTicketTypeSaleTimes(saleStart, saleEnd, concert?.endTime);
 
     // Handle quantity updates safely
@@ -415,7 +486,9 @@ export class ConcertService {
       const diff = updateDto.totalQuantity - ticketType.totalQuantity;
       const newAvailable = ticketType.availableQuantity + diff;
       if (newAvailable < 0) {
-        throw new BadRequestException('The new total quantity makes the available quantity less than 0');
+        throw new BadRequestException(
+          'The new total quantity makes the available quantity less than 0',
+        );
       }
       ticketType.availableQuantity = newAvailable;
     }
@@ -427,7 +500,9 @@ export class ConcertService {
   }
 
   async removeTicketType(id: string): Promise<void> {
-    const ticketType = await this.ticketTypeRepository.findOne({ where: { id } });
+    const ticketType = await this.ticketTypeRepository.findOne({
+      where: { id },
+    });
     if (!ticketType) {
       throw new NotFoundException(`Not found ticket type with id: ${id}`);
     }
@@ -441,19 +516,29 @@ export class ConcertService {
       );
       ticketsExist = tickets && tickets.length > 0;
     } catch (error) {
-      this.logger.warn(`Tickets table does not exist or query failed: ${error.message}`);
+      this.logger.warn(
+        `Tickets table does not exist or query failed: ${error.message}`,
+      );
     }
 
     if (ticketsExist) {
-      throw new BadRequestException('Cannot delete ticket type with existing tickets');
+      throw new BadRequestException(
+        'Cannot delete ticket type with existing tickets',
+      );
     }
 
     await this.ticketTypeRepository.remove(ticketType);
     await this.invalidateCache(ticketType.concertId);
   }
 
-  async generateArtistBio(concertId: string, userId: string, fileBuffer: Buffer): Promise<void> {
-    const concert = await this.concertRepository.findOne({ where: { id: concertId } });
+  async generateArtistBio(
+    concertId: string,
+    userId: string,
+    fileBuffer: Buffer,
+  ): Promise<void> {
+    const concert = await this.concertRepository.findOne({
+      where: { id: concertId },
+    });
     if (!concert) {
       throw new NotFoundException(`Not found concert with id: ${concertId}`);
     }
@@ -473,7 +558,9 @@ export class ConcertService {
       throw new BadRequestException('PDF file does not contain readable text');
     }
 
-    let aiBio = await this.concertAIBioRepository.findOne({ where: { concertId } });
+    let aiBio = await this.concertAIBioRepository.findOne({
+      where: { concertId },
+    });
     if (!aiBio) {
       aiBio = this.concertAIBioRepository.create({ concertId, rawText });
     } else {
@@ -492,9 +579,13 @@ export class ConcertService {
   }
 
   async regenerateArtistBio(concertId: string, userId: string): Promise<void> {
-    const aiBio = await this.concertAIBioRepository.findOne({ where: { concertId } });
+    const aiBio = await this.concertAIBioRepository.findOne({
+      where: { concertId },
+    });
     if (!aiBio || !aiBio.rawText) {
-      throw new BadRequestException('No raw text found. Please upload a PDF file first.');
+      throw new BadRequestException(
+        'No raw text found. Please upload a PDF file first.',
+      );
     }
 
     aiBio.status = ConcertAIBioStatus.PROCESSING;
@@ -527,7 +618,9 @@ export class ConcertService {
   }
 
   async confirmArtistBio(concertId: string, biography: string): Promise<void> {
-    const concert = await this.concertRepository.findOne({ where: { id: concertId } });
+    const concert = await this.concertRepository.findOne({
+      where: { id: concertId },
+    });
     if (!concert) {
       throw new NotFoundException(`Not found concert with id: ${concertId}`);
     }

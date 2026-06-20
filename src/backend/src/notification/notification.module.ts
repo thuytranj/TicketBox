@@ -33,4 +33,3 @@ import { NotificationCleanupService } from './notification-cleanup.service';
   ],
 })
 export class NotificationModule {}
-

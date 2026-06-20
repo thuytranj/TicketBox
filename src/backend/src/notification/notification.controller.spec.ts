@@ -57,11 +57,23 @@ describe('NotificationController', () => {
           currentPage: 1,
         },
       };
-      mockNotificationService.getUserNotifications.mockResolvedValueOnce(mockResult);
+      mockNotificationService.getUserNotifications.mockResolvedValueOnce(
+        mockResult,
+      );
 
-      const result = await controller.getNotifications(req, '1', '10', 'unread');
+      const result = await controller.getNotifications(
+        req,
+        '1',
+        '10',
+        'unread',
+      );
 
-      expect(service.getUserNotifications).toHaveBeenCalledWith('user-uuid', 1, 10, 'unread');
+      expect(service.getUserNotifications).toHaveBeenCalledWith(
+        'user-uuid',
+        1,
+        10,
+        'unread',
+      );
       expect(result).toEqual(mockResult);
     });
 
@@ -80,10 +92,14 @@ describe('NotificationController', () => {
 
       await controller.getNotifications(req, 'invalid', 'invalid', undefined);
 
-      expect(service.getUserNotifications).toHaveBeenCalledWith('user-uuid', 1, 10, undefined);
+      expect(service.getUserNotifications).toHaveBeenCalledWith(
+        'user-uuid',
+        1,
+        10,
+        undefined,
+      );
     });
   });
-
 
   describe('markAllAsRead', () => {
     it('should call service markAllAsRead', async () => {
@@ -111,9 +127,13 @@ describe('NotificationController', () => {
 
     it('should throw exception if service throws', async () => {
       const req = { user: { userId: 'user-uuid' } };
-      mockNotificationService.markAsRead.mockRejectedValueOnce(new NotFoundException());
+      mockNotificationService.markAsRead.mockRejectedValueOnce(
+        new NotFoundException(),
+      );
 
-      await expect(controller.markAsRead(req, 123)).rejects.toThrow(NotFoundException);
+      await expect(controller.markAsRead(req, 123)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

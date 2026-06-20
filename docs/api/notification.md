@@ -4,9 +4,9 @@ Tài liệu đặc tả chi tiết các API REST và các sự kiện thời gia
 
 ## Tổng quan
 
-- **Base URL:** `http://localhost:3000` (môi trường Local Development)
+- **Base URL:** `http://localhost:3000/api/v1` (môi trường Local Development)
 - **REST Auth:** JWT (JSON Web Tokens). Access Token được truyền qua HTTP Header `Authorization: Bearer <token>`.
-- **WebSocket URL:** `ws://localhost:3000` hoặc `http://localhost:3000` (Sử dụng client Socket.io)
+- **WebSocket URL:** `ws://localhost:3000` hoặc `http://localhost:3000` (Sử dụng client Socket.io, không đổi đường dẫn socket kết nối trực tiếp qua cổng load balancer)
 - **WebSocket Auth:** JWT Token được truyền qua Handshake auth object `{ token: '<JWT_Token>' }` hoặc URL query parameter `?token=<JWT_Token>` hoặc HTTP Header `Authorization: Bearer <token>`.
 
 ### Danh sách REST API Endpoints

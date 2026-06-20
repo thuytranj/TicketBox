@@ -8,6 +8,8 @@ import {
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { Logger } from '@nestjs/common';
+import { Emitter } from '@socket.io/redis-emitter';
+import { RedisService } from '../common/redis/redis.service';
 
 @WebSocketGateway({
   cors: {
@@ -21,16 +23,24 @@ export class NotificationGateway
   server: Server;
 
   private readonly logger = new Logger(NotificationGateway.name);
-  private readonly userSockets = new Map<string, Set<string>>();
+  private readonly emitter: Emitter;
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly redisService: RedisService,
+  ) {
+    this.emitter = new Emitter(this.redisService);
+  }
 
   afterInit(server: Server) {
-    this.logger.log('NotificationGateway initialized. Registering JWT handshake middleware.');
-    
+    this.logger.log(
+      'NotificationGateway initialized. Registering JWT handshake middleware.',
+    );
+
     server.use(async (socket, next) => {
       try {
-        let token = socket.handshake.auth?.token || socket.handshake.query?.token;
+        let token =
+          socket.handshake.auth?.token || socket.handshake.query?.token;
         if (!token && socket.handshake.headers?.authorization) {
           const parts = socket.handshake.headers.authorization.split(' ');
           if (parts.length === 2 && parts[0].toLowerCase() === 'bearer') {
@@ -60,45 +70,26 @@ export class NotificationGateway
   handleConnection(client: Socket) {
     const userId = client.data.userId;
     if (userId) {
-      let sockets = this.userSockets.get(userId);
-      if (!sockets) {
-        sockets = new Set<string>();
-        this.userSockets.set(userId, sockets);
-      }
-      sockets.add(client.id);
-
-      this.logger.log(`Client ${client.id} connected for user ${userId}`);
+      client.join(`user:${userId}`);
+      this.logger.log(`Client ${client.id} connected and joined room user:${userId}`);
     }
   }
 
   handleDisconnect(client: Socket) {
-    const userId = client.data.userId;
-    if (userId) {
-      const sockets = this.userSockets.get(userId);
-      if (sockets) {
-        sockets.delete(client.id);
-        if (sockets.size === 0) {
-          this.userSockets.delete(userId);
-        }
-      }
-    }
     this.logger.log(`Client ${client.id} disconnected`);
   }
 
   sendNotificationToUser(userId: string, event: string, data: any) {
-    const sockets = this.userSockets.get(userId);
-    if (sockets) {
-      for (const socketId of sockets) {
-        this.server.to(socketId).emit(event, data);
-      }
-      this.logger.log(`Pushed real-time event "${event}" to user ${userId} (${sockets.size} active connections)`);
-    } else {
-      this.logger.log(`User ${userId} is offline, skipping real-time push`);
-    }
+    this.emitter.to(`user:${userId}`).emit(event, data);
+    this.logger.log(
+      `Published real-time event "${event}" to room user:${userId} via Redis Emitter`,
+    );
   }
 
   // Helper method for testing/debugging
   isUserConnected(userId: string): boolean {
-    return this.userSockets.has(userId);
+    // With distributed Redis Adapter, checking online state locally is not accurate.
+    // For local tests, we return false or mock it.
+    return false;
   }
 }

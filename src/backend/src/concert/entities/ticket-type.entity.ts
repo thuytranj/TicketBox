@@ -1,4 +1,11 @@
-import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn, BeforeInsert } from 'typeorm';
+import {
+  Entity,
+  PrimaryColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  BeforeInsert,
+} from 'typeorm';
 import { generateUuidV7 } from '../../auth/utils/uuid';
 import { Concert } from './concert.entity';
 
@@ -12,7 +19,7 @@ export enum TicketTypeName {
 
 const numericTransformer = {
   to: (value: number | string) => value,
-  from: (value: string) => value ? parseFloat(value) : value,
+  from: (value: string) => (value ? parseFloat(value) : value),
 };
 
 @Entity('ticket_types')
@@ -49,7 +56,9 @@ export class TicketType {
   @Column({ type: 'timestamp', name: 'sale_end_time', nullable: true })
   saleEndTime: Date;
 
-  @ManyToOne(() => Concert, (concert) => concert.ticketTypes, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Concert, (concert) => concert.ticketTypes, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'concert_id' })
   concert: Concert;
 

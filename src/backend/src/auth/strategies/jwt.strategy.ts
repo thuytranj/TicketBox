@@ -17,7 +17,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!payload || !payload.userId) {
       throw new UnauthorizedException('Invalid access token payload');
     }
-    
+
     // Attach user information to request.user
     // Structure matches design.md: { userId, email, role }
     return {

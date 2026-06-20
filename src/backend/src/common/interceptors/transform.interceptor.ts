@@ -1,4 +1,9 @@
-import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
+import {
+  Injectable,
+  NestInterceptor,
+  ExecutionContext,
+  CallHandler,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -13,14 +18,20 @@ export interface Response<T> {
 }
 
 @Injectable()
-export class TransformInterceptor<T> implements NestInterceptor<T, Response<T> | T> {
+export class TransformInterceptor<T> implements NestInterceptor<
+  T,
+  Response<T> | T
+> {
   constructor(private readonly reflector: Reflector) {}
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<Response<T> | T> {
-    const isBypassed = this.reflector.getAllAndOverride<boolean>(BYPASS_INTERCEPTOR_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+  intercept(
+    context: ExecutionContext,
+    next: CallHandler,
+  ): Observable<Response<T> | T> {
+    const isBypassed = this.reflector.getAllAndOverride<boolean>(
+      BYPASS_INTERCEPTOR_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
     if (isBypassed) {
       return next.handle();

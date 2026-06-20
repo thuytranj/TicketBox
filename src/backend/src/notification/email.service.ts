@@ -70,7 +70,8 @@ export class EmailService implements OnModuleInit {
   async sendOtpEmail(to: string, otp: string): Promise<void> {
     const html = this.buildMasterTemplate({
       title: 'Verify your email',
-      description: 'Thanks for signing up. Please use the OTP below to verify your email address.',
+      description:
+        'Thanks for signing up. Please use the OTP below to verify your email address.',
       headerBgColor: '#0f172a',
       contentHtml: `
         <table border="0" cellpadding="0" cellspacing="0" width="100%">
@@ -96,7 +97,8 @@ export class EmailService implements OnModuleInit {
   async sendResetPasswordEmail(to: string, otp: string): Promise<void> {
     const html = this.buildMasterTemplate({
       title: 'Reset your password',
-      description: 'You have requested to reset your password. Please use the OTP below to complete the verification.',
+      description:
+        'You have requested to reset your password. Please use the OTP below to complete the verification.',
       headerBgColor: '#311005',
       contentHtml: `
         <table border="0" cellpadding="0" cellspacing="0" width="100%">
@@ -109,7 +111,8 @@ export class EmailService implements OnModuleInit {
           </tr>
         </table>
       `,
-      footerText: 'If you did not request a password reset, your password will remain unchanged. However, we recommend checking your account security.',
+      footerText:
+        'If you did not request a password reset, your password will remain unchanged. However, we recommend checking your account security.',
     });
 
     await this.transporter.sendMail({

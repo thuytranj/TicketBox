@@ -1,4 +1,10 @@
-import { IsOptional, IsString, IsArray, IsDateString, IsEnum } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsArray,
+  IsDateString,
+  IsEnum,
+} from 'class-validator';
 import { ConcertStatus } from '../entities/concert.entity';
 
 export class UpdateConcertDto {

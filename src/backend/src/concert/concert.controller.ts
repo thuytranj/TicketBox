@@ -1,4 +1,21 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus, UseInterceptors, UploadedFile, BadRequestException, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+  Request,
+} from '@nestjs/common';
 import { ConcertService } from './concert.service';
 import { CreateConcertDto } from './dto/create-concert.dto';
 import { UpdateConcertDto } from './dto/update-concert.dto';
@@ -36,7 +53,12 @@ export class ConcertController {
       limits: { fileSize: 10 * 1024 * 1024 },
       fileFilter: (req, file, callback) => {
         if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
-          return callback(new BadRequestException('Only image files (jpg, jpeg, png, webp) are allowed!'), false);
+          return callback(
+            new BadRequestException(
+              'Only image files (jpg, jpeg, png, webp) are allowed!',
+            ),
+            false,
+          );
         }
         callback(null, true);
       },
@@ -84,7 +106,10 @@ export class ConcertController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ORGANIZER)
-  async update(@Param('id') id: string, @Body() updateConcertDto: UpdateConcertDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateConcertDto: UpdateConcertDto,
+  ) {
     return this.concertService.update(id, updateConcertDto);
   }
 
@@ -105,7 +130,10 @@ export class ConcertController {
       limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
       fileFilter: (req, file, callback) => {
         if (file.mimetype !== 'application/pdf') {
-          return callback(new BadRequestException('Only PDF files are allowed!'), false);
+          return callback(
+            new BadRequestException('Only PDF files are allowed!'),
+            false,
+          );
         }
         callback(null, true);
       },
@@ -119,18 +147,21 @@ export class ConcertController {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
-    await this.concertService.generateArtistBio(id, req.user.userId, file.buffer);
-    return { message: 'PDF uploaded successfully, bio generation is in progress' };
+    await this.concertService.generateArtistBio(
+      id,
+      req.user.userId,
+      file.buffer,
+    );
+    return {
+      message: 'PDF uploaded successfully, bio generation is in progress',
+    };
   }
 
   @Post(':id/artist-bio/regenerate')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ORGANIZER)
   @HttpCode(HttpStatus.ACCEPTED)
-  async regenerateArtistBio(
-    @Param('id') id: string,
-    @Request() req,
-  ) {
+  async regenerateArtistBio(@Param('id') id: string, @Request() req) {
     await this.concertService.regenerateArtistBio(id, req.user.userId);
     return { message: 'Bio regeneration is in progress' };
   }
@@ -149,7 +180,10 @@ export class ConcertController {
     @Param('id') id: string,
     @Body() confirmArtistBioDto: ConfirmArtistBioDto,
   ) {
-    await this.concertService.confirmArtistBio(id, confirmArtistBioDto.biography);
+    await this.concertService.confirmArtistBio(
+      id,
+      confirmArtistBioDto.biography,
+    );
     return { message: 'Biography updated successfully' };
   }
 }

@@ -1,4 +1,13 @@
-import { Injectable, ConflictException, UnauthorizedException, ForbiddenException, HttpException, HttpStatus, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  UnauthorizedException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -57,17 +66,24 @@ export class AuthService {
     return `reset_token:${email}`;
   }
 
-  async register(registerDto: RegisterDto): Promise<Omit<User, 'passwordHash' | 'generateId'>> {
+  async register(
+    registerDto: RegisterDto,
+  ): Promise<Omit<User, 'passwordHash' | 'generateId'>> {
     const { email, password, fullName } = registerDto;
 
-    const existingUser = await this.userRepository.findOne({ where: { email } });
+    const existingUser = await this.userRepository.findOne({
+      where: { email },
+    });
     if (existingUser) {
       throw new ConflictException('Email already registered');
     }
 
     const hasLimit = await this.redisService.get(this.getOtpLimitKey(email));
     if (hasLimit) {
-      throw new HttpException('Please wait 60 seconds before requesting a new OTP', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException(
+        'Please wait 60 seconds before requesting a new OTP',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -94,7 +110,11 @@ export class AuthService {
 
     // Publish to RabbitMQ
     try {
-      await this.rabbitMQService.sendToQueue('notification.email.otp', { email, otp, type: 'verify' });
+      await this.rabbitMQService.sendToQueue('notification.email.otp', {
+        email,
+        otp,
+        type: 'verify',
+      });
     } catch (err) {
       // Log error but do not fail the registration flow
       console.error('Failed to send OTP email task to RabbitMQ:', err);
@@ -136,7 +156,9 @@ export class AuthService {
     return { message: 'Account activated successfully' };
   }
 
-  async login(loginDto: LoginDto): Promise<{ accessToken: string; refreshToken: string }> {
+  async login(
+    loginDto: LoginDto,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     const { email, password } = loginDto;
 
     const user = await this.userRepository.findOne({ where: { email } });
@@ -156,7 +178,9 @@ export class AuthService {
     return this.generateTokens(user);
   }
 
-  async refresh(refreshTokenDto: RefreshTokenDto): Promise<{ accessToken: string; refreshToken: string }> {
+  async refresh(
+    refreshTokenDto: RefreshTokenDto,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     const { refreshToken } = refreshTokenDto;
 
     let payload: any;
@@ -180,7 +204,9 @@ export class AuthService {
 
     const storedHash = await this.redisService.get(this.getRedisKey(userId));
     if (!storedHash) {
-      throw new UnauthorizedException('Refresh token has been revoked or expired');
+      throw new UnauthorizedException(
+        'Refresh token has been revoked or expired',
+      );
     }
 
     const currentHash = this.hashToken(refreshToken);
@@ -231,7 +257,10 @@ export class AuthService {
 
     const hasLimit = await this.redisService.get(this.getOtpLimitKey(email));
     if (hasLimit) {
-      throw new HttpException('Please wait 60 seconds before requesting a new OTP', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException(
+        'Please wait 60 seconds before requesting a new OTP',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
 
     const otp = generateOtp();
@@ -244,7 +273,11 @@ export class AuthService {
 
     // Publish to RabbitMQ
     try {
-      await this.rabbitMQService.sendToQueue('notification.email.otp', { email, otp, type: 'verify' });
+      await this.rabbitMQService.sendToQueue('notification.email.otp', {
+        email,
+        otp,
+        type: 'verify',
+      });
     } catch (err) {
       console.error('Failed to send OTP email task to RabbitMQ:', err);
     }
@@ -252,7 +285,9 @@ export class AuthService {
     return { message: 'OTP resent successfully' };
   }
 
-  async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ message: string }> {
+  async forgotPassword(
+    forgotPasswordDto: ForgotPasswordDto,
+  ): Promise<{ message: string }> {
     const { email } = forgotPasswordDto;
 
     const user = await this.userRepository.findOne({ where: { email } });
@@ -260,9 +295,14 @@ export class AuthService {
       throw new NotFoundException('Email not found or account is not active');
     }
 
-    const hasLimit = await this.redisService.get(this.getResetOtpLimitKey(email));
+    const hasLimit = await this.redisService.get(
+      this.getResetOtpLimitKey(email),
+    );
     if (hasLimit) {
-      throw new HttpException('Please wait 60 seconds before requesting a new reset OTP', HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException(
+        'Please wait 60 seconds before requesting a new reset OTP',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
 
     const otp = generateOtp();
@@ -275,7 +315,11 @@ export class AuthService {
 
     // Publish to RabbitMQ
     try {
-      await this.rabbitMQService.sendToQueue('notification.email.otp', { email, otp, type: 'reset' });
+      await this.rabbitMQService.sendToQueue('notification.email.otp', {
+        email,
+        otp,
+        type: 'reset',
+      });
     } catch (err) {
       console.error('Failed to send reset OTP email task to RabbitMQ:', err);
     }
@@ -283,7 +327,9 @@ export class AuthService {
     return { message: 'Reset password OTP sent successfully' };
   }
 
-  async verifyResetOtp(verifyResetOtpDto: VerifyResetOtpDto): Promise<{ resetToken: string }> {
+  async verifyResetOtp(
+    verifyResetOtpDto: VerifyResetOtpDto,
+  ): Promise<{ resetToken: string }> {
     const { email, otp } = verifyResetOtpDto;
 
     const user = await this.userRepository.findOne({ where: { email } });
@@ -301,7 +347,12 @@ export class AuthService {
     }
 
     const resetToken = randomBytes(16).toString('hex');
-    await this.redisService.set(this.getResetTokenKey(email), resetToken, 'EX', 300);
+    await this.redisService.set(
+      this.getResetTokenKey(email),
+      resetToken,
+      'EX',
+      300,
+    );
 
     // Clean up reset OTP
     await this.redisService.del(this.getResetOtpKey(email));
@@ -309,7 +360,9 @@ export class AuthService {
     return { resetToken };
   }
 
-  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<{ message: string }> {
+  async resetPassword(
+    resetPasswordDto: ResetPasswordDto,
+  ): Promise<{ message: string }> {
     const { email, resetToken, newPassword } = resetPasswordDto;
 
     const user = await this.userRepository.findOne({ where: { email } });
@@ -317,7 +370,9 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    const storedToken = await this.redisService.get(this.getResetTokenKey(email));
+    const storedToken = await this.redisService.get(
+      this.getResetTokenKey(email),
+    );
     if (!storedToken) {
       throw new UnauthorizedException('Reset token expired or invalid');
     }
@@ -340,7 +395,9 @@ export class AuthService {
     return { message: 'Password has been reset successfully' };
   }
 
-  private async generateTokens(user: User): Promise<{ accessToken: string; refreshToken: string }> {
+  private async generateTokens(
+    user: User,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     const accessToken = this.jwtService.sign(
       { userId: user.id, email: user.email, role: user.role },
       {
@@ -359,7 +416,12 @@ export class AuthService {
 
     const hashedToken = this.hashToken(refreshToken);
     // 7 days in seconds = 7 * 24 * 60 * 60 = 604800
-    await this.redisService.set(this.getRedisKey(user.id), hashedToken, 'EX', 604800);
+    await this.redisService.set(
+      this.getRedisKey(user.id),
+      hashedToken,
+      'EX',
+      604800,
+    );
 
     return {
       accessToken,

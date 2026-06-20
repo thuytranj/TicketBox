@@ -64,11 +64,17 @@ export class BookingService implements OnModuleInit {
     const channel = this.rabbitMQService.getChannel();
 
     // Dead Letter Exchange
-    await channel.assertExchange(BOOKING_DLX_EXCHANGE, 'direct', { durable: true });
+    await channel.assertExchange(BOOKING_DLX_EXCHANGE, 'direct', {
+      durable: true,
+    });
 
     // Queue that receives expired messages from DLX
     await channel.assertQueue(BOOKING_EXPIRED_QUEUE, { durable: true });
-    await channel.bindQueue(BOOKING_EXPIRED_QUEUE, BOOKING_DLX_EXCHANGE, BOOKING_EXPIRED_QUEUE);
+    await channel.bindQueue(
+      BOOKING_EXPIRED_QUEUE,
+      BOOKING_DLX_EXCHANGE,
+      BOOKING_EXPIRED_QUEUE,
+    );
 
     // Delay queue with TTL -> DLX routing
     await channel.assertQueue(BOOKING_DELAY_QUEUE, {
@@ -83,7 +89,9 @@ export class BookingService implements OnModuleInit {
     // Main booking tasks queue
     await channel.assertQueue(BOOKING_QUEUE, { durable: true });
 
-    this.logger.log('RabbitMQ booking topology initialized (DLX + delay queue)');
+    this.logger.log(
+      'RabbitMQ booking topology initialized (DLX + delay queue)',
+    );
   }
 
   /**
@@ -93,7 +101,11 @@ export class BookingService implements OnModuleInit {
    * 3. Push to RabbitMQ for async DB write
    * 4. Push a TTL message for order expiry tracking
    */
-  async createBooking(dto: CreateBookingDto, userId: string, idempotencyKey?: string) {
+  async createBooking(
+    dto: CreateBookingDto,
+    userId: string,
+    idempotencyKey?: string,
+  ) {
     // Fetch ticket types for validation and price calculation
     const ticketTypes = await this.fetchAndValidateTicketTypes(dto);
 
@@ -124,7 +136,10 @@ export class BookingService implements OnModuleInit {
           );
         }
 
-        reservedItems.push({ ticketTypeId: item.ticketTypeId, quantity: item.quantity });
+        reservedItems.push({
+          ticketTypeId: item.ticketTypeId,
+          quantity: item.quantity,
+        });
       }
     } catch (err) {
       // Rollback any already-reserved items if one fails
@@ -146,18 +161,29 @@ export class BookingService implements OnModuleInit {
     };
 
     // Push to booking_tasks queue (async DB write)
-    await this.rabbitMQService.sendToQueue(BOOKING_QUEUE, orderPayload, { persistent: true });
+    await this.rabbitMQService.sendToQueue(BOOKING_QUEUE, orderPayload, {
+      persistent: true,
+    });
 
     // Push to delay queue for TTL-based expiry (DLX Primary mechanism)
     // We store orderId placeholder here; consumer will link by idempotencyKey
     const channel = this.rabbitMQService.getChannel();
     channel.sendToQueue(
       BOOKING_DELAY_QUEUE,
-      Buffer.from(JSON.stringify({ idempotencyKey, userId, concertId: dto.concertId, items: dto.items })),
+      Buffer.from(
+        JSON.stringify({
+          idempotencyKey,
+          userId,
+          concertId: dto.concertId,
+          items: dto.items,
+        }),
+      ),
       { persistent: true },
     );
 
-    this.logger.log(`Booking queued for user ${userId}, concert ${dto.concertId}`);
+    this.logger.log(
+      `Booking queued for user ${userId}, concert ${dto.concertId}`,
+    );
 
     return {
       message: 'Booking is being processed. Please wait for confirmation.',
@@ -194,7 +220,11 @@ export class BookingService implements OnModuleInit {
   ) {
     for (const item of items) {
       const stockKey = this.stockKey(concertId, item.ticketTypeId);
-      const userBoughtKey = this.userBoughtKey(concertId, userId, item.ticketTypeId);
+      const userBoughtKey = this.userBoughtKey(
+        concertId,
+        userId,
+        item.ticketTypeId,
+      );
       await this.redisService.eval(
         this.releaseScript,
         2,
@@ -203,7 +233,9 @@ export class BookingService implements OnModuleInit {
         String(item.quantity),
       );
     }
-    this.logger.log(`Released inventory for user ${userId}, concert ${concertId}`);
+    this.logger.log(
+      `Released inventory for user ${userId}, concert ${concertId}`,
+    );
   }
 
   /**
@@ -227,10 +259,12 @@ export class BookingService implements OnModuleInit {
           const prev = itemsMap.get(ticket.ticketTypeId) ?? 0;
           itemsMap.set(ticket.ticketTypeId, prev + 1);
         }
-        const items = Array.from(itemsMap.entries()).map(([ticketTypeId, quantity]) => ({
-          ticketTypeId,
-          quantity,
-        }));
+        const items = Array.from(itemsMap.entries()).map(
+          ([ticketTypeId, quantity]) => ({
+            ticketTypeId,
+            quantity,
+          }),
+        );
 
         // Update DB status
         await this.orderRepo.update(order.id, { status: OrderStatus.EXPIRED });
@@ -270,7 +304,10 @@ export class BookingService implements OnModuleInit {
     return map;
   }
 
-  private calculateTotal(dto: CreateBookingDto, ticketTypes: Map<string, TicketType>): number {
+  private calculateTotal(
+    dto: CreateBookingDto,
+    ticketTypes: Map<string, TicketType>,
+  ): number {
     return dto.items.reduce((sum, item) => {
       const tt = ticketTypes.get(item.ticketTypeId)!;
       return sum + tt.price * item.quantity;
@@ -303,7 +340,9 @@ export class BookingService implements OnModuleInit {
   ) {
     if (reservedItems.length === 0) return;
     await this.releaseInventory(concertId, userId, reservedItems);
-    this.logger.warn(`Rolled back ${reservedItems.length} item(s) for user ${userId}`);
+    this.logger.warn(
+      `Rolled back ${reservedItems.length} item(s) for user ${userId}`,
+    );
   }
 
   stockKey(concertId: string, ticketTypeId: string) {

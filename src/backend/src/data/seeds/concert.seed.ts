@@ -1,12 +1,13 @@
 import { Seeder } from 'typeorm-extension';
 import { DataSource } from 'typeorm';
 import { Concert, ConcertStatus } from '../../concert/entities/concert.entity';
-import { TicketType, TicketTypeName } from '../../concert/entities/ticket-type.entity';
+import {
+  TicketType,
+  TicketTypeName,
+} from '../../concert/entities/ticket-type.entity';
 
 export default class ConcertSeeder implements Seeder {
-  public async run(
-    dataSource: DataSource,
-  ): Promise<any> {
+  public async run(dataSource: DataSource): Promise<any> {
     const concertRepository = dataSource.getRepository(Concert);
 
     // Mẫu sơ đồ sân khấu dạng SVG đơn giản để lưu vào DB
@@ -27,14 +28,19 @@ export default class ConcertSeeder implements Seeder {
     const concertsData = [
       {
         title: 'The Eras Tour - Ho Chi Minh City',
-        description: 'Trải nghiệm live show đỉnh cao của Taylor Swift với các bản hit qua các thời kỳ âm nhạc.',
+        description:
+          'Trải nghiệm live show đỉnh cao của Taylor Swift với các bản hit qua các thời kỳ âm nhạc.',
         location: 'Sân vận động Quân khu 7, TP. Hồ Chí Minh',
-        posterUrl: 'https://images.unsplash.com/photo-1540039155733-5bb30b53aa14?w=800',
-        biography: 'Đêm nhạc tái hiện các kỷ nguyên âm nhạc độc đáo của siêu sao thế giới Taylor Swift.',
+        posterUrl:
+          'https://images.unsplash.com/photo-1540039155733-5bb30b53aa14?w=800',
+        biography:
+          'Đêm nhạc tái hiện các kỷ nguyên âm nhạc độc đáo của siêu sao thế giới Taylor Swift.',
         tags: ['Pop', 'Taylor Swift', 'Live Concert'],
         svgStageMap: sampleSvg,
         startTime: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000), // 30 ngày sau
-        endTime: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000 + 4 * 60 * 60 * 1000), // Kéo dài 4 tiếng
+        endTime: new Date(
+          now.getTime() + 30 * 24 * 60 * 60 * 1000 + 4 * 60 * 60 * 1000,
+        ), // Kéo dài 4 tiếng
         status: ConcertStatus.ACTIVE,
         ticketTypes: [
           {
@@ -65,14 +71,19 @@ export default class ConcertSeeder implements Seeder {
       },
       {
         title: 'Rock Storm 2026 - Hanoi',
-        description: 'Lễ hội nhạc Rock lớn nhất năm quy tụ các ban nhạc Rock hàng đầu Việt Nam.',
+        description:
+          'Lễ hội nhạc Rock lớn nhất năm quy tụ các ban nhạc Rock hàng đầu Việt Nam.',
         location: 'Sân vận động Quốc gia Mỹ Đình, Hà Nội',
-        posterUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800',
-        biography: 'Bão Rock trở lại Hà Nội hứa hẹn một đêm cháy hết mình của các tín đồ nhạc Rock.',
+        posterUrl:
+          'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800',
+        biography:
+          'Bão Rock trở lại Hà Nội hứa hẹn một đêm cháy hết mình của các tín đồ nhạc Rock.',
         tags: ['Rock', 'Metal', 'Festival'],
         svgStageMap: sampleSvg,
         startTime: new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000), // 45 ngày sau
-        endTime: new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000 + 6 * 60 * 60 * 1000), // Kéo dài 6 tiếng
+        endTime: new Date(
+          now.getTime() + 45 * 24 * 60 * 60 * 1000 + 6 * 60 * 60 * 1000,
+        ), // Kéo dài 6 tiếng
         status: ConcertStatus.ACTIVE,
         ticketTypes: [
           {
@@ -103,14 +114,19 @@ export default class ConcertSeeder implements Seeder {
       },
       {
         title: 'BLACKPINK Born Pink Tour - Hanoi',
-        description: 'Tour diễn vòng quanh thế giới của nhóm nhạc nữ toàn cầu BLACKPINK tại Hà Nội.',
+        description:
+          'Tour diễn vòng quanh thế giới của nhóm nhạc nữ toàn cầu BLACKPINK tại Hà Nội.',
         location: 'Sân vận động Quốc gia Mỹ Đình, Hà Nội',
-        posterUrl: 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800',
-        biography: ' BLACKPINK quay trở lại Mỹ Đình trong tour diễn Born Pink hoành tráng nhất lịch sử.',
+        posterUrl:
+          'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800',
+        biography:
+          ' BLACKPINK quay trở lại Mỹ Đình trong tour diễn Born Pink hoành tráng nhất lịch sử.',
         tags: ['Pop', 'K-Pop', 'BLACKPINK', 'Live Concert'],
         svgStageMap: sampleSvg,
         startTime: new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000), // 60 ngày sau
-        endTime: new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000 + 3 * 60 * 60 * 1000),
+        endTime: new Date(
+          now.getTime() + 60 * 24 * 60 * 60 * 1000 + 3 * 60 * 60 * 1000,
+        ),
         status: ConcertStatus.ACTIVE,
         ticketTypes: [
           {
@@ -149,14 +165,19 @@ export default class ConcertSeeder implements Seeder {
       },
       {
         title: 'Chillout Indie Night - Da Nang',
-        description: 'Đêm nhạc Indie nhẹ nhàng dành cho những tâm hồn lãng mạn bên bờ biển Đà Nẵng.',
+        description:
+          'Đêm nhạc Indie nhẹ nhàng dành cho những tâm hồn lãng mạn bên bờ biển Đà Nẵng.',
         location: 'Công viên Biển Đông, Đà Nẵng',
-        posterUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800',
-        biography: 'Đêm nhạc mộc mạc bên bờ sóng của các nghệ sĩ Indie được yêu thích nhất.',
+        posterUrl:
+          'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800',
+        biography:
+          'Đêm nhạc mộc mạc bên bờ sóng của các nghệ sĩ Indie được yêu thích nhất.',
         tags: ['Indie', 'Acoustic', 'Chill', 'Live Concert'],
         svgStageMap: sampleSvg,
         startTime: new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000),
-        endTime: new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000 + 3 * 60 * 60 * 1000),
+        endTime: new Date(
+          now.getTime() + 15 * 24 * 60 * 60 * 1000 + 3 * 60 * 60 * 1000,
+        ),
         status: ConcertStatus.ACTIVE,
         ticketTypes: [
           {
@@ -179,14 +200,19 @@ export default class ConcertSeeder implements Seeder {
       },
       {
         title: 'Symphony of Lights - HCMC',
-        description: 'Buổi hòa nhạc giao hưởng cổ điển kết hợp trình diễn ánh sáng nghệ thuật.',
+        description:
+          'Buổi hòa nhạc giao hưởng cổ điển kết hợp trình diễn ánh sáng nghệ thuật.',
         location: 'Nhà hát Thành phố, TP. Hồ Chí Minh',
-        posterUrl: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=800',
-        biography: 'Sự kết hợp hoàn hảo giữa âm thanh thính phòng bác học và ánh sáng 3D mapping.',
+        posterUrl:
+          'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=800',
+        biography:
+          'Sự kết hợp hoàn hảo giữa âm thanh thính phòng bác học và ánh sáng 3D mapping.',
         tags: ['Classical', 'Orchestra', 'Instrumental'],
         svgStageMap: sampleSvg,
         startTime: new Date(now.getTime() + 20 * 24 * 60 * 60 * 1000),
-        endTime: new Date(now.getTime() + 20 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000),
+        endTime: new Date(
+          now.getTime() + 20 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000,
+        ),
         status: ConcertStatus.ACTIVE,
         ticketTypes: [
           {
@@ -211,14 +237,19 @@ export default class ConcertSeeder implements Seeder {
       },
       {
         title: 'Rap Viet Live Concert 2026 - HCMC',
-        description: 'Đại nhạc hội hội tụ những tên tuổi hàng đầu của làng Rap Việt.',
+        description:
+          'Đại nhạc hội hội tụ những tên tuổi hàng đầu của làng Rap Việt.',
         location: 'Nhà thi đấu Phú Thọ, TP. Hồ Chí Minh',
-        posterUrl: 'https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?w=800',
-        biography: 'Đêm nhạc bùng nổ năng lượng của các thế hệ Rapper đình đám Việt Nam.',
+        posterUrl:
+          'https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?w=800',
+        biography:
+          'Đêm nhạc bùng nổ năng lượng của các thế hệ Rapper đình đám Việt Nam.',
         tags: ['HipHop', 'Rap', 'Live Concert'],
         svgStageMap: sampleSvg,
         startTime: new Date(now.getTime() + 75 * 24 * 60 * 60 * 1000),
-        endTime: new Date(now.getTime() + 75 * 24 * 60 * 60 * 1000 + 5 * 60 * 60 * 1000),
+        endTime: new Date(
+          now.getTime() + 75 * 24 * 60 * 60 * 1000 + 5 * 60 * 60 * 1000,
+        ),
         status: ConcertStatus.ACTIVE,
         ticketTypes: [
           {
@@ -245,12 +276,16 @@ export default class ConcertSeeder implements Seeder {
         title: 'Jazz Under the Stars - Da Lat',
         description: 'Đêm nhạc Jazz lãng mạn dưới bầu trời đêm Đà Lạt mộng mơ.',
         location: 'Mây Lang Thang, Đà Lạt',
-        posterUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
-        biography: 'Thưởng thức nhạc Jazz sâu lắng trong không khí se lạnh của xứ sở ngàn hoa.',
+        posterUrl:
+          'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
+        biography:
+          'Thưởng thức nhạc Jazz sâu lắng trong không khí se lạnh của xứ sở ngàn hoa.',
         tags: ['Jazz', 'Acoustic', 'Chill'],
         svgStageMap: sampleSvg,
         startTime: new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000),
-        endTime: new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000 + 3 * 60 * 60 * 1000),
+        endTime: new Date(
+          now.getTime() + 10 * 24 * 60 * 60 * 1000 + 3 * 60 * 60 * 1000,
+        ),
         status: ConcertStatus.ACTIVE,
         ticketTypes: [
           {
@@ -269,14 +304,19 @@ export default class ConcertSeeder implements Seeder {
       },
       {
         title: 'EDM Rave Mania - Nha Trang',
-        description: 'Đại tiệc âm nhạc điện tử EDM cuồng nhiệt bên bờ biển Nha Trang.',
+        description:
+          'Đại tiệc âm nhạc điện tử EDM cuồng nhiệt bên bờ biển Nha Trang.',
         location: 'Quảng trường 2 Tháng 4, Nha Trang',
-        posterUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800',
-        biography: 'Nhảy múa cùng các DJ quốc tế và Việt Nam trong đại tiệc EDM hoành tráng.',
+        posterUrl:
+          'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800',
+        biography:
+          'Nhảy múa cùng các DJ quốc tế và Việt Nam trong đại tiệc EDM hoành tráng.',
         tags: ['EDM', 'Electronic', 'Festival'],
         svgStageMap: sampleSvg,
         startTime: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000),
-        endTime: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000 + 8 * 60 * 60 * 1000),
+        endTime: new Date(
+          now.getTime() + 90 * 24 * 60 * 60 * 1000 + 8 * 60 * 60 * 1000,
+        ),
         status: ConcertStatus.ACTIVE,
         ticketTypes: [
           {
@@ -297,12 +337,16 @@ export default class ConcertSeeder implements Seeder {
         title: 'Lover Tour - Da Nang (Draft)',
         description: 'Đêm nhạc trữ tình bên bờ biển Mỹ Khê xinh đẹp.',
         location: 'Công viên Biển Đông, Đà Nẵng',
-        posterUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
-        biography: 'Live concert kết hợp giữa âm nhạc lãng mạn và không gian biển thơ mộng.',
+        posterUrl:
+          'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
+        biography:
+          'Live concert kết hợp giữa âm nhạc lãng mạn và không gian biển thơ mộng.',
         tags: ['Indie', 'Acoustic', 'Draft'],
         svgStageMap: undefined,
         startTime: new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000),
-        endTime: new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000 + 3 * 60 * 60 * 1000),
+        endTime: new Date(
+          now.getTime() + 60 * 24 * 60 * 60 * 1000 + 3 * 60 * 60 * 1000,
+        ),
         status: ConcertStatus.DRAFT,
         ticketTypes: [
           {
@@ -317,14 +361,19 @@ export default class ConcertSeeder implements Seeder {
       },
       {
         title: 'Retro Pop Night - Hue (Draft)',
-        description: 'Đêm nhạc tái hiện các ca khúc nhạc Pop retro thập niên 90.',
+        description:
+          'Đêm nhạc tái hiện các ca khúc nhạc Pop retro thập niên 90.',
         location: 'Cung An Định, Huế',
-        posterUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
-        biography: 'Giai điệu hoài niệm trong không gian hoàng cung Huế xưa kính.',
+        posterUrl:
+          'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
+        biography:
+          'Giai điệu hoài niệm trong không gian hoàng cung Huế xưa kính.',
         tags: ['Retro', 'Pop', 'Draft'],
         svgStageMap: undefined,
         startTime: new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000),
-        endTime: new Date(now.getTime() + 120 * 24 * 60 * 60 * 1000 + 3 * 60 * 60 * 1000),
+        endTime: new Date(
+          now.getTime() + 120 * 24 * 60 * 60 * 1000 + 3 * 60 * 60 * 1000,
+        ),
         status: ConcertStatus.DRAFT,
         ticketTypes: [
           {
@@ -339,12 +388,15 @@ export default class ConcertSeeder implements Seeder {
         title: 'Future Bass Fest 2026 - Can Tho (Cancelled)',
         description: 'Lễ hội âm nhạc Future Bass miền Tây sông nước.',
         location: 'Bến Ninh Kiều, Cần Thơ',
-        posterUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800',
+        posterUrl:
+          'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800',
         biography: 'Lễ hội âm nhạc điện tử kết hợp ẩm thực sông nước Cần Thơ.',
         tags: ['EDM', 'FutureBass', 'Cancelled'],
         svgStageMap: undefined,
         startTime: new Date(now.getTime() + 150 * 24 * 60 * 60 * 1000),
-        endTime: new Date(now.getTime() + 150 * 24 * 60 * 60 * 1000 + 6 * 60 * 60 * 1000),
+        endTime: new Date(
+          now.getTime() + 150 * 24 * 60 * 60 * 1000 + 6 * 60 * 60 * 1000,
+        ),
         status: ConcertStatus.CANCELLED,
         ticketTypes: [
           {

@@ -1,9 +1,8 @@
-import { MigrationInterface, QueryRunner } from "typeorm";
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreateUsersTable1781020486759 implements MigrationInterface {
-
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
             CREATE TABLE "users" (
                 "id" UUID NOT NULL,
                 "email" character varying(255) NOT NULL,
@@ -18,10 +17,9 @@ export class CreateUsersTable1781020486759 implements MigrationInterface {
                 CONSTRAINT "CHK_users_status" CHECK (status IN ('pending', 'active'))
             )
         `);
-    }
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`DROP TABLE "users"`);
-    }
-
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP TABLE "users"`);
+  }
 }

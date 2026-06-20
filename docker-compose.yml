@@ -39,6 +39,98 @@ services:
       - ticketbox-network
     restart: unless-stopped
 
+  ticketbox-api:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+      target: development
+    command: npm run start:dev
+    expose:
+      - "3000"
+    env_file:
+      - ./src/backend/.env
+    environment:
+      - INSTANCE_ROLE=api
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_HOST=redis
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    volumes:
+      - ./src/backend:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - ticketbox-network
+    restart: unless-stopped
+
+  ticketbox-booking-worker:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: ticketbox-booking-worker
+    command: npm run start:dev
+    env_file:
+      - ./src/backend/.env
+    environment:
+      - INSTANCE_ROLE=worker:booking
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_HOST=redis
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    volumes:
+      - ./src/backend:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - ticketbox-network
+    restart: unless-stopped
+
+  ticketbox-background-worker:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: ticketbox-background-worker
+    command: npm run start:dev
+    env_file:
+      - ./src/backend/.env
+    environment:
+      - INSTANCE_ROLE=worker:background
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_HOST=redis
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    volumes:
+      - ./src/backend:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - ticketbox-network
+    restart: unless-stopped
+
+  nginx-lb:
+    image: nginx:alpine
+    container_name: ticketbox-nginx-lb
+    ports:
+      - "3000:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - ticketbox-api
+    networks:
+      - ticketbox-network
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:

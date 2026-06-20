@@ -18,7 +18,10 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
   constructor(private readonly redisService: RedisService) {}
 
-  async intercept(context: ExecutionContext, next: CallHandler): Promise<Observable<any>> {
+  async intercept(
+    context: ExecutionContext,
+    next: CallHandler,
+  ): Promise<Observable<any>> {
     const request = context.switchToHttp().getRequest();
     const idempotencyKey = request.headers['idempotency-key'] as string;
 
@@ -34,7 +37,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
       `${redisKey}:lock`,
       'processing',
       'EX',
-      30,  // 30s lock timeout
+      30, // 30s lock timeout
       'NX',
     );
 
@@ -55,7 +58,9 @@ export class IdempotencyInterceptor implements NestInterceptor {
     // Check if result already exists (request was completed before)
     const cachedResult = await this.redisService.get(redisKey);
     if (cachedResult) {
-      this.logger.log(`Returning cached result for Idempotency-Key: ${idempotencyKey}`);
+      this.logger.log(
+        `Returning cached result for Idempotency-Key: ${idempotencyKey}`,
+      );
       // Release lock since we're returning cached
       await this.redisService.del(`${redisKey}:lock`);
       return of(JSON.parse(cachedResult));
@@ -73,7 +78,10 @@ export class IdempotencyInterceptor implements NestInterceptor {
             IDEMPOTENCY_KEY_TTL,
           );
         } catch (err) {
-          this.logger.error(`Failed to cache idempotency result for key: ${idempotencyKey}`, err);
+          this.logger.error(
+            `Failed to cache idempotency result for key: ${idempotencyKey}`,
+            err,
+          );
         } finally {
           // Always release the lock
           await this.redisService.del(`${redisKey}:lock`);

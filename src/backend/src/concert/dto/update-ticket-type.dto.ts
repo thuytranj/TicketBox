@@ -1,4 +1,12 @@
-import { IsString, IsNumber, Min, IsInt, IsOptional, IsDateString, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  Min,
+  IsInt,
+  IsOptional,
+  IsDateString,
+  IsEnum,
+} from 'class-validator';
 import { TicketTypeName } from '../entities/ticket-type.entity';
 
 export class UpdateTicketTypeDto {
