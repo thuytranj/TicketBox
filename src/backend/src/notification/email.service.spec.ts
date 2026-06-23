@@ -79,4 +79,29 @@ describe('EmailService', () => {
       }),
     );
   });
+
+  it('should send VIP invitation email successfully with QR code attachment', async () => {
+    const qrBuffer = Buffer.from('mock-qr');
+    await service.sendVipInvitationEmail(
+      'vip@test.com',
+      'John VIP',
+      'The Eras Tour',
+      'hash123',
+      qrBuffer,
+    );
+    expect(mockTransporter.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'vip@test.com',
+        subject: 'VIP Ticket Invitation: The Eras Tour - TicketBox',
+        html: expect.stringContaining('John VIP'),
+        attachments: [
+          {
+            filename: 'qrcode.png',
+            content: qrBuffer,
+            cid: 'vip-qr-code',
+          },
+        ],
+      }),
+    );
+  });
 });

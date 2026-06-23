@@ -122,4 +122,68 @@ export class EmailService implements OnModuleInit {
       html,
     });
   }
+
+  async sendVipInvitationEmail(
+    to: string,
+    guestName: string,
+    concertTitle: string,
+    qrCodeHash: string,
+    qrBuffer: Buffer,
+  ): Promise<void> {
+    const html = this.buildMasterTemplate({
+      title: 'VIP Ticket Invitation',
+      description: `Dear ${guestName},<br><br>You have been registered as a VIP guest for the concert "<strong>${concertTitle}</strong>". Please find your ticket details below.`,
+      headerBgColor: '#4f46e5',
+      contentHtml: `
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-size: 12px; color: #334155; line-height: 1.5;">
+          <tr>
+            <td style="padding: 5px 0;">
+              <strong>Guest Name:</strong> ${guestName}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0;">
+              <strong>Concert:</strong> ${concertTitle}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 15px 0; text-align: center;">
+              <div style="margin-bottom: 15px;">
+                <img 
+                  src="cid:vip-qr-code" 
+                  alt="VIP Ticket QR Pass" 
+                  width="160" 
+                  height="160" 
+                  style="display: inline-block; border: 1px solid #e2e8f0; padding: 5px; border-radius: 4px;"
+                />
+              </div>
+              <div style="background-color: #f1f5f9; padding: 15px; border-radius: 6px; display: inline-block; width: 90%;">
+                <span style="font-family: monospace; font-size: 13px; font-weight: bold; color: #1e293b; display: block;">
+                  Verification Signature
+                </span>
+                <span style="font-family: monospace; font-size: 11px; color: #64748b; display: block; word-break: break-all; margin-top: 5px; line-height: 1.3;">
+                  ${qrCodeHash}
+                </span>
+              </div>
+            </td>
+          </tr>
+        </table>
+      `,
+      footerText: 'This email contains your VIP entry pass. Please do not share this email or your QR code signature with anyone.',
+    });
+
+    await this.transporter.sendMail({
+      from: `"TicketBox Events" <${this.configService.get<string>('SMTP_FROM_EMAIL')}>`,
+      to,
+      subject: `VIP Ticket Invitation: ${concertTitle} - TicketBox`,
+      html,
+      attachments: [
+        {
+          filename: 'qrcode.png',
+          content: qrBuffer,
+          cid: 'vip-qr-code',
+        },
+      ],
+    });
+  }
 }

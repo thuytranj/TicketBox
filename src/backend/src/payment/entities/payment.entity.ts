@@ -6,6 +6,7 @@ import {
   BeforeInsert,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { generateUuidV7 } from '../../auth/utils/uuid';
 import { Order } from '../../booking/entities/order.entity';
@@ -26,6 +27,7 @@ export class Payment {
   @PrimaryColumn({ type: 'uuid' })
   id: string;
 
+  @Index()
   @Column({ type: 'uuid', name: 'order_id' })
   orderId: string;
 

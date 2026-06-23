@@ -71,12 +71,13 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     queue: string,
     content: any,
     options?: amqp.Options.Publish,
+    assertOptions?: amqp.Options.AssertQueue,
   ) {
     if (!this.channel) {
       throw new Error('RabbitMQ channel is not initialized');
     }
     const messageBuffer = Buffer.from(JSON.stringify(content));
-    await this.channel.assertQueue(queue, { durable: true });
+    await this.channel.assertQueue(queue, { durable: true, ...assertOptions });
     return this.channel.sendToQueue(queue, messageBuffer, options);
   }
 
@@ -84,11 +85,12 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     queue: string,
     onMessage: (msg: amqp.ConsumeMessage | null) => void,
     options?: amqp.Options.Consume,
+    assertOptions?: amqp.Options.AssertQueue,
   ) {
     if (!this.channel) {
       throw new Error('RabbitMQ channel is not initialized');
     }
-    await this.channel.assertQueue(queue, { durable: true });
+    await this.channel.assertQueue(queue, { durable: true, ...assertOptions });
     return this.channel.consume(queue, onMessage, options);
   }
 

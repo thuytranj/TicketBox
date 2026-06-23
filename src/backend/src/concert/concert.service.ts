@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, EntityManager } from 'typeorm';
@@ -21,9 +22,15 @@ import { ConcertQueryDto } from './dto/concert-query.dto';
 import { RedisService } from '../common/redis/redis.service';
 import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
 import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
+import { VipGuest } from './entities/vip-guest.entity';
+import { VipGuestImport, VipGuestImportStatus } from './entities/vip-guest-import.entity';
+import { SupabaseService } from '../common/supabase/supabase.service';
+import { generateUuidV7 } from '../auth/utils/uuid';
+
+export const VIP_GUEST_IMPORT_QUEUE = 'vip_guest.import';
 
 @Injectable()
-export class ConcertService {
+export class ConcertService implements OnModuleInit {
   private readonly logger = new Logger(ConcertService.name);
 
   constructor(
@@ -33,11 +40,56 @@ export class ConcertService {
     private readonly ticketTypeRepository: Repository<TicketType>,
     @InjectRepository(ConcertAIBio)
     private readonly concertAIBioRepository: Repository<ConcertAIBio>,
+    @InjectRepository(VipGuest)
+    private readonly vipGuestRepository: Repository<VipGuest>,
+    @InjectRepository(VipGuestImport)
+    private readonly vipGuestImportRepository: Repository<VipGuestImport>,
     private readonly entityManager: EntityManager,
     private readonly redisService: RedisService,
     private readonly cloudinaryService: CloudinaryService,
     private readonly rabbitMQService: RabbitMQService,
+    private readonly supabaseService: SupabaseService,
   ) {}
+
+  async onModuleInit() {
+    await this.setupRabbitMQTopology();
+  }
+
+  private async setupRabbitMQTopology() {
+    try {
+      const channel = this.rabbitMQService.getChannel();
+      if (!channel) {
+        this.logger.warn('RabbitMQ channel is not initialized yet in onModuleInit');
+        return;
+      }
+
+      // Assert DLX Exchange
+      await channel.assertExchange('vip_guest.import.dlx', 'direct', {
+        durable: true,
+      });
+
+      // Assert failed/DLQ queue
+      await channel.assertQueue('vip_guest.import.failed', { durable: true });
+      await channel.bindQueue(
+        'vip_guest.import.failed',
+        'vip_guest.import.dlx',
+        'vip_guest.import.failed',
+      );
+
+      // Assert main queue with DLX args
+      await channel.assertQueue(VIP_GUEST_IMPORT_QUEUE, {
+        durable: true,
+        arguments: {
+          'x-dead-letter-exchange': 'vip_guest.import.dlx',
+          'x-dead-letter-routing-key': 'vip_guest.import.failed',
+        },
+      });
+
+      this.logger.log('RabbitMQ VIP Guest Import topology initialized');
+    } catch (error) {
+      this.logger.error('Failed to initialize RabbitMQ VIP Guest Import topology', error);
+    }
+  }
 
   private async invalidateListCache() {
     const keys = await this.redisService.keys('cache:concerts:list:default:*');
@@ -628,5 +680,71 @@ export class ConcertService {
     concert.biography = biography;
     await this.concertRepository.save(concert);
     await this.invalidateCache(concertId);
+  }
+
+  async importVipGuests(concertId: string, file: Express.Multer.File): Promise<VipGuestImport> {
+    const concert = await this.concertRepository.findOne({
+      where: { id: concertId },
+    });
+    if (!concert) {
+      throw new NotFoundException(`Concert with ID "${concertId}" not found`);
+    }
+
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    // Basic filename/mimetype verification for CSV
+    const fileExtension = file.originalname.split('.').pop()?.toLowerCase();
+    if (fileExtension !== 'csv' && file.mimetype !== 'text/csv') {
+      throw new BadRequestException('Only CSV files are allowed');
+    }
+
+    const jobId = generateUuidV7();
+    const path = `vip-guests/${concertId}/${jobId}.csv`;
+
+    // Upload to Supabase Storage
+    await this.supabaseService.uploadFile(file, path);
+
+    // Create the import tracking record
+    const importJob = this.vipGuestImportRepository.create({
+      id: jobId,
+      concertId,
+      status: VipGuestImportStatus.PENDING,
+      fileUrl: path,
+      totalRows: 0,
+      importedRows: 0,
+    });
+    const savedJob = await this.vipGuestImportRepository.save(importJob);
+
+    // Publish to RabbitMQ
+    await this.rabbitMQService.sendToQueue(
+      VIP_GUEST_IMPORT_QUEUE,
+      {
+        jobId,
+        concertId,
+        fileUrl: path,
+      },
+      undefined,
+      {
+        arguments: {
+          'x-dead-letter-exchange': 'vip_guest.import.dlx',
+          'x-dead-letter-routing-key': 'vip_guest.import.failed',
+        },
+      },
+    );
+
+    this.logger.log(`Queued VIP Guest import job ${jobId} for concert ${concertId}`);
+    return savedJob;
+  }
+
+  async getVipGuestImportStatus(concertId: string, jobId: string): Promise<VipGuestImport> {
+    const importJob = await this.vipGuestImportRepository.findOne({
+      where: { id: jobId, concertId },
+    });
+    if (!importJob) {
+      throw new NotFoundException(`Import job with ID "${jobId}" not found for this concert`);
+    }
+    return importJob;
   }
 }

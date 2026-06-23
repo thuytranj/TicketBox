@@ -186,4 +186,35 @@ export class ConcertController {
     );
     return { message: 'Biography updated successfully' };
   }
+
+  @Post(':id/guests/import')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANIZER)
+  @HttpCode(HttpStatus.ACCEPTED)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  async importVipGuests(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    const job = await this.concertService.importVipGuests(id, file);
+    return {
+      message: 'VIP Guest list import started',
+      jobId: job.id,
+      status: job.status,
+    };
+  }
+
+  @Get(':id/guests/imports/:jobId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANIZER)
+  async getVipGuestImportStatus(
+    @Param('id') id: string,
+    @Param('jobId') jobId: string,
+  ) {
+    return this.concertService.getVipGuestImportStatus(id, jobId);
+  }
 }

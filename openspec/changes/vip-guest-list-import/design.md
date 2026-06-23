@@ -41,6 +41,9 @@ Hiện tại, TicketBox chưa hỗ trợ tính năng cho phép Ban tổ chức n
 ### 7. Bảng thực thể lưu vết Job import `vip_guest_imports`
 - **Lý do**: Cần có nơi lưu giữ tiến trình (`total_rows`, `imported_rows`), trạng thái của Job import và danh sách JSON lỗi cụ thể (dòng lỗi, lý do lỗi) để admin kiểm tra và chỉnh sửa thủ công sau đó.
 
+### 8. Đính kèm mã QR trực quan trong Email dưới dạng CID (Content-ID) Attachment
+- **Lý do**: Tại các sự kiện âm nhạc lớn, kết nối mạng di động (3G/4G) của người dùng thường cực kỳ yếu hoặc mất kết nối hoàn toàn do quá tải trạm phát sóng. Nếu sử dụng các dịch vụ sinh QR code qua liên kết HTTPS bên ngoài (như quickchart.io hay qrserver.com), điện thoại của khách mời sẽ không thể tải được ảnh QR khi mất mạng. Để giải quyết triệt để lỗi trải nghiệm này, chúng ta sử dụng thư viện `qrcode` để tạo ảnh mã QR (dạng Buffer PNG) ngay ở Worker, sau đó đính kèm vào email dưới dạng CID Attachment (`cid:vip-qr-code`). Ứng dụng email của người dùng sẽ tải và lưu trữ ảnh này cục bộ ngay khi nhận thư mới ở chế độ nền, giúp mã QR hiển thị tức thì và hoàn toàn offline tại cửa soát vé.
+
 ## Risks / Trade-offs
 
 - **Lỗi kết nối tới Supabase Storage**:
@@ -49,3 +52,5 @@ Hiện tại, TicketBox chưa hỗ trợ tính năng cho phép Ban tổ chức n
   - *Biện pháp*: Sử dụng cơ chế Message Acknowledgement của RabbitMQ. Nếu worker crash, tin nhắn sẽ được requeue hoặc chuyển sang DLQ, giúp hệ thống không bị mất dấu job.
 - **Rác tệp trên Supabase Storage**:
   - *Biện pháp*: Đảm bảo lệnh xóa file trên Supabase Storage luôn nằm trong khối `finally` của tiến trình worker để dọn dẹp tài nguyên.
+- **Làm tăng nhẹ dung lượng email gửi đi do đính kèm ảnh (CID Trade-off)**:
+  - *Lý do*: Việc đính kèm trực tiếp ảnh QR code làm tăng dung lượng mỗi email lên khoảng 10-20KB. Tuy nhiên, mức tăng này là hoàn toàn chấp nhận được so với lợi ích to lớn là đảm bảo khách mời luôn hiển thị được vé soát tại cổng mà không phụ thuộc vào tình trạng mạng di động của Venue.
