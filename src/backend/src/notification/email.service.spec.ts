@@ -1,30 +1,29 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { EmailService } from './email.service';
-import * as nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
-jest.mock('nodemailer');
+jest.mock('resend');
 
 describe('EmailService', () => {
   let service: EmailService;
-  let mockTransporter: any;
+  let mockResendInstance: any;
 
   const mockConfigService = {
     get: jest.fn((key: string) => {
-      if (key === 'SMTP_HOST') return 'smtp.test.com';
-      if (key === 'SMTP_PORT') return 587;
-      if (key === 'SMTP_USER') return 'user@test.com';
-      if (key === 'SMTP_PASSWORD') return 'pass';
-      if (key === 'SMTP_FROM_EMAIL') return 'no-reply@test.com';
+      if (key === 'RESEND_API_KEY') return 're_test';
+      if (key === 'MAIL_FROM') return 'no-reply@test.com';
       return null;
     }),
   };
 
   beforeEach(async () => {
-    mockTransporter = {
-      sendMail: jest.fn().mockResolvedValue({ messageId: '123' }),
+    mockResendInstance = {
+      emails: {
+        send: jest.fn().mockResolvedValue({ data: { id: 'mock-id' }, error: null }),
+      },
     };
-    (nodemailer.createTransport as jest.Mock).mockReturnValue(mockTransporter);
+    (Resend as jest.Mock).mockImplementation(() => mockResendInstance);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -50,14 +49,14 @@ describe('EmailService', () => {
 
   it('should send OTP email successfully with English template', async () => {
     await service.sendOtpEmail('recipient@test.com', '123456');
-    expect(mockTransporter.sendMail).toHaveBeenCalledWith(
+    expect(mockResendInstance.emails.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: 'recipient@test.com',
+        to: ['recipient@test.com'],
         subject: 'Verify your email - TicketBox',
         html: expect.stringContaining('Verify your email'),
       }),
     );
-    expect(mockTransporter.sendMail).toHaveBeenCalledWith(
+    expect(mockResendInstance.emails.send).toHaveBeenCalledWith(
       expect.objectContaining({
         html: expect.stringContaining('123456'),
       }),
@@ -66,14 +65,14 @@ describe('EmailService', () => {
 
   it('should send Reset Password email successfully with English template', async () => {
     await service.sendResetPasswordEmail('recipient@test.com', '654321');
-    expect(mockTransporter.sendMail).toHaveBeenCalledWith(
+    expect(mockResendInstance.emails.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: 'recipient@test.com',
+        to: ['recipient@test.com'],
         subject: 'Reset your password - TicketBox',
         html: expect.stringContaining('Reset your password'),
       }),
     );
-    expect(mockTransporter.sendMail).toHaveBeenCalledWith(
+    expect(mockResendInstance.emails.send).toHaveBeenCalledWith(
       expect.objectContaining({
         html: expect.stringContaining('654321'),
       }),
@@ -89,19 +88,32 @@ describe('EmailService', () => {
       'hash123',
       qrBuffer,
     );
-    expect(mockTransporter.sendMail).toHaveBeenCalledWith(
+    expect(mockResendInstance.emails.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: 'vip@test.com',
+        to: ['vip@test.com'],
         subject: 'VIP Ticket Invitation: The Eras Tour - TicketBox',
         html: expect.stringContaining('John VIP'),
         attachments: [
           {
             filename: 'qrcode.png',
             content: qrBuffer,
-            cid: 'vip-qr-code',
+            contentId: 'vip-qr-code',
           },
         ],
       }),
     );
+    const callArgs = mockResendInstance.emails.send.mock.calls[0][0];
+    expect(callArgs.html).not.toContain('hash123');
+  });
+
+  it('should throw an error if Resend fails to send email', async () => {
+    mockResendInstance.emails.send.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'API Key invalid', name: 'validation_error' },
+    });
+
+    await expect(
+      service.sendOtpEmail('recipient@test.com', '123456'),
+    ).rejects.toThrow('Failed to send OTP email: API Key invalid');
   });
 });

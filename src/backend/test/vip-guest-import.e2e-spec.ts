@@ -47,6 +47,10 @@ describe('VIP Guest Import (e2e)', () => {
       throw new Error('Seed data missing: No concert found. Please run npm run db:seed');
     }
     concertId = concert.id;
+
+    // Clean up any stale records from previous failed runs
+    await vipGuestRepository.delete({ email: 'e2e_guest_a@example.com' });
+    await vipGuestRepository.delete({ email: 'e2e_guest_b@example.com' });
   }, 30000);
 
   afterAll(async () => {

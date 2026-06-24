@@ -75,7 +75,7 @@ export class VipGuestConsumer implements OnModuleInit {
         const { jobId, concertId, fileUrl } = payload;
         this.logger.log(`Processing VIP Guest import job ${jobId} for concert ${concertId}`);
 
-        const errorLogs: Array<{ row: number; email?: string; error: string }> = [];
+        const errorLogs: Array<{ row: number; email?: string; reason: string }> = [];
         let totalRows = 0;
         let importedCount = 0;
 
@@ -131,7 +131,7 @@ export class VipGuestConsumer implements OnModuleInit {
               errorLogs.push({
                 row: rowIndex,
                 email: mappedRow.email,
-                error: 'Missing required fields (fullName, email)',
+                reason: 'Missing required fields (fullName, email)',
               });
               continue;
             }
@@ -150,7 +150,7 @@ export class VipGuestConsumer implements OnModuleInit {
               errorLogs.push({
                 row: rowIndex,
                 email: mappedRow.email,
-                error: errorMsgs,
+                reason: errorMsgs,
               });
               continue;
             }
@@ -160,18 +160,13 @@ export class VipGuestConsumer implements OnModuleInit {
               errorLogs.push({
                 row: rowIndex,
                 email: mappedRow.email,
-                error: 'Duplicate guest email in CSV file',
+                reason: 'Duplicate guest email in CSV file',
               });
               continue;
             }
 
-            // Check for duplicates in DB
+            // Check for duplicates in DB - silently skip to support Simplified Error Recovery (ON CONFLICT DO NOTHING concept)
             if (existingEmails.has(emailLower)) {
-              errorLogs.push({
-                row: rowIndex,
-                email: mappedRow.email,
-                error: 'Duplicate guest email for this concert in database',
-              });
               continue;
             }
 
@@ -208,6 +203,7 @@ export class VipGuestConsumer implements OnModuleInit {
                   .insert()
                   .into(VipGuest)
                   .values(chunk)
+                  .orIgnore()
                   .execute();
               }
             });
@@ -225,12 +221,22 @@ export class VipGuestConsumer implements OnModuleInit {
 
           // 9. Dispatch notification tasks to RabbitMQ
           for (const guest of validGuestsToInsert) {
-            await this.rabbitMQService.sendToQueue('notification.email.vip', {
-              email: guest.email,
-              fullName: guest.fullName,
-              concertTitle: concert.title,
-              qrCodeHash: guest.qrCodeHash,
-            });
+            await this.rabbitMQService.sendToQueue(
+              'notification.email.vip',
+              {
+                email: guest.email,
+                fullName: guest.fullName,
+                concertTitle: concert.title,
+                qrCodeHash: guest.qrCodeHash,
+              },
+              undefined,
+              {
+                arguments: {
+                  'x-dead-letter-exchange': 'notification.email.vip.dlx',
+                  'x-dead-letter-routing-key': 'notification.email.vip.failed',
+                },
+              },
+            );
           }
 
           this.logger.log(`Dispatched ${validGuestsToInsert.length} VIP email notification tasks for job ${jobId}`);
@@ -239,7 +245,7 @@ export class VipGuestConsumer implements OnModuleInit {
 
           errorLogs.push({
             row: 0,
-            error: err.message || err.toString(),
+            reason: err.message || err.toString(),
           });
 
           await this.vipGuestImportRepository.save({

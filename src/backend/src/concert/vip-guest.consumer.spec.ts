@@ -42,6 +42,7 @@ describe('VipGuestConsumer', () => {
     insert: jest.fn().mockReturnThis(),
     into: jest.fn().mockReturnThis(),
     values: jest.fn().mockReturnThis(),
+    orIgnore: jest.fn().mockReturnThis(),
     execute: jest.fn().mockResolvedValue({}),
   };
 
@@ -181,12 +182,7 @@ describe('VipGuestConsumer', () => {
             {
               row: 3,
               email: 'john@example.com',
-              error: 'Duplicate guest email in CSV file',
-            },
-            {
-              row: 4,
-              email: 'jane@example.com',
-              error: 'Duplicate guest email for this concert in database',
+              reason: 'Duplicate guest email in CSV file',
             },
           ],
         }),

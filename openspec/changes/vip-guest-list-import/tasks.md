@@ -32,3 +32,24 @@
 
 - [x] 5.1 Viết các unit tests kiểm tra cơ chế parser CSV, logic validate dòng và các endpoint controller
 - [x] 5.2 Kiểm thử thủ công luồng tích hợp: upload file CSV chứa cả dòng hợp lệ và không hợp lệ, kiểm tra trạng thái Job/danh sách lỗi, xác nhận bản ghi DB và email gửi đi giả lập (mock email)
+
+## 6. Chuyển đổi sang Resend SDK (REST API)
+
+- [x] 6.1 Cài đặt thư viện `resend` trong `package.json`
+- [x] 6.2 Thay thế việc sử dụng `nodemailer` bằng `Resend` SDK trong `EmailService`
+- [x] 6.3 Cập nhật cấu hình gửi email sử dụng `RESEND_API_KEY` và `MAIL_FROM` từ biến môi trường
+- [x] 6.4 Chuyển đổi cấu trúc đính kèm QR code dạng inline CID sử dụng trường `id` trong attachment của Resend
+- [x] 6.5 Viết lại unit tests trong `email.service.spec.ts` sử dụng mock Resend SDK thay cho mock `nodemailer`
+- [x] 6.6 Chạy kiểm thử tự động (`npm run test`) để xác minh việc gửi OTP, reset password, và VIP invitation email qua Resend hoạt động chính xác
+
+## 7. Cơ chế Xử lý Lỗi (ON CONFLICT & Retry & DLQ)
+
+- [x] 7.1 Cấu hình cột `error_logs` của thực thể `VipGuestImport` lưu mảng JSON lỗi rút gọn (số dòng, email, lý do) phục vụ hiển thị
+- [x] 7.2 Tích hợp mệnh đề `.orIgnore()` (`ON CONFLICT DO NOTHING`) vào QueryBuilder bulk insert của worker để tự động bỏ qua dòng trùng lặp
+- [x] 7.3 Cấu hình cơ chế Retry (tối đa 3 lần) và DLQ cho hàng đợi thông báo gửi thư ở phần thiết lập RabbitMQ
+- [x] 7.4 Xóa bỏ phần hiển thị signature hash (chuỗi 64 ký tự) trong template HTML của `sendVipInvitationEmail` ở `EmailService`
+- [x] 7.5 Cập nhật lại unit tests của `EmailService` trong `email.service.spec.ts` để loại bỏ kỳ vọng chuỗi hash signature hiển thị trong HTML
+- [x] 7.6 Kiểm thử tích hợp toàn bộ luồng: tải lên CSV có dòng lỗi, hiển thị dòng lỗi trên giao diện, sửa file gốc và tải lên lại (đảm bảo chỉ chèn dòng mới sửa)
+
+
+

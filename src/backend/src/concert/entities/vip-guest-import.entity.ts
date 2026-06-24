@@ -42,7 +42,7 @@ export class VipGuestImport {
   importedRows: number;
 
   @Column({ type: 'jsonb', name: 'error_logs', nullable: true })
-  errorLogs: Array<{ row: number; email?: string; error: string }> | null;
+  errorLogs: Array<{ row: number; email?: string; reason: string }> | null;
 
   @Column({ type: 'varchar', name: 'file_url', length: 1000, nullable: true })
   fileUrl: string;

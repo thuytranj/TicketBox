@@ -27,6 +27,8 @@ Tài liệu đặc tả chi tiết các API endpoints thuộc module Quản lý 
 | **POST** | `/concerts/:id/artist-bio/regenerate` | Bearer Token (Organizer) | Yêu cầu tạo lại bản nháp tiểu sử nghệ sĩ bằng AI từ văn bản thô |
 | **GET** | `/concerts/:id/artist-bio` | Bearer Token (Organizer) | Lấy trạng thái tiến trình và bản nháp tiểu sử nghệ sĩ bằng AI |
 | **PUT** | `/concerts/:id/artist-bio/confirm` | Bearer Token (Organizer) | Phê duyệt và cập nhật chính thức tiểu sử nghệ sĩ vào concert |
+| **POST** | `/concerts/:id/guests/import` | Bearer Token (Organizer) | Tải lên tệp CSV chứa danh sách khách mời VIP để xử lý bất đồng bộ |
+| **GET** | `/concerts/:id/guests/imports/:jobId` | Bearer Token (Organizer) | Lấy trạng thái tiến trình và nhật ký lỗi của Job import VIP |
 
 #### 2. Quản lý Loại vé (Ticket Types)
 
@@ -504,6 +506,142 @@ Duyệt hoặc chỉnh sửa bản nháp tóm tắt tiểu sử nghệ sĩ và l
   - **401 Unauthorized:** Token không hợp lệ hoặc thiếu.
   - **403 Forbidden:** Tài khoản không phải vai trò `organizer`.
   - **404 Not Found:** Concert không tồn tại.
+
+---
+
+### 11. Nhập danh sách khách mời VIP từ CSV (`POST /concerts/:id/guests/import`)
+
+Tải lên một tệp CSV chứa danh sách khách mời VIP cho một concert để hệ thống tiến hành xử lý bất đồng bộ thông qua hàng đợi RabbitMQ.
+
+- **Headers:**
+  - `Authorization: Bearer <accessToken>`
+  - `Content-Type: multipart/form-data`
+- **Parameters:**
+  - `id` (uuid, required): ID của concert cần nhập khách mời VIP.
+- **Request Body (Multipart Form Data):**
+  - `file` (File, required): Tệp CSV danh sách khách mời VIP.
+    - **Định dạng cho phép:** `.csv`
+    - **Cấu trúc tệp CSV mẫu:**
+      ```csv
+      full name,email,phone,affiliate_company
+      Nguyen Van A,nva@example.com,0901234567,Company A
+      Tran Thi B,ttb@example.com,0907654321,Company B
+      ```
+- **Responses:**
+  - **202 Accepted:** Tải lên tệp thành công, đã khởi tạo Job và đẩy vào hàng đợi xử lý nền.
+    ```json
+    {
+      "message": "VIP Guest list import started",
+      "jobId": "019ec180-4925-78ba-aa04-e20952174fbe",
+      "status": "pending"
+    }
+    ```
+  - **400 Bad Request:**
+    - Khi không có tệp nào được tải lên:
+      ```json
+      {
+        "message": "No file uploaded",
+        "error": "Bad Request",
+        "statusCode": 400
+      }
+      ```
+    - Khi tệp không đúng định dạng `.csv`:
+      ```json
+      {
+        "message": "Only CSV files are allowed!",
+        "error": "Bad Request",
+        "statusCode": 400
+      }
+      ```
+  - **401 Unauthorized:** Token không hợp lệ hoặc thiếu.
+  - **403 Forbidden:** Tài khoản không phải vai trò `organizer`.
+  - **404 Not Found:** Concert không tồn tại.
+
+---
+
+### 12. Kiểm tra trạng thái Job import VIP (`GET /concerts/:id/guests/imports/:jobId`)
+
+Lấy thông tin chi tiết về tiến trình xử lý, trạng thái và nhật ký lỗi định dạng của từng dòng trong Job import danh sách VIP.
+
+- **Headers:**
+  - `Authorization: Bearer <accessToken>`
+- **Parameters:**
+  - `id` (uuid, required): ID của concert liên quan.
+  - `jobId` (uuid, required): ID của Job import cần tra cứu.
+- **Responses:**
+  - **200 OK:** Trả về thông tin chi tiết của Job:
+    - **Khi Job đang xử lý (`processing`):**
+      ```json
+      {
+        "id": "019ec180-4925-78ba-aa04-e20952174fbe",
+        "concertId": "019ec180-4917-74d1-b1bd-ef0e98bed9e0",
+        "status": "processing",
+        "totalRows": 0,
+        "importedRows": 0,
+        "errorLogs": null,
+        "createdAt": "2026-06-24T11:32:00.000Z",
+        "updatedAt": "2026-06-24T11:32:00.000Z"
+      }
+      ```
+    - **Khi Job hoàn thành thành công (`completed`):**
+      ```json
+      {
+        "id": "019ec180-4925-78ba-aa04-e20952174fbe",
+        "concertId": "019ec180-4917-74d1-b1bd-ef0e98bed9e0",
+        "status": "completed",
+        "totalRows": 1500,
+        "importedRows": 1500,
+        "errorLogs": [],
+        "createdAt": "2026-06-24T11:32:00.000Z",
+        "updatedAt": "2026-06-24T11:33:15.000Z"
+      }
+      ```
+    - **Khi Job hoàn thành nhưng có một số dòng bị lỗi (Graceful Recovery):**
+      *Lưu ý: Các dòng chứa email đã tồn tại sẵn trong cơ sở dữ liệu của concert sẽ được bỏ qua một cách im lặng (silently skipped) nhờ cơ chế `ON CONFLICT DO NOTHING` và KHÔNG được ghi nhận là lỗi trong `errorLogs` để giúp Admin dễ dàng tải lại toàn bộ tệp gốc sau khi đã sửa các dòng lỗi khác.*
+      ```json
+      {
+        "id": "019ec180-4925-78ba-aa04-e20952174fbe",
+        "concertId": "019ec180-4917-74d1-b1bd-ef0e98bed9e0",
+        "status": "completed",
+        "totalRows": 5,
+        "importedRows": 3,
+        "errorLogs": [
+          {
+            "row": 3,
+            "email": "invalid-email",
+            "reason": "email must be an email"
+          },
+          {
+            "row": 5,
+            "email": "ttb@example.com",
+            "reason": "Duplicate guest email in CSV file"
+          }
+        ],
+        "createdAt": "2026-06-24T11:32:00.000Z",
+        "updatedAt": "2026-06-24T11:32:10.000Z"
+      }
+      ```
+    - **Khi Job thất bại hoàn toàn (`failed`):**
+      ```json
+      {
+        "id": "019ec180-4925-78ba-aa04-e20952174fbe",
+        "concertId": "019ec180-4917-74d1-b1bd-ef0e98bed9e0",
+        "status": "failed",
+        "totalRows": 0,
+        "importedRows": 0,
+        "errorLogs": [
+          {
+            "row": 0,
+            "reason": "Malformed CSV file or header configuration mismatch"
+          }
+        ],
+        "createdAt": "2026-06-24T11:32:00.000Z",
+        "updatedAt": "2026-06-24T11:32:02.000Z"
+      }
+      ```
+  - **401 Unauthorized:** Token không hợp lệ hoặc thiếu.
+  - **403 Forbidden:** Tài khoản không phải vai trò `organizer`.
+  - **404 Not Found:** Không tìm thấy Concert hoặc Job import tương ứng.
 
 ---
 

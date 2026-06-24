@@ -1571,33 +1571,35 @@ sequenceDiagram
     Admin->>API: POST /concerts/:id/guests/import (file .csv)
     API->>Supabase: Upload file CSV lên Supabase Storage
     Supabase-->>API: Trả về file_url
-    API->>DB: Tạo bản ghi Job vip_guest_imports (status="processing")
+    API->>DB: Tạo bản ghi Job vip_guest_imports (status="pending")
     API->>RabbitMQ: Publish job "vip_guest.import" (job_id, file_url, concert_id)
     API-->>Admin: HTTP 202 Accepted (kèm import_job_id)
 
     Note over RabbitMQ, Worker: Tiến trình xử lý ngầm (Background Job)
     RabbitMQ->>Worker: Consume job "vip_guest.import"
+    Worker->>DB: Cập nhật trạng thái Job (status="processing")
     Worker->>Supabase: Tải tệp CSV từ file_url về bộ nhớ tạm
     Worker->>Worker: Đọc tệp CSV dạng stream (csv-parser) & Validate từng dòng
+    Worker->>Worker: Lọc trùng lặp trong CSV & bỏ qua im lặng các email đã có trong DB
 
-    Note over Worker, DB: Lưu dữ liệu tối ưu theo cụm (Chunked Bulk Insert)
+    Note over Worker, DB: Lưu dữ liệu tối ưu theo cụm (Chunked Bulk Insert + ON CONFLICT DO NOTHING)
     loop Chèn theo lô (ví dụ 500 dòng/lô) bọc trong Transaction
-        Worker->>DB: Bulk INSERT INTO vip_guests (UUID v7, sinh QR Code HMAC-SHA256)
+        Worker->>DB: Bulk INSERT INTO vip_guests ON CONFLICT DO NOTHING
     end
 
-    loop Đẩy tác vụ gửi Email thư mời có điều tiết tốc độ
-        Worker->>RabbitMQ: Publish email task "notification.email.vip" (prefetch=1, rate limited)
+    loop Đẩy tác vụ gửi Email thư mời (có Retry & DLQ, Rate Limited)
+        Worker->>RabbitMQ: Publish email task "notification.email.vip"
     end
 
-    Worker->>DB: Cập nhật trạng thái Job thành công/thất bại, lưu JSON error_logs
+    Worker->>DB: Cập nhật trạng thái Job (status="completed"/"failed"), lưu JSON error_logs (rút gọn)
     Worker->>Supabase: Xóa file CSV trên Supabase Storage
 ```
 
 - **Cloud File Sharing (Supabase Storage):** Nhằm tránh lỗi `File not found` trong môi trường đa thực thể (multi-instance) khi container API nhận file khác container Worker xử lý. Tệp CSV được tải lên Supabase Storage và truyền link tải qua RabbitMQ. Worker sẽ dọn dẹp (xóa file trên Supabase Storage) sau khi hoàn tất hoặc lỗi.
-- **Row-by-row Validation (Validate từng dòng):** Sử dụng thư viện `csv-parser` để đọc dạng stream từ file tải về. Mỗi dòng được validate qua `class-validator` (hoặc Zod schema) bằng DTO chuyên dụng. Dòng bị lỗi định dạng sẽ bị bỏ qua và ghi nhận lỗi vào log của Job, tránh dừng cả tiến trình.
-- **Chunked Bulk Insert (Chèn theo lô trong Transaction):** Thay vì thực hiện hàng nghìn câu lệnh INSERT riêng lẻ gây nghẽn kết nối cơ sở dữ liệu và mạng nội bộ, worker thu thập các bản ghi hợp lệ, chia nhỏ thành các lô (ví dụ 500 bản ghi/lô) và thực thi chèn số lượng lớn (Bulk Insert) bằng TypeORM QueryBuilder trong một Database Transaction duy nhất.
-- **Tạo mã QR VIP:** Mỗi khách mời VIP hợp lệ được sinh một mã QR chứa chữ ký số HMAC-SHA256 sử dụng `SERVER_SECRET` cho việc kiểm tra soát vé offline an toàn.
-- **Rate-limited Email Queueing (Gửi email điều tiết tốc độ):** Tác vụ gửi email thư mời đính kèm QR code được đẩy vào hàng đợi thông báo. Email worker tiêu thụ hàng đợi này được thiết lập `prefetch = 1` kết hợp bộ điều tiết tốc độ (delay 100-200ms trước mỗi lần gửi) để khống chế tốc độ gửi tối đa 5-10 email/giây, ngăn việc bị khóa tài khoản bởi các SMTP gateway do nghi ngờ spam.
+- **Row-by-row Validation (Validate từng dòng):** Sử dụng thư viện `csv-parser` để đọc dạng stream từ file tải về. Mỗi dòng được validate qua `class-validator` bằng DTO chuyên dụng. Dòng bị lỗi định dạng sẽ bị bỏ qua và ghi nhận lỗi (chỉ lưu số dòng, email, lý do) vào log của Job, tránh dừng cả tiến trình.
+- **Chunked Bulk Insert (Chèn theo lô trong Transaction & ON CONFLICT DO NOTHING):** Thay vì thực hiện hàng nghìn câu lệnh INSERT riêng lẻ gây nghẽn kết nối cơ sở dữ liệu và mạng nội bộ, worker thu thập các bản ghi hợp lệ, chia nhỏ thành các lô (ví dụ 500 bản ghi/lô) và thực thi chèn số lượng lớn (Bulk Insert) bằng TypeORM QueryBuilder trong một Database Transaction duy nhất kết hợp với mệnh đề `.orIgnore()` (`ON CONFLICT (concert_id, email) DO NOTHING`). Các dòng chứa email đã tồn tại sẵn trong cơ sở dữ liệu của concert sẽ được bỏ qua một cách im lặng (silently skipped) và KHÔNG được ghi nhận là lỗi trong `errorLogs` để giúp Admin dễ dàng tải lại toàn bộ tệp gốc sau khi đã sửa các dòng lỗi khác (Simplified Error Recovery).
+- **Tạo mã QR VIP:** Mỗi khách mời VIP hợp lệ được sinh một mã QR chứa chữ ký số HMAC-SHA256 sử dụng `SERVER_SECRET` cho việc kiểm tra soát vé offline an toàn. Bố cục email gửi đi được tinh giản, loại bỏ việc hiển thị chuỗi ký tự mã hóa signature hash 64 ký tự thô để tăng tính thẩm mỹ cho thư mời.
+- **Rate-limited & Resilient Email Queueing (Gửi email điều tiết tốc độ, hỗ trợ Retry & DLQ):** Tác vụ gửi email thư mời đính kèm QR code được đẩy vào hàng đợi thông báo. Email worker tiêu thụ hàng đợi này được thiết lập `prefetch = 1` kết hợp bộ điều tiết tốc độ (delay 150ms trước mỗi lần gửi) để khống chế tốc độ gửi tối đa 5-10 email/giây, ngăn việc bị khóa tài khoản bởi các SMTP gateway do nghi ngờ spam. Đồng thời, hàng đợi hỗ trợ cơ chế tự động gửi lại (Retry) tối đa 3 lần với exponential backoff khi gặp lỗi tạm thời và chuyển tiếp tin nhắn lỗi hoàn toàn vào Dead Letter Queue (DLQ) để phục vụ đối soát.
 
 ---
 
