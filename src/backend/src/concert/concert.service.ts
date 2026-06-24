@@ -683,7 +683,7 @@ export class ConcertService implements OnModuleInit {
     await this.invalidateCache(concertId);
   }
 
-  async importVipGuests(concertId: string, file: Express.Multer.File): Promise<VipGuestImport> {
+  async importVipGuests(concertId: string, file: Express.Multer.File, userId: string): Promise<VipGuestImport> {
     const concert = await this.concertRepository.findOne({
       where: { id: concertId },
     });
@@ -725,6 +725,7 @@ export class ConcertService implements OnModuleInit {
         jobId,
         concertId,
         fileUrl: path,
+        userId,
       },
       undefined,
       {

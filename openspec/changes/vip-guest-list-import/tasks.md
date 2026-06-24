@@ -60,5 +60,14 @@
 - [x] 8.5 Bổ sung unit tests cho DTO validation số điện thoại di động và controller / service của API lấy danh sách VIP guest
 - [x] 8.6 Kiểm thử e2e tích hợp luồng: tải danh sách VIP từ API phân trang, kiểm tra chức năng tìm kiếm và xác nhận tính đúng đắn của dữ liệu trả về
 
+## 9. Tích hợp Thông báo Real-time cho luồng Import VIP
+
+- [x] 9.1 Cập nhật `ImportTaskPayload` gửi lên RabbitMQ để đính kèm thêm `userId` của người yêu cầu
+- [x] 9.2 Khai báo import `NotificationModule` trong `ConcertModule` để sử dụng `NotificationGateway`
+- [x] 9.3 Cập nhật hàm `importVipGuests` trong `ConcertService` để trích xuất `userId` từ token JWT và đóng gói vào payload RabbitMQ
+- [x] 9.4 Cập nhật `VipGuestConsumer` inject `NotificationGateway` và thực hiện emit sự kiện `vip_import_status` (với thông tin `jobId`, `status`, `importedRows`, `totalRows`, `errorLogs`) khi import hoàn thành hoặc thất bại hoàn toàn
+- [x] 9.5 Bổ sung unit tests cho việc emit sự kiện real-time trong `VipGuestConsumer`
+- [x] 9.6 Viết kiểm thử e2e (hoặc tích hợp thêm vào e2e có sẵn) để kết nối socket client giả lập, lắng nghe và xác nhận nhận được sự kiện `vip_import_status` khi chạy luồng import
+
 
 

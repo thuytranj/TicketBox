@@ -833,14 +833,14 @@ describe('ConcertService', () => {
     it('should throw NotFoundException if concert not found', async () => {
       mockConcertRepository.findOne.mockResolvedValue(null);
       await expect(
-        service.importVipGuests('c-1', {} as any),
+        service.importVipGuests('c-1', {} as any, 'u-1'),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw BadRequestException if file is missing', async () => {
       mockConcertRepository.findOne.mockResolvedValue({ id: 'c-1' });
       await expect(
-        service.importVipGuests('c-1', null as any),
+        service.importVipGuests('c-1', null as any, 'u-1'),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -851,7 +851,7 @@ describe('ConcertService', () => {
         mimetype: 'application/pdf',
       } as any;
       await expect(
-        service.importVipGuests('c-1', badFile),
+        service.importVipGuests('c-1', badFile, 'u-1'),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -877,7 +877,7 @@ describe('ConcertService', () => {
         fileUrl: 'path/to/uploaded/file.csv',
       });
 
-      const result = await service.importVipGuests('c-1', csvFile);
+      const result = await service.importVipGuests('c-1', csvFile, 'u-1');
 
       expect(mockSupabaseService.uploadFile).toHaveBeenCalled();
       expect(mockVipGuestImportRepository.create).toHaveBeenCalled();

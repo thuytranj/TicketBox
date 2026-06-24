@@ -522,12 +522,18 @@ Tải lên một tệp CSV chứa danh sách khách mời VIP cho một concert 
 - **Request Body (Multipart Form Data):**
   - `file` (File, required): Tệp CSV danh sách khách mời VIP.
     - **Định dạng cho phép:** `.csv`
+    - **Quy tắc kiểm tra tính hợp lệ dữ liệu từng dòng (sử dụng class-validator):**
+      - `full name`: Bắt buộc, không được để trống.
+      - `email`: Bắt buộc, phải là định dạng email hợp lệ.
+      - `phone`: Không bắt buộc. Nếu cung cấp, bắt buộc phải đúng định dạng số điện thoại di động Việt Nam (sử dụng `@IsPhoneNumber('VN')`, chấp nhận các dạng như `09xxxx` hoặc `+849xxxx` với 10 chữ số). Dòng có SĐT không hợp lệ sẽ bị loại bỏ và ghi nhận vào `errorLogs`.
+      - `affiliate_company`: Không bắt buộc.
     - **Cấu trúc tệp CSV mẫu:**
       ```csv
       full name,email,phone,affiliate_company
       Nguyen Van A,nva@example.com,0901234567,Company A
       Tran Thi B,ttb@example.com,0907654321,Company B
       ```
+- **Thông báo real-time qua WebSockets:** Người dùng gửi yêu cầu sẽ được trích xuất `userId` từ token JWT. Khi tiến trình xử lý import hoàn thành hoặc thất bại hoàn toàn ở Background Worker, một sự kiện `vip_import_status` sẽ được phát real-time qua WebSocket client đến chính người dùng này.
 - **Responses:**
   - **202 Accepted:** Tải lên tệp thành công, đã khởi tạo Job và đẩy vào hàng đợi xử lý nền.
     ```json
@@ -563,6 +569,8 @@ Tải lên một tệp CSV chứa danh sách khách mời VIP cho một concert 
 ### 12. Kiểm tra trạng thái Job import VIP (`GET /concerts/:id/guests/imports/:jobId`)
 
 Lấy thông tin chi tiết về tiến trình xử lý, trạng thái và nhật ký lỗi định dạng của từng dòng trong Job import danh sách VIP.
+
+* **Bảo mật và Quyền riêng tư:** Trường dữ liệu nội bộ `fileUrl` (URL lưu trữ file trên Supabase Storage) được ẩn hoàn toàn khỏi API Response (sử dụng decorator `@Exclude()` của `class-transformer` kết hợp `ClassSerializerInterceptor`).
 
 - **Headers:**
   - `Authorization: Bearer <accessToken>`

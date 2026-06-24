@@ -73,6 +73,9 @@ Hiện tại, TicketBox chưa hỗ trợ tính năng cho phép Ban tổ chức n
 ### 15. Cung cấp API GET /concerts/:id/guests tra cứu danh sách VIP
 - **Lý do**: Giúp ban tổ chức dễ dàng theo dõi trực quan danh sách khách VIP đã chèn thành công cho mỗi Concert. API này hỗ trợ phân trang (`page`, `limit`) và tìm kiếm tương đối (`search`) theo họ tên hoặc email khách mời để tối ưu hóa khả năng truy xuất dữ liệu quy mô lớn.
 
+### 16. Thông báo Real-time kết quả Import VIP qua WebSockets
+- **Lý do**: Khi Admin tải lên file CSV có kích thước lớn, tiến trình xử lý bất đồng bộ ở background worker có thể mất thời gian. Để tránh việc Client phải liên tục thực hiện HTTP polling kéo dài gây tốn băng thông và tài nguyên CPU, hệ thống tích hợp thông báo real-time qua WebSockets. Khi Worker hoàn thành công việc (hoặc thất bại), nó sẽ phát ra sự kiện Socket.io (sử dụng Redis Emitter làm lớp trung gian đồng bộ đa instances) trực tiếp đến tài khoản Admin (`userId`) đã gửi yêu cầu.
+
 ## Risks / Trade-offs
 
 - **Lỗi kết nối tới Supabase Storage hoặc Resend API**:

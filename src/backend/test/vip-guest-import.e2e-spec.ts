@@ -4,10 +4,12 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { io, Socket } from 'socket.io-client';
 import { AppModule } from './../src/app.module';
 import { Concert } from './../src/concert/entities/concert.entity';
 import { VipGuest } from './../src/concert/entities/vip-guest.entity';
 import { VipGuestImport } from './../src/concert/entities/vip-guest-import.entity';
+import { RedisIoAdapter } from './../src/common/adapters/redis-io.adapter';
 
 describe('VIP Guest Import (e2e)', () => {
   let app: INestApplication<App>;
@@ -16,6 +18,9 @@ describe('VIP Guest Import (e2e)', () => {
   let vipGuestImportRepository: Repository<VipGuestImport>;
   let token: string;
   let concertId: string;
+  let clientSocket: Socket;
+  let port: number;
+  let redisIoAdapter: RedisIoAdapter;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -24,7 +29,15 @@ describe('VIP Guest Import (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api/v1');
-    await app.init();
+
+    redisIoAdapter = new RedisIoAdapter(app);
+    await redisIoAdapter.connectToRedis();
+    app.useWebSocketAdapter(redisIoAdapter);
+
+    await app.listen(0);
+
+    const address = app.getHttpServer().address();
+    port = typeof address === 'string' ? 3000 : address.port;
 
     concertRepository = moduleFixture.get<Repository<Concert>>(getRepositoryToken(Concert));
     vipGuestRepository = moduleFixture.get<Repository<VipGuest>>(getRepositoryToken(VipGuest));
@@ -54,12 +67,38 @@ describe('VIP Guest Import (e2e)', () => {
   }, 30000);
 
   afterAll(async () => {
+    if (clientSocket && clientSocket.connected) {
+      clientSocket.disconnect();
+    }
+    if (redisIoAdapter) {
+      await redisIoAdapter.close();
+    }
     if (app) {
       await app.close();
     }
   });
 
-  it('should successfully upload CSV, trigger import background job and verify results', async () => {
+  it('should successfully upload CSV, trigger import background job, receive WebSockets notifications and verify results', async () => {
+    // Connect WebSocket Client and wait for connection
+    clientSocket = io(`http://localhost:${port}`, {
+      auth: { token },
+      transports: ['websocket'],
+      forceNew: true,
+    });
+
+    let receivedWsEvent = false;
+    let wsData: any = null;
+
+    clientSocket.on('vip_import_status', (data) => {
+      receivedWsEvent = true;
+      wsData = data;
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      clientSocket.on('connect', () => resolve());
+      clientSocket.on('connect_error', (err) => reject(err));
+    });
+
     // 1. Prepare CSV buffer
     const csvContent =
       'Full Name,Email,Phone,Company\n' +
@@ -182,12 +221,19 @@ describe('VIP Guest Import (e2e)', () => {
       .get(`/api/v1/concerts/${concertId}/guests`)
       .expect(401);
 
-    // 7. Clean up database records
+    // 7. Validate WebSocket event was received and correct
+    expect(receivedWsEvent).toBe(true);
+    expect(wsData.id).toBe(jobId);
+    expect(wsData.status).toBe('completed');
+    expect(wsData.totalRows).toBe(5);
+    expect(wsData.importedRows).toBe(2);
+
+    // 8. Clean up database records
     await vipGuestRepository.delete({ email: 'e2e_guest_a@example.com' });
     await vipGuestRepository.delete({ email: 'e2e_guest_b@example.com' });
     await vipGuestImportRepository.delete(jobId);
 
-    // 8. Wait for async background consumers to finish
+    // 9. Wait for async background consumers to finish
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }, 40000);
 });

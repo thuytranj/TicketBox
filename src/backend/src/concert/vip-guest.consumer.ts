@@ -14,11 +14,13 @@ import { VipGuestImport, VipGuestImportStatus } from './entities/vip-guest-impor
 import { VipGuestRowDto } from './dto/import-vip-guests.dto';
 import { VIP_GUEST_IMPORT_QUEUE } from './concert.service';
 import { generateUuidV7 } from '../auth/utils/uuid';
+import { NotificationGateway } from '../notification/notification.gateway';
 
 interface ImportTaskPayload {
   jobId: string;
   concertId: string;
   fileUrl: string;
+  userId: string;
 }
 
 @Injectable()
@@ -35,6 +37,7 @@ export class VipGuestConsumer implements OnModuleInit {
     private readonly vipGuestRepository: Repository<VipGuest>,
     @InjectRepository(VipGuestImport)
     private readonly vipGuestImportRepository: Repository<VipGuestImport>,
+    private readonly notificationGateway: NotificationGateway,
   ) {}
 
   async onModuleInit() {
@@ -72,7 +75,7 @@ export class VipGuestConsumer implements OnModuleInit {
           return;
         }
 
-        const { jobId, concertId, fileUrl } = payload;
+        const { jobId, concertId, fileUrl, userId } = payload;
         this.logger.log(`Processing VIP Guest import job ${jobId} for concert ${concertId}`);
 
         const errorLogs: Array<{ row: number; email?: string; reason: string }> = [];
@@ -211,13 +214,17 @@ export class VipGuestConsumer implements OnModuleInit {
           }
 
           // 8. Update import job status to completed
-          await this.vipGuestImportRepository.save({
+          const updatedJob = await this.vipGuestImportRepository.save({
             id: jobId,
             status: VipGuestImportStatus.COMPLETED,
             totalRows,
             importedRows: importedCount,
             errorLogs: errorLogs.length > 0 ? errorLogs : null,
           });
+
+          if (userId) {
+            this.notificationGateway.sendNotificationToUser(userId, 'vip_import_status', updatedJob);
+          }
 
           // 9. Dispatch notification tasks to RabbitMQ
           for (const guest of validGuestsToInsert) {
@@ -248,13 +255,17 @@ export class VipGuestConsumer implements OnModuleInit {
             reason: err.message || err.toString(),
           });
 
-          await this.vipGuestImportRepository.save({
+          const updatedJob = await this.vipGuestImportRepository.save({
             id: jobId,
             status: VipGuestImportStatus.FAILED,
             totalRows,
             importedRows: importedCount,
             errorLogs,
           });
+
+          if (userId) {
+            this.notificationGateway.sendNotificationToUser(userId, 'vip_import_status', updatedJob);
+          }
         } finally {
           // 10. Always clean up the file from Supabase Storage
           await this.supabaseService.deleteFile(fileUrl);

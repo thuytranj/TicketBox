@@ -12,6 +12,7 @@ import { CloudinaryModule } from '../common/cloudinary/cloudinary.module';
 import { RabbitMQModule } from '../common/rabbitmq/rabbitmq.module';
 import { SupabaseModule } from '../common/supabase/supabase.module';
 import { VipGuestConsumer } from './vip-guest.consumer';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { VipGuestConsumer } from './vip-guest.consumer';
     CloudinaryModule,
     RabbitMQModule,
     SupabaseModule,
+    NotificationModule,
   ],
   controllers: [ConcertController, TicketTypeController],
   providers: [ConcertService, VipGuestConsumer],

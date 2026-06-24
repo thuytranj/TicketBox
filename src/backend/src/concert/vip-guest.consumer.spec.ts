@@ -7,6 +7,7 @@ import { SupabaseService } from '../common/supabase/supabase.service';
 import { Concert } from './entities/concert.entity';
 import { VipGuest } from './entities/vip-guest.entity';
 import { VipGuestImport, VipGuestImportStatus } from './entities/vip-guest-import.entity';
+import { NotificationGateway } from '../notification/notification.gateway';
 
 describe('VipGuestConsumer', () => {
   let consumer: VipGuestConsumer;
@@ -35,7 +36,11 @@ describe('VipGuestConsumer', () => {
 
   const mockVipGuestImportRepo = {
     update: jest.fn(),
-    save: jest.fn(),
+    save: jest.fn().mockImplementation((val) => Promise.resolve(val)),
+  };
+
+  const mockNotificationGateway = {
+    sendNotificationToUser: jest.fn(),
   };
 
   const mockQueryBuilder = {
@@ -67,6 +72,7 @@ describe('VipGuestConsumer', () => {
         { provide: getRepositoryToken(Concert), useValue: mockConcertRepo },
         { provide: getRepositoryToken(VipGuest), useValue: mockVipGuestRepo },
         { provide: getRepositoryToken(VipGuestImport), useValue: mockVipGuestImportRepo },
+        { provide: NotificationGateway, useValue: mockNotificationGateway },
       ],
     }).compile();
 
@@ -118,6 +124,7 @@ describe('VipGuestConsumer', () => {
             jobId: 'job-id',
             concertId: 'concert-id',
             fileUrl: 'path/to/file.csv',
+            userId: 'user-id',
           }),
         ),
       };
@@ -143,6 +150,14 @@ describe('VipGuestConsumer', () => {
         }),
       );
       expect(mockRabbitMQService.sendToQueue).toHaveBeenCalledTimes(2);
+      expect(mockNotificationGateway.sendNotificationToUser).toHaveBeenCalledWith(
+        'user-id',
+        'vip_import_status',
+        expect.objectContaining({
+          id: 'job-id',
+          status: VipGuestImportStatus.COMPLETED,
+        }),
+      );
       expect(mockSupabaseService.deleteFile).toHaveBeenCalledWith('path/to/file.csv');
       expect(mockChannel.ack).toHaveBeenCalledWith(msg);
     });
@@ -159,6 +174,7 @@ describe('VipGuestConsumer', () => {
             jobId: 'job-id',
             concertId: 'concert-id',
             fileUrl: 'path/to/file.csv',
+            userId: 'user-id',
           }),
         ),
       };
@@ -188,6 +204,14 @@ describe('VipGuestConsumer', () => {
         }),
       );
       expect(mockRabbitMQService.sendToQueue).toHaveBeenCalledTimes(1);
+      expect(mockNotificationGateway.sendNotificationToUser).toHaveBeenCalledWith(
+        'user-id',
+        'vip_import_status',
+        expect.objectContaining({
+          id: 'job-id',
+          status: VipGuestImportStatus.COMPLETED,
+        }),
+      );
       expect(mockSupabaseService.deleteFile).toHaveBeenCalledWith('path/to/file.csv');
       expect(mockChannel.ack).toHaveBeenCalledWith(msg);
     });

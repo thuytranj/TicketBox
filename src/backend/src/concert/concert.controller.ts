@@ -201,8 +201,10 @@ export class ConcertController {
   async importVipGuests(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
+    @Request() req,
   ) {
-    const job = await this.concertService.importVipGuests(id, file);
+    const userId = req.user.userId;
+    const job = await this.concertService.importVipGuests(id, file, userId);
     return {
       message: 'VIP Guest list import started',
       jobId: job.id,
