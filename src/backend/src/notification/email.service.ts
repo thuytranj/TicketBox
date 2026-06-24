@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 export interface EmailTemplateOptions {
   title: string;
@@ -12,20 +12,13 @@ export interface EmailTemplateOptions {
 
 @Injectable()
 export class EmailService implements OnModuleInit {
-  private transporter: nodemailer.Transporter;
+  private resend: Resend;
 
   constructor(private readonly configService: ConfigService) {}
 
   onModuleInit() {
-    this.transporter = nodemailer.createTransport({
-      host: this.configService.get<string>('SMTP_HOST'),
-      port: this.configService.get<number>('SMTP_PORT'),
-      secure: false, // true for 465, false for other ports (587 TLS)
-      auth: {
-        user: this.configService.get<string>('SMTP_USER'),
-        pass: this.configService.get<string>('SMTP_PASSWORD'),
-      },
-    });
+    const apiKey = this.configService.get<string>('RESEND_API_KEY');
+    this.resend = new Resend(apiKey);
   }
 
   private buildMasterTemplate(options: EmailTemplateOptions): string {
@@ -86,12 +79,17 @@ export class EmailService implements OnModuleInit {
       `,
     });
 
-    await this.transporter.sendMail({
-      from: `"TicketBox" <${this.configService.get<string>('SMTP_FROM_EMAIL')}>`,
-      to,
+    const fromEmail = this.configService.get<string>('MAIL_FROM') || 'no-reply@ticketboxz.me';
+    const { error } = await this.resend.emails.send({
+      from: `TicketBox <${fromEmail}>`,
+      to: [to],
       subject: 'Verify your email - TicketBox',
       html,
     });
+
+    if (error) {
+      throw new Error(`Failed to send OTP email: ${error.message}`);
+    }
   }
 
   async sendResetPasswordEmail(to: string, otp: string): Promise<void> {
@@ -115,11 +113,77 @@ export class EmailService implements OnModuleInit {
         'If you did not request a password reset, your password will remain unchanged. However, we recommend checking your account security.',
     });
 
-    await this.transporter.sendMail({
-      from: `"TicketBox Support" <${this.configService.get<string>('SMTP_FROM_EMAIL')}>`,
-      to,
+    const fromEmail = this.configService.get<string>('MAIL_FROM') || 'no-reply@ticketboxz.me';
+    const { error } = await this.resend.emails.send({
+      from: `TicketBox Support <${fromEmail}>`,
+      to: [to],
       subject: 'Reset your password - TicketBox',
       html,
     });
+
+    if (error) {
+      throw new Error(`Failed to send Reset Password email: ${error.message}`);
+    }
+  }
+
+  async sendVipInvitationEmail(
+    to: string,
+    guestName: string,
+    concertTitle: string,
+    qrCodeHash: string,
+    qrBuffer: Buffer,
+  ): Promise<void> {
+    const html = this.buildMasterTemplate({
+      title: 'VIP Ticket Invitation',
+      description: `Dear ${guestName},<br><br>You have been registered as a VIP guest for the concert "<strong>${concertTitle}</strong>". Please find your ticket details below.`,
+      headerBgColor: '#4f46e5',
+      contentHtml: `
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-size: 12px; color: #334155; line-height: 1.5;">
+          <tr>
+            <td style="padding: 5px 0;">
+              <strong>Guest Name:</strong> ${guestName}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0;">
+              <strong>Concert:</strong> ${concertTitle}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 15px 0; text-align: center;">
+              <div>
+                <img 
+                  src="cid:vip-qr-code" 
+                  alt="VIP Ticket QR Pass" 
+                  width="160" 
+                  height="160" 
+                  style="display: inline-block; border: 1px solid #e2e8f0; padding: 5px; border-radius: 4px;"
+                />
+              </div>
+            </td>
+          </tr>
+        </table>
+      `,
+      footerText: 'This email contains your VIP entry pass. Please do not share this email or your QR code signature with anyone.',
+    });
+
+    const fromEmail = this.configService.get<string>('MAIL_FROM') || 'no-reply@ticketboxz.me';
+    const { error } = await this.resend.emails.send({
+      from: `TicketBox Events <${fromEmail}>`,
+      to: [to],
+      subject: `VIP Ticket Invitation: ${concertTitle} - TicketBox`,
+      html,
+      attachments: [
+        {
+          filename: 'qrcode.png',
+          content: qrBuffer,
+          contentId: 'vip-qr-code',
+        },
+      ],
+    });
+
+    if (error) {
+      throw new Error(`Failed to send VIP invitation email: ${error.message}`);
+    }
   }
 }

@@ -10,6 +10,8 @@ import {
 import { generateUuidV7 } from '../../auth/utils/uuid';
 import { TicketType } from './ticket-type.entity';
 import { ConcertAIBio } from './concert-ai-bio.entity';
+import { VipGuest } from './vip-guest.entity';
+import { VipGuestImport } from './vip-guest-import.entity';
 
 export enum ConcertStatus {
   DRAFT = 'draft',
@@ -77,6 +79,12 @@ export class Concert {
 
   @OneToOne(() => ConcertAIBio, (aiBio) => aiBio.concert)
   aiBio: ConcertAIBio;
+
+  @OneToMany(() => VipGuest, (vipGuest) => vipGuest.concert)
+  vipGuests: VipGuest[];
+
+  @OneToMany(() => VipGuestImport, (vipGuestImport) => vipGuestImport.concert)
+  vipGuestImports: VipGuestImport[];
 
   @BeforeInsert()
   generateId() {

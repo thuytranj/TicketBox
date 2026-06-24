@@ -24,6 +24,7 @@ describe('ConcertController', () => {
     regenerateArtistBio: jest.fn(),
     getArtistBio: jest.fn(),
     confirmArtistBio: jest.fn(),
+    getVipGuests: jest.fn(),
   };
 
   const mockCloudinaryService = {
@@ -251,6 +252,28 @@ describe('ConcertController', () => {
         'c-1',
         'Confirmed Bio',
       );
+    });
+  });
+
+  describe('getVipGuests', () => {
+    it('should call service.getVipGuests with correct parameters', async () => {
+      const query = { page: 1, limit: 10, search: 'Alice' };
+      const expectedResult = {
+        data: [{ id: 'g-1', fullName: 'Alice', email: 'alice@example.com' }],
+        meta: {
+          totalItems: 1,
+          itemCount: 1,
+          itemsPerPage: 10,
+          totalPages: 1,
+          currentPage: 1,
+        },
+      };
+      mockConcertService.getVipGuests.mockResolvedValue(expectedResult);
+
+      const result = await controller.getVipGuests('c-1', query);
+
+      expect(result).toEqual(expectedResult);
+      expect(service.getVipGuests).toHaveBeenCalledWith('c-1', query);
     });
   });
 });

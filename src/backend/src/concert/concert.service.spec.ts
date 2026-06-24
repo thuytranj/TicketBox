@@ -8,6 +8,9 @@ import {
   ConcertAIBio,
   ConcertAIBioStatus,
 } from './entities/concert-ai-bio.entity';
+import { VipGuest } from './entities/vip-guest.entity';
+import { VipGuestImport } from './entities/vip-guest-import.entity';
+import { SupabaseService } from '../common/supabase/supabase.service';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { UpdateTicketTypeDto } from './dto/update-ticket-type.dto';
 import { ConcertQueryDto } from './dto/concert-query.dto';
@@ -87,6 +90,25 @@ describe('ConcertService', () => {
     sendToQueue: jest.fn(),
   };
 
+  const mockVipGuestRepository = {
+    create: jest.fn(),
+    save: jest.fn(),
+    find: jest.fn(),
+    createQueryBuilder: jest.fn(),
+  };
+
+  const mockVipGuestImportRepository = {
+    create: jest.fn(),
+    save: jest.fn(),
+    findOne: jest.fn(),
+  };
+
+  const mockSupabaseService = {
+    uploadFile: jest.fn(),
+    downloadFile: jest.fn(),
+    deleteFile: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -104,6 +126,14 @@ describe('ConcertService', () => {
           useValue: mockConcertAIBioRepository,
         },
         {
+          provide: getRepositoryToken(VipGuest),
+          useValue: mockVipGuestRepository,
+        },
+        {
+          provide: getRepositoryToken(VipGuestImport),
+          useValue: mockVipGuestImportRepository,
+        },
+        {
           provide: EntityManager,
           useValue: mockEntityManager,
         },
@@ -118,6 +148,10 @@ describe('ConcertService', () => {
         {
           provide: RabbitMQService,
           useValue: mockRabbitMQService,
+        },
+        {
+          provide: SupabaseService,
+          useValue: mockSupabaseService,
         },
       ],
     }).compile();
@@ -792,6 +826,136 @@ describe('ConcertService', () => {
       expect(concert.biography).toBe('confirmed biography');
       expect(mockConcertRepository.save).toHaveBeenCalledWith(concert);
       expect(mockRedisService.del).toHaveBeenCalledWith('cache:concerts:c-1');
+    });
+  });
+
+  describe('importVipGuests', () => {
+    it('should throw NotFoundException if concert not found', async () => {
+      mockConcertRepository.findOne.mockResolvedValue(null);
+      await expect(
+        service.importVipGuests('c-1', {} as any, 'u-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException if file is missing', async () => {
+      mockConcertRepository.findOne.mockResolvedValue({ id: 'c-1' });
+      await expect(
+        service.importVipGuests('c-1', null as any, 'u-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if file is not a CSV', async () => {
+      mockConcertRepository.findOne.mockResolvedValue({ id: 'c-1' });
+      const badFile = {
+        originalname: 'test.pdf',
+        mimetype: 'application/pdf',
+      } as any;
+      await expect(
+        service.importVipGuests('c-1', badFile, 'u-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should successfully upload file, create job record and publish task to RabbitMQ', async () => {
+      mockConcertRepository.findOne.mockResolvedValue({ id: 'c-1' });
+      const csvFile = {
+        originalname: 'guests.csv',
+        mimetype: 'text/csv',
+        buffer: Buffer.from('test'),
+      } as any;
+
+      mockSupabaseService.uploadFile.mockResolvedValue('path/to/uploaded/file.csv');
+      mockVipGuestImportRepository.create.mockReturnValue({
+        id: 'job-123',
+        concertId: 'c-1',
+        status: 'pending',
+        fileUrl: 'path/to/uploaded/file.csv',
+      });
+      mockVipGuestImportRepository.save.mockResolvedValue({
+        id: 'job-123',
+        concertId: 'c-1',
+        status: 'pending',
+        fileUrl: 'path/to/uploaded/file.csv',
+      });
+
+      const result = await service.importVipGuests('c-1', csvFile, 'u-1');
+
+      expect(mockSupabaseService.uploadFile).toHaveBeenCalled();
+      expect(mockVipGuestImportRepository.create).toHaveBeenCalled();
+      expect(mockVipGuestImportRepository.save).toHaveBeenCalled();
+      expect(mockRabbitMQService.sendToQueue).toHaveBeenCalled();
+      expect(result.id).toBe('job-123');
+    });
+  });
+
+  describe('getVipGuestImportStatus', () => {
+    it('should throw NotFoundException if import job not found', async () => {
+      mockVipGuestImportRepository.findOne.mockResolvedValue(null);
+      await expect(
+        service.getVipGuestImportStatus('c-1', 'job-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should return import job record if found', async () => {
+      const job = { id: 'job-1', concertId: 'c-1', status: 'completed' };
+      mockVipGuestImportRepository.findOne.mockResolvedValue(job);
+
+      const result = await service.getVipGuestImportStatus('c-1', 'job-1');
+      expect(result).toEqual(job);
+    });
+  });
+
+  describe('getVipGuests', () => {
+    it('should throw NotFoundException if concert not found', async () => {
+      mockConcertRepository.findOne.mockResolvedValue(null);
+      await expect(
+        service.getVipGuests('c-1', { page: 1, limit: 10 }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should return paginated and filtered VIP guests', async () => {
+      mockConcertRepository.findOne.mockResolvedValue({ id: 'c-1' });
+
+      const guests = [
+        { id: 'g-1', fullName: 'Alice', email: 'alice@example.com' },
+        { id: 'g-2', fullName: 'Bob', email: 'bob@example.com' },
+      ];
+      const mockQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([guests, 2]),
+      };
+
+      mockVipGuestRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+
+      const result = await service.getVipGuests('c-1', {
+        search: 'Alice',
+        page: 1,
+        limit: 10,
+      });
+
+      expect(mockConcertRepository.findOne).toHaveBeenCalledWith({ where: { id: 'c-1' } });
+      expect(mockVipGuestRepository.createQueryBuilder).toHaveBeenCalledWith('vipGuest');
+      expect(mockQueryBuilder.where).toHaveBeenCalledWith('vipGuest.concertId = :concertId', { concertId: 'c-1' });
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        '(vipGuest.fullName ILIKE :search OR vipGuest.email ILIKE :search)',
+        { search: '%Alice%' },
+      );
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith('vipGuest.createdAt', 'DESC');
+      expect(mockQueryBuilder.skip).toHaveBeenCalledWith(0);
+      expect(mockQueryBuilder.take).toHaveBeenCalledWith(10);
+      expect(result).toEqual({
+        data: guests,
+        meta: {
+          totalItems: 2,
+          itemCount: 2,
+          itemsPerPage: 10,
+          totalPages: 1,
+          currentPage: 1,
+        },
+      });
     });
   });
 });

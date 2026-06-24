@@ -21,6 +21,9 @@ describe('NotificationConsumer', () => {
     mockChannel = {
       ack: jest.fn(),
       nack: jest.fn(),
+      assertExchange: jest.fn().mockResolvedValue({}),
+      assertQueue: jest.fn().mockResolvedValue({}),
+      bindQueue: jest.fn().mockResolvedValue({}),
     };
     mockRabbitMQService.getChannel.mockReturnValue(mockChannel);
 

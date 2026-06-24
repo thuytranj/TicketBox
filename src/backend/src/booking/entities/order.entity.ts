@@ -7,6 +7,7 @@ import {
   ManyToOne,
   OneToMany,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { generateUuidV7 } from '../../auth/utils/uuid';
 import { User } from '../../auth/entities/user.entity';
@@ -30,9 +31,11 @@ export class Order {
   @PrimaryColumn({ type: 'uuid' })
   id: string;
 
+  @Index()
   @Column({ type: 'uuid', name: 'user_id' })
   userId: string;
 
+  @Index()
   @Column({ type: 'uuid', name: 'concert_id' })
   concertId: string;
 

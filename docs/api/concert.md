@@ -27,6 +27,9 @@ Tài liệu đặc tả chi tiết các API endpoints thuộc module Quản lý 
 | **POST** | `/concerts/:id/artist-bio/regenerate` | Bearer Token (Organizer) | Yêu cầu tạo lại bản nháp tiểu sử nghệ sĩ bằng AI từ văn bản thô |
 | **GET** | `/concerts/:id/artist-bio` | Bearer Token (Organizer) | Lấy trạng thái tiến trình và bản nháp tiểu sử nghệ sĩ bằng AI |
 | **PUT** | `/concerts/:id/artist-bio/confirm` | Bearer Token (Organizer) | Phê duyệt và cập nhật chính thức tiểu sử nghệ sĩ vào concert |
+| **POST** | `/concerts/:id/guests/import` | Bearer Token (Organizer) | Tải lên tệp CSV chứa danh sách khách mời VIP để xử lý bất đồng bộ |
+| **GET** | `/concerts/:id/guests/imports/:jobId` | Bearer Token (Organizer) | Lấy trạng thái tiến trình và nhật ký lỗi của Job import VIP |
+| **GET** | `/concerts/:id/guests` | Bearer Token (Organizer, Admin) | Tra cứu danh sách khách mời VIP (phân trang, tìm kiếm) |
 
 #### 2. Quản lý Loại vé (Ticket Types)
 
@@ -503,6 +506,195 @@ Duyệt hoặc chỉnh sửa bản nháp tóm tắt tiểu sử nghệ sĩ và l
   - **400 Bad Request:** Thiếu trường `biography` hoặc định dạng sai.
   - **401 Unauthorized:** Token không hợp lệ hoặc thiếu.
   - **403 Forbidden:** Tài khoản không phải vai trò `organizer`.
+  - **404 Not Found:** Concert không tồn tại.
+
+---
+
+### 11. Nhập danh sách khách mời VIP từ CSV (`POST /concerts/:id/guests/import`)
+
+Tải lên một tệp CSV chứa danh sách khách mời VIP cho một concert để hệ thống tiến hành xử lý bất đồng bộ thông qua hàng đợi RabbitMQ.
+
+- **Headers:**
+  - `Authorization: Bearer <accessToken>`
+  - `Content-Type: multipart/form-data`
+- **Parameters:**
+  - `id` (uuid, required): ID của concert cần nhập khách mời VIP.
+- **Request Body (Multipart Form Data):**
+  - `file` (File, required): Tệp CSV danh sách khách mời VIP.
+    - **Định dạng cho phép:** `.csv`
+    - **Quy tắc kiểm tra tính hợp lệ dữ liệu từng dòng (sử dụng class-validator):**
+      - `full name`: Bắt buộc, không được để trống.
+      - `email`: Bắt buộc, phải là định dạng email hợp lệ.
+      - `phone`: Không bắt buộc. Nếu cung cấp, bắt buộc phải đúng định dạng số điện thoại di động Việt Nam (sử dụng `@IsPhoneNumber('VN')`, chấp nhận các dạng như `09xxxx` hoặc `+849xxxx` với 10 chữ số). Dòng có SĐT không hợp lệ sẽ bị loại bỏ và ghi nhận vào `errorLogs`.
+      - `affiliate_company`: Không bắt buộc.
+    - **Cấu trúc tệp CSV mẫu:**
+      ```csv
+      full name,email,phone,affiliate_company
+      Nguyen Van A,nva@example.com,0901234567,Company A
+      Tran Thi B,ttb@example.com,0907654321,Company B
+      ```
+- **Thông báo real-time qua WebSockets:** Người dùng gửi yêu cầu sẽ được trích xuất `userId` từ token JWT. Khi tiến trình xử lý import hoàn thành hoặc thất bại hoàn toàn ở Background Worker, một sự kiện `vip_import_status` sẽ được phát real-time qua WebSocket client đến chính người dùng này.
+- **Responses:**
+  - **202 Accepted:** Tải lên tệp thành công, đã khởi tạo Job và đẩy vào hàng đợi xử lý nền.
+    ```json
+    {
+      "message": "VIP Guest list import started",
+      "jobId": "019ec180-4925-78ba-aa04-e20952174fbe",
+      "status": "pending"
+    }
+    ```
+  - **400 Bad Request:**
+    - Khi không có tệp nào được tải lên:
+      ```json
+      {
+        "message": "No file uploaded",
+        "error": "Bad Request",
+        "statusCode": 400
+      }
+      ```
+    - Khi tệp không đúng định dạng `.csv`:
+      ```json
+      {
+        "message": "Only CSV files are allowed!",
+        "error": "Bad Request",
+        "statusCode": 400
+      }
+      ```
+  - **401 Unauthorized:** Token không hợp lệ hoặc thiếu.
+  - **403 Forbidden:** Tài khoản không phải vai trò `organizer`.
+  - **404 Not Found:** Concert không tồn tại.
+
+---
+
+### 12. Kiểm tra trạng thái Job import VIP (`GET /concerts/:id/guests/imports/:jobId`)
+
+Lấy thông tin chi tiết về tiến trình xử lý, trạng thái và nhật ký lỗi định dạng của từng dòng trong Job import danh sách VIP.
+
+* **Bảo mật và Quyền riêng tư:** Trường dữ liệu nội bộ `fileUrl` (URL lưu trữ file trên Supabase Storage) được ẩn hoàn toàn khỏi API Response (sử dụng decorator `@Exclude()` của `class-transformer` kết hợp `ClassSerializerInterceptor`).
+
+- **Headers:**
+  - `Authorization: Bearer <accessToken>`
+- **Parameters:**
+  - `id` (uuid, required): ID của concert liên quan.
+  - `jobId` (uuid, required): ID của Job import cần tra cứu.
+- **Responses:**
+  - **200 OK:** Trả về thông tin chi tiết của Job:
+    - **Khi Job đang xử lý (`processing`):**
+      ```json
+      {
+        "id": "019ec180-4925-78ba-aa04-e20952174fbe",
+        "concertId": "019ec180-4917-74d1-b1bd-ef0e98bed9e0",
+        "status": "processing",
+        "totalRows": 0,
+        "importedRows": 0,
+        "errorLogs": null,
+        "createdAt": "2026-06-24T11:32:00.000Z",
+        "updatedAt": "2026-06-24T11:32:00.000Z"
+      }
+      ```
+    - **Khi Job hoàn thành thành công (`completed`):**
+      ```json
+      {
+        "id": "019ec180-4925-78ba-aa04-e20952174fbe",
+        "concertId": "019ec180-4917-74d1-b1bd-ef0e98bed9e0",
+        "status": "completed",
+        "totalRows": 1500,
+        "importedRows": 1500,
+        "errorLogs": [],
+        "createdAt": "2026-06-24T11:32:00.000Z",
+        "updatedAt": "2026-06-24T11:33:15.000Z"
+      }
+      ```
+    - **Khi Job hoàn thành nhưng có một số dòng bị lỗi (Graceful Recovery):**
+      *Lưu ý: Các dòng chứa email đã tồn tại sẵn trong cơ sở dữ liệu của concert sẽ được bỏ qua một cách im lặng (silently skipped) nhờ cơ chế `ON CONFLICT DO NOTHING` và KHÔNG được ghi nhận là lỗi trong `errorLogs` để giúp Admin dễ dàng tải lại toàn bộ tệp gốc sau khi đã sửa các dòng lỗi khác.*
+      ```json
+      {
+        "id": "019ec180-4925-78ba-aa04-e20952174fbe",
+        "concertId": "019ec180-4917-74d1-b1bd-ef0e98bed9e0",
+        "status": "completed",
+        "totalRows": 5,
+        "importedRows": 3,
+        "errorLogs": [
+          {
+            "row": 3,
+            "email": "invalid-email",
+            "reason": "email must be an email"
+          },
+          {
+            "row": 5,
+            "email": "ttb@example.com",
+            "reason": "Duplicate guest email in CSV file"
+          }
+        ],
+        "createdAt": "2026-06-24T11:32:00.000Z",
+        "updatedAt": "2026-06-24T11:32:10.000Z"
+      }
+      ```
+    - **Khi Job thất bại hoàn toàn (`failed`):**
+      ```json
+      {
+        "id": "019ec180-4925-78ba-aa04-e20952174fbe",
+        "concertId": "019ec180-4917-74d1-b1bd-ef0e98bed9e0",
+        "status": "failed",
+        "totalRows": 0,
+        "importedRows": 0,
+        "errorLogs": [
+          {
+            "row": 0,
+            "reason": "Malformed CSV file or header configuration mismatch"
+          }
+        ],
+        "createdAt": "2026-06-24T11:32:00.000Z",
+        "updatedAt": "2026-06-24T11:32:02.000Z"
+      }
+      ```
+  - **401 Unauthorized:** Token không hợp lệ hoặc thiếu.
+  - **403 Forbidden:** Tài khoản không phải vai trò `organizer`.
+  - **404 Not Found:** Không tìm thấy Concert hoặc Job import tương ứng.
+
+---
+
+### 13. Tra cứu danh sách khách mời VIP (`GET /concerts/:id/guests`)
+
+Lấy danh sách các khách mời VIP đã import thành công của concert.
+
+- **Headers:**
+  - `Authorization: Bearer <accessToken>`
+- **Parameters:**
+  - `id` (uuid, required): ID của concert.
+- **Query Parameters:**
+  - `search` (string, optional): Tìm kiếm tương đối (`ILIKE`) theo `fullName` hoặc `email` của khách mời.
+  - `page` (number, optional): Số thứ tự trang muốn lấy, bắt đầu từ 1. Mặc định là 1.
+  - `limit` (number, optional): Số phần tử tối đa trên mỗi trang (từ 1 đến 100). Mặc định là 10.
+- **Responses:**
+  - **200 OK:** Trả về danh sách khách mời VIP được phân trang (sắp xếp theo thời gian tạo giảm dần).
+    ```json
+    {
+      "data": [
+        {
+          "id": "019ec180-4925-7dfb-bc02-a2304918eabc",
+          "concertId": "019ec180-4917-74d1-b1bd-ef0e98bed9e0",
+          "fullName": "Nguyen Van A",
+          "email": "nva@example.com",
+          "phone": "0901234567",
+          "affiliateCompany": "Company A",
+          "qrCodeHash": "9b1d3d6bc7a8... [64-character hash]",
+          "status": "active",
+          "createdAt": "2026-06-24T11:32:05.000Z",
+          "updatedAt": "2026-06-24T11:32:05.000Z"
+        }
+      ],
+      "meta": {
+        "totalItems": 1,
+        "itemCount": 1,
+        "itemsPerPage": 10,
+        "totalPages": 1,
+        "currentPage": 1
+      }
+    }
+    ```
+  - **401 Unauthorized:** Token không hợp lệ hoặc thiếu.
+  - **403 Forbidden:** Tài khoản không có vai trò `organizer` hoặc `admin`.
   - **404 Not Found:** Concert không tồn tại.
 
 ---

@@ -15,12 +15,14 @@ import {
   UploadedFile,
   BadRequestException,
   Request,
+  ClassSerializerInterceptor,
 } from '@nestjs/common';
 import { ConcertService } from './concert.service';
 import { CreateConcertDto } from './dto/create-concert.dto';
 import { UpdateConcertDto } from './dto/update-concert.dto';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { ConcertQueryDto } from './dto/concert-query.dto';
+import { VipGuestQueryDto } from './dto/vip-guest-query.dto';
 import { ConfirmArtistBioDto } from './dto/confirm-artist-bio.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -185,5 +187,49 @@ export class ConcertController {
       confirmArtistBioDto.biography,
     );
     return { message: 'Biography updated successfully' };
+  }
+
+  @Post(':id/guests/import')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANIZER)
+  @HttpCode(HttpStatus.ACCEPTED)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  async importVipGuests(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Request() req,
+  ) {
+    const userId = req.user.userId;
+    const job = await this.concertService.importVipGuests(id, file, userId);
+    return {
+      message: 'VIP Guest list import started',
+      jobId: job.id,
+      status: job.status,
+    };
+  }
+
+  @Get(':id/guests/imports/:jobId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANIZER)
+  @UseInterceptors(ClassSerializerInterceptor)
+  async getVipGuestImportStatus(
+    @Param('id') id: string,
+    @Param('jobId') jobId: string,
+  ) {
+    return this.concertService.getVipGuestImportStatus(id, jobId);
+  }
+
+  @Get(':id/guests')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANIZER)
+  async getVipGuests(
+    @Param('id') id: string,
+    @Query() query: VipGuestQueryDto,
+  ) {
+    return this.concertService.getVipGuests(id, query);
   }
 }

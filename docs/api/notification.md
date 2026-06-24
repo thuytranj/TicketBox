@@ -22,6 +22,7 @@ Tài liệu đặc tả chi tiết các API REST và các sự kiện thời gia
 | Event Name | Direction | Payload | Description |
 | :--- | :--- | :--- | :--- |
 | `notification_received` | Server -> Client | Notification Object | Gửi thông báo in-app mới thời gian thực tới người dùng đang kết nối |
+| `vip_import_status` | Server -> Client | VipGuestImport Object | Gửi cập nhật trạng thái tiến trình import VIP (hoàn thành/thất bại) thời gian thực tới người dùng yêu cầu |
 
 ---
 
@@ -166,5 +167,19 @@ Mỗi khi hệ thống lưu một thông báo in-app mới cho người dùng (v
 socket.on('notification_received', (notification) => {
   console.log('New In-app Notification received:', notification);
   // Thực hiện hiển thị UI Toast / Popover trên Client
+});
+```
+
+### 3. Sự kiện cập nhật trạng thái import VIP (`vip_import_status`)
+
+Mỗi khi tiến trình import danh sách khách mời VIP trong nền hoàn thành (`completed`) hoặc thất bại (`failed`), Server sẽ đẩy sự kiện `vip_import_status` chứa thông tin chi tiết trạng thái của Job (bao gồm thống kê số dòng đã nhập thành công và mảng nhật ký lỗi nếu có) về phía client của người dùng đã thực hiện hành động import.
+
+*Lưu ý bảo mật:* Object payload trả về không bao gồm trường `fileUrl`.
+
+**Ví dụ code nhận sự kiện ở Client:**
+```javascript
+socket.on('vip_import_status', (importJob) => {
+  console.log('VIP import status updated:', importJob);
+  // Cập nhật trạng thái giao diện import, thông báo toast hoặc cập nhật danh sách
 });
 ```
