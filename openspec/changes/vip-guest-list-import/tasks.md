@@ -51,5 +51,14 @@
 - [x] 7.5 Cập nhật lại unit tests của `EmailService` trong `email.service.spec.ts` để loại bỏ kỳ vọng chuỗi hash signature hiển thị trong HTML
 - [x] 7.6 Kiểm thử tích hợp toàn bộ luồng: tải lên CSV có dòng lỗi, hiển thị dòng lỗi trên giao diện, sửa file gốc và tải lên lại (đảm bảo chỉ chèn dòng mới sửa)
 
+## 8. Cải tiến Bảo mật, Validation & API Danh sách VIP
+
+- [x] 8.1 Thêm cấu hình `@Exclude()` cho cột `fileUrl` trong thực thể `VipGuestImport` sử dụng `class-transformer` để ẩn khỏi API response
+- [x] 8.2 Cập nhật validator của trường `phone` trong `VipGuestRowDto` sử dụng `@IsPhoneNumber('VN')` để kiểm tra chuẩn SĐT Việt Nam
+- [x] 8.3 Xây dựng API `GET /concerts/:id/guests` hỗ trợ phân trang (Pagination DTO) và tìm kiếm (Search query) để tra cứu danh sách VIP guest
+- [x] 8.4 Đăng ký và phân quyền cho API mới chỉ dành cho vai trò `ORGANIZER` hoặc `ADMIN`
+- [x] 8.5 Bổ sung unit tests cho DTO validation số điện thoại di động và controller / service của API lấy danh sách VIP guest
+- [x] 8.6 Kiểm thử e2e tích hợp luồng: tải danh sách VIP từ API phân trang, kiểm tra chức năng tìm kiếm và xác nhận tính đúng đắn của dữ liệu trả về
+
 
 

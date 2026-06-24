@@ -9,6 +9,7 @@ import {
   UpdateDateColumn,
   Index,
 } from 'typeorm';
+import { Exclude } from 'class-transformer';
 import { generateUuidV7 } from '../../auth/utils/uuid';
 import { Concert } from './concert.entity';
 
@@ -44,6 +45,7 @@ export class VipGuestImport {
   @Column({ type: 'jsonb', name: 'error_logs', nullable: true })
   errorLogs: Array<{ row: number; email?: string; reason: string }> | null;
 
+  @Exclude()
   @Column({ type: 'varchar', name: 'file_url', length: 1000, nullable: true })
   fileUrl: string;
 

@@ -29,6 +29,7 @@ Tài liệu đặc tả chi tiết các API endpoints thuộc module Quản lý 
 | **PUT** | `/concerts/:id/artist-bio/confirm` | Bearer Token (Organizer) | Phê duyệt và cập nhật chính thức tiểu sử nghệ sĩ vào concert |
 | **POST** | `/concerts/:id/guests/import` | Bearer Token (Organizer) | Tải lên tệp CSV chứa danh sách khách mời VIP để xử lý bất đồng bộ |
 | **GET** | `/concerts/:id/guests/imports/:jobId` | Bearer Token (Organizer) | Lấy trạng thái tiến trình và nhật ký lỗi của Job import VIP |
+| **GET** | `/concerts/:id/guests` | Bearer Token (Organizer, Admin) | Tra cứu danh sách khách mời VIP (phân trang, tìm kiếm) |
 
 #### 2. Quản lý Loại vé (Ticket Types)
 
@@ -642,6 +643,51 @@ Lấy thông tin chi tiết về tiến trình xử lý, trạng thái và nhậ
   - **401 Unauthorized:** Token không hợp lệ hoặc thiếu.
   - **403 Forbidden:** Tài khoản không phải vai trò `organizer`.
   - **404 Not Found:** Không tìm thấy Concert hoặc Job import tương ứng.
+
+---
+
+### 13. Tra cứu danh sách khách mời VIP (`GET /concerts/:id/guests`)
+
+Lấy danh sách các khách mời VIP đã import thành công của concert.
+
+- **Headers:**
+  - `Authorization: Bearer <accessToken>`
+- **Parameters:**
+  - `id` (uuid, required): ID của concert.
+- **Query Parameters:**
+  - `search` (string, optional): Tìm kiếm tương đối (`ILIKE`) theo `fullName` hoặc `email` của khách mời.
+  - `page` (number, optional): Số thứ tự trang muốn lấy, bắt đầu từ 1. Mặc định là 1.
+  - `limit` (number, optional): Số phần tử tối đa trên mỗi trang (từ 1 đến 100). Mặc định là 10.
+- **Responses:**
+  - **200 OK:** Trả về danh sách khách mời VIP được phân trang (sắp xếp theo thời gian tạo giảm dần).
+    ```json
+    {
+      "data": [
+        {
+          "id": "019ec180-4925-7dfb-bc02-a2304918eabc",
+          "concertId": "019ec180-4917-74d1-b1bd-ef0e98bed9e0",
+          "fullName": "Nguyen Van A",
+          "email": "nva@example.com",
+          "phone": "0901234567",
+          "affiliateCompany": "Company A",
+          "qrCodeHash": "9b1d3d6bc7a8... [64-character hash]",
+          "status": "active",
+          "createdAt": "2026-06-24T11:32:05.000Z",
+          "updatedAt": "2026-06-24T11:32:05.000Z"
+        }
+      ],
+      "meta": {
+        "totalItems": 1,
+        "itemCount": 1,
+        "itemsPerPage": 10,
+        "totalPages": 1,
+        "currentPage": 1
+      }
+    }
+    ```
+  - **401 Unauthorized:** Token không hợp lệ hoặc thiếu.
+  - **403 Forbidden:** Tài khoản không có vai trò `organizer` hoặc `admin`.
+  - **404 Not Found:** Concert không tồn tại.
 
 ---
 

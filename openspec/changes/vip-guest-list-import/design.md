@@ -64,6 +64,15 @@ Hiện tại, TicketBox chưa hỗ trợ tính năng cho phép Ban tổ chức n
 ### 12. Cơ chế Retry tự động và hàng đợi DLQ cho Email Job
 - **Lý do**: Việc phân phối email qua API bên thứ ba có thể gặp lỗi tạm thời (mất mạng, quá tải API Resend). Do đó, hàng đợi RabbitMQ gửi email cần có cấu hình tự động retry lên tới 3 lần với cơ chế delay tăng dần (exponential backoff). Nếu vẫn thất bại sau 3 lần, message sẽ được đẩy vào Dead Letter Queue (DLQ) để phục vụ giám sát kỹ thuật và phục hồi thủ công sau này mà không gây mất dấu thông tin.
 
+### 13. Ẩn đường dẫn fileUrl khỏi kết quả trả về của API
+- **Lý do**: Đường dẫn `fileUrl` trên Supabase chỉ mang tính chất nội bộ cho Background Worker. Sau khi xử lý xong, file đã bị xóa nên URL này không còn tồn tại. Do đó, việc ẩn trường này thông qua `@Exclude({ toPlainOnly: true })` hoặc DTO serialization giúp tăng độ bảo mật và tránh làm nhiễu thông tin cho client.
+
+### 14. Sử dụng class-validator @IsPhoneNumber('VN') kiểm soát SĐT khách mời
+- **Lý do**: Số điện thoại của khách mời VIP cần được kiểm tra định dạng di động Việt Nam hợp lệ (chấp nhận cả đầu `0` hoặc `+84` và độ dài đúng chuẩn của các nhà mạng viễn thông). Dùng `@IsPhoneNumber('VN')` giúp đảm bảo tính linh hoạt hơn so với kiểm tra cứng độ dài 10 chữ số vốn có nguy cơ chặn lỗi các số có mã quốc gia hoặc số quốc tế.
+
+### 15. Cung cấp API GET /concerts/:id/guests tra cứu danh sách VIP
+- **Lý do**: Giúp ban tổ chức dễ dàng theo dõi trực quan danh sách khách VIP đã chèn thành công cho mỗi Concert. API này hỗ trợ phân trang (`page`, `limit`) và tìm kiếm tương đối (`search`) theo họ tên hoặc email khách mời để tối ưu hóa khả năng truy xuất dữ liệu quy mô lớn.
+
 ## Risks / Trade-offs
 
 - **Lỗi kết nối tới Supabase Storage hoặc Resend API**:

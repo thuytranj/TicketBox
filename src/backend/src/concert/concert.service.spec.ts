@@ -94,6 +94,7 @@ describe('ConcertService', () => {
     create: jest.fn(),
     save: jest.fn(),
     find: jest.fn(),
+    createQueryBuilder: jest.fn(),
   };
 
   const mockVipGuestImportRepository = {
@@ -839,7 +840,7 @@ describe('ConcertService', () => {
     it('should throw BadRequestException if file is missing', async () => {
       mockConcertRepository.findOne.mockResolvedValue({ id: 'c-1' });
       await expect(
-        service.importVipGuests('c-1', null),
+        service.importVipGuests('c-1', null as any),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -900,6 +901,61 @@ describe('ConcertService', () => {
 
       const result = await service.getVipGuestImportStatus('c-1', 'job-1');
       expect(result).toEqual(job);
+    });
+  });
+
+  describe('getVipGuests', () => {
+    it('should throw NotFoundException if concert not found', async () => {
+      mockConcertRepository.findOne.mockResolvedValue(null);
+      await expect(
+        service.getVipGuests('c-1', { page: 1, limit: 10 }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should return paginated and filtered VIP guests', async () => {
+      mockConcertRepository.findOne.mockResolvedValue({ id: 'c-1' });
+
+      const guests = [
+        { id: 'g-1', fullName: 'Alice', email: 'alice@example.com' },
+        { id: 'g-2', fullName: 'Bob', email: 'bob@example.com' },
+      ];
+      const mockQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([guests, 2]),
+      };
+
+      mockVipGuestRepository.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+
+      const result = await service.getVipGuests('c-1', {
+        search: 'Alice',
+        page: 1,
+        limit: 10,
+      });
+
+      expect(mockConcertRepository.findOne).toHaveBeenCalledWith({ where: { id: 'c-1' } });
+      expect(mockVipGuestRepository.createQueryBuilder).toHaveBeenCalledWith('vipGuest');
+      expect(mockQueryBuilder.where).toHaveBeenCalledWith('vipGuest.concertId = :concertId', { concertId: 'c-1' });
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        '(vipGuest.fullName ILIKE :search OR vipGuest.email ILIKE :search)',
+        { search: '%Alice%' },
+      );
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith('vipGuest.createdAt', 'DESC');
+      expect(mockQueryBuilder.skip).toHaveBeenCalledWith(0);
+      expect(mockQueryBuilder.take).toHaveBeenCalledWith(10);
+      expect(result).toEqual({
+        data: guests,
+        meta: {
+          totalItems: 2,
+          itemCount: 2,
+          itemsPerPage: 10,
+          totalPages: 1,
+          currentPage: 1,
+        },
+      });
     });
   });
 });

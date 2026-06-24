@@ -19,6 +19,7 @@ import { UpdateConcertDto } from './dto/update-concert.dto';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { UpdateTicketTypeDto } from './dto/update-ticket-type.dto';
 import { ConcertQueryDto } from './dto/concert-query.dto';
+import { VipGuestQueryDto } from './dto/vip-guest-query.dto';
 import { RedisService } from '../common/redis/redis.service';
 import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
 import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
@@ -746,5 +747,56 @@ export class ConcertService implements OnModuleInit {
       throw new NotFoundException(`Import job with ID "${jobId}" not found for this concert`);
     }
     return importJob;
+  }
+
+  async getVipGuests(
+    concertId: string,
+    queryDto: VipGuestQueryDto,
+  ): Promise<{
+    data: VipGuest[];
+    meta: {
+      totalItems: number;
+      itemCount: number;
+      itemsPerPage: number;
+      totalPages: number;
+      currentPage: number;
+    };
+  }> {
+    const concert = await this.concertRepository.findOne({
+      where: { id: concertId },
+    });
+    if (!concert) {
+      throw new NotFoundException(`Concert with ID "${concertId}" not found`);
+    }
+
+    const page = queryDto.page ? Math.max(1, queryDto.page) : 1;
+    const limit = queryDto.limit ? Math.min(100, Math.max(1, queryDto.limit)) : 10;
+    const offset = (page - 1) * limit;
+
+    const query = this.vipGuestRepository.createQueryBuilder('vipGuest');
+    query.where('vipGuest.concertId = :concertId', { concertId });
+
+    if (queryDto.search) {
+      query.andWhere(
+        '(vipGuest.fullName ILIKE :search OR vipGuest.email ILIKE :search)',
+        { search: `%${queryDto.search}%` },
+      );
+    }
+
+    query.orderBy('vipGuest.createdAt', 'DESC');
+    query.skip(offset).take(limit);
+
+    const [data, total] = await query.getManyAndCount();
+
+    return {
+      data,
+      meta: {
+        totalItems: total,
+        itemCount: data.length,
+        itemsPerPage: limit,
+        totalPages: Math.ceil(total / limit),
+        currentPage: page,
+      },
+    };
   }
 }

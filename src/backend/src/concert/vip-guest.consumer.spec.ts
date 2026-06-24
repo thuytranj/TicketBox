@@ -122,7 +122,7 @@ describe('VipGuestConsumer', () => {
         ),
       };
 
-      const csvContent = `Full Name,Email,Phone,Company\nJohn Doe,john@example.com,123456,Google\nJane Doe,jane@example.com,78910,Meta`;
+      const csvContent = `Full Name,Email,Phone,Company\nJohn Doe,john@example.com,0912345678,Google\nJane Doe,jane@example.com,0987654321,Meta`;
       mockSupabaseService.downloadFile.mockResolvedValue(csvContent);
       mockConcertRepo.findOne.mockResolvedValue({ id: 'concert-id', title: 'Concert Title' });
       mockVipGuestRepo.find.mockResolvedValue([]); // No existing duplicates
@@ -164,7 +164,7 @@ describe('VipGuestConsumer', () => {
       };
 
       // Duplicate email in CSV, and also duplicate of existing guest
-      const csvContent = `Full Name,Email,Phone,Company\nJohn Doe,john@example.com,123456,Google\nJohn Dup,john@example.com,111,Google\nJane Doe,jane@example.com,789,Meta`;
+      const csvContent = `Full Name,Email,Phone,Company\nJohn Doe,john@example.com,0912345678,Google\nJohn Dup,john@example.com,0987654321,Google\nJane Doe,jane@example.com,0901234567,Meta`;
       mockSupabaseService.downloadFile.mockResolvedValue(csvContent);
       mockConcertRepo.findOne.mockResolvedValue({ id: 'concert-id', title: 'Concert Title' });
       // jane@example.com already exists in the database

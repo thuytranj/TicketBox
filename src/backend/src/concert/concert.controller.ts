@@ -15,12 +15,14 @@ import {
   UploadedFile,
   BadRequestException,
   Request,
+  ClassSerializerInterceptor,
 } from '@nestjs/common';
 import { ConcertService } from './concert.service';
 import { CreateConcertDto } from './dto/create-concert.dto';
 import { UpdateConcertDto } from './dto/update-concert.dto';
 import { CreateTicketTypeDto } from './dto/create-ticket-type.dto';
 import { ConcertQueryDto } from './dto/concert-query.dto';
+import { VipGuestQueryDto } from './dto/vip-guest-query.dto';
 import { ConfirmArtistBioDto } from './dto/confirm-artist-bio.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -211,10 +213,21 @@ export class ConcertController {
   @Get(':id/guests/imports/:jobId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ORGANIZER)
+  @UseInterceptors(ClassSerializerInterceptor)
   async getVipGuestImportStatus(
     @Param('id') id: string,
     @Param('jobId') jobId: string,
   ) {
     return this.concertService.getVipGuestImportStatus(id, jobId);
+  }
+
+  @Get(':id/guests')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANIZER)
+  async getVipGuests(
+    @Param('id') id: string,
+    @Query() query: VipGuestQueryDto,
+  ) {
+    return this.concertService.getVipGuests(id, query);
   }
 }

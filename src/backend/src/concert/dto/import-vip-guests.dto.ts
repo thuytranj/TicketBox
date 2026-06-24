@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsEmail, IsOptional } from 'class-validator';
+import { IsNotEmpty, IsString, IsEmail, IsOptional, IsPhoneNumber } from 'class-validator';
 
 export class VipGuestRowDto {
   @IsString()
@@ -10,10 +10,11 @@ export class VipGuestRowDto {
   email: string;
 
   @IsOptional()
-  @IsString()
+  @IsPhoneNumber('VN', { message: 'Invalid phone number format' })
   phone?: string;
 
   @IsOptional()
   @IsString()
   affiliateCompany?: string;
 }
+

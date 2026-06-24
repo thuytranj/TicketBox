@@ -63,10 +63,11 @@ describe('VIP Guest Import (e2e)', () => {
     // 1. Prepare CSV buffer
     const csvContent =
       'Full Name,Email,Phone,Company\n' +
-      'E2E Guest A,e2e_guest_a@example.com,11111111,Google\n' +
-      'E2E Guest B,e2e_guest_b@example.com,22222222,Meta\n' +
-      'Invalid Guest,invalid-email-format,333,InvalidCompany\n' +
-      'Duplicate Guest,e2e_guest_a@example.com,444,DuplicateCompany\n';
+      'E2E Guest A,e2e_guest_a@example.com,0912345678,Google\n' +
+      'E2E Guest B,e2e_guest_b@example.com,0987654321,Meta\n' +
+      'Invalid Email Guest,invalid-email-format,0901112222,InvalidCompany\n' +
+      'Invalid Phone Guest,e2e_guest_c@example.com,123456,InvalidPhoneCompany\n' +
+      'Duplicate Guest,e2e_guest_a@example.com,0902222222,DuplicateCompany\n';
 
     const fileBuffer = Buffer.from(csvContent);
 
@@ -104,17 +105,25 @@ describe('VIP Guest Import (e2e)', () => {
 
     // 4. Validate job import details
     expect(status).toBe('completed');
-    expect(jobRecord.totalRows).toBe(4);
+    expect(jobRecord.totalRows).toBe(5);
     expect(jobRecord.importedRows).toBe(2);
+
+    // Verify fileUrl is excluded from response
+    expect(jobRecord.fileUrl).toBeUndefined();
 
     // Check error logs
     expect(jobRecord.errorLogs).toBeDefined();
-    expect(jobRecord.errorLogs.length).toBe(2);
+    expect(jobRecord.errorLogs.length).toBe(3);
 
     // Check errors
     const errorRows = jobRecord.errorLogs.map((e: any) => e.row);
-    expect(errorRows).toContain(4); // Invalid Guest (line 4)
-    expect(errorRows).toContain(5); // Duplicate Guest (line 5)
+    expect(errorRows).toContain(4); // Invalid Email Guest (line 4)
+    expect(errorRows).toContain(5); // Invalid Phone Guest (line 5)
+    expect(errorRows).toContain(6); // Duplicate Guest (line 6)
+
+    // Check specific error messages
+    const phoneError = jobRecord.errorLogs.find((e: any) => e.row === 5);
+    expect(phoneError.reason).toContain('Invalid phone number format');
 
     // 5. Verify database records
     const importedGuests = await vipGuestRepository.find({
@@ -125,13 +134,60 @@ describe('VIP Guest Import (e2e)', () => {
     expect(guestEmails).toContain('e2e_guest_a@example.com');
     expect(guestEmails).toContain('e2e_guest_b@example.com');
     expect(guestEmails).not.toContain('invalid-email-format');
+    expect(guestEmails).not.toContain('e2e_guest_c@example.com');
 
-    // 6. Clean up database records
+    // 6. Test GET /concerts/:id/guests endpoint (pagination and search)
+    // Query list as organizer (authenticated)
+    const listRes = await request(app.getHttpServer())
+      .get(`/api/v1/concerts/${concertId}/guests`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(listRes.body.data).toBeDefined();
+    expect(listRes.body.meta).toBeDefined();
+    expect(listRes.body.meta.totalItems).toBeGreaterThanOrEqual(2);
+    expect(listRes.body.meta.currentPage).toBe(1);
+
+    const listEmails = listRes.body.data.map((g: any) => g.email);
+    expect(listEmails).toContain('e2e_guest_a@example.com');
+    expect(listEmails).toContain('e2e_guest_b@example.com');
+
+    // Query list with search
+    const searchRes = await request(app.getHttpServer())
+      .get(`/api/v1/concerts/${concertId}/guests?search=Guest A`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(searchRes.body.data.length).toBe(1);
+    expect(searchRes.body.data[0].email).toBe('e2e_guest_a@example.com');
+
+    // Test Role authorization (AUDIENCE should be forbidden)
+    const audienceLoginRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'audience@ticketbox.vn',
+        password: '123123',
+      })
+      .expect(200);
+
+    const audienceToken = audienceLoginRes.body.accessToken;
+
+    await request(app.getHttpServer())
+      .get(`/api/v1/concerts/${concertId}/guests`)
+      .set('Authorization', `Bearer ${audienceToken}`)
+      .expect(403);
+
+    // Test Unauthenticated request (should be unauthorized 401)
+    await request(app.getHttpServer())
+      .get(`/api/v1/concerts/${concertId}/guests`)
+      .expect(401);
+
+    // 7. Clean up database records
     await vipGuestRepository.delete({ email: 'e2e_guest_a@example.com' });
     await vipGuestRepository.delete({ email: 'e2e_guest_b@example.com' });
     await vipGuestImportRepository.delete(jobId);
 
-    // 7. Wait for async background consumers to finish
+    // 8. Wait for async background consumers to finish
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }, 40000);
 });
