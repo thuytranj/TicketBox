@@ -16,6 +16,7 @@ import { ConcertModule } from './concert/concert.module';
 import { AIModule } from './ai/ai.module';
 import { BookingModule } from './booking/booking.module';
 import { PaymentModule } from './payment/payment.module';
+import { CheckinModule } from './checkin/checkin.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { PaymentModule } from './payment/payment.module';
     AIModule,
     BookingModule,
     PaymentModule,
+    CheckinModule,
   ],
   controllers: [AppController],
   providers: [
