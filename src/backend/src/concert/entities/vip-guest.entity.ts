@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { generateUuidV7 } from '../../auth/utils/uuid';
 import { Concert } from './concert.entity';
+import { CheckinStatus } from '../../common/enums/checkin-status.enum';
 
 export enum VipGuestStatus {
   RESERVED = 'reserved',
@@ -48,6 +49,17 @@ export class VipGuest {
     default: VipGuestStatus.ACTIVE,
   })
   status: VipGuestStatus;
+
+  @Column({
+    type: 'varchar',
+    length: 50,
+    name: 'checkin_status',
+    default: CheckinStatus.NOT_CHECKED_IN,
+  })
+  checkinStatus: CheckinStatus;
+
+  @Column({ type: 'timestamp', name: 'checked_in_at', nullable: true })
+  checkedInAt: Date;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;

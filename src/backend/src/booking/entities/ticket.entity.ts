@@ -9,12 +9,14 @@ import {
 import { generateUuidV7 } from '../../auth/utils/uuid';
 import { Order } from './order.entity';
 import { TicketType } from '../../concert/entities/ticket-type.entity';
+import { CheckinStatus } from '../../common/enums/checkin-status.enum';
 
 export enum TicketStatus {
   RESERVED = 'reserved',
   ACTIVE = 'active',
   USED = 'used',
 }
+
 
 @Entity('tickets')
 export class Ticket {
@@ -27,8 +29,8 @@ export class Ticket {
   @Column({ type: 'uuid', name: 'ticket_type_id' })
   ticketTypeId: string;
 
-  @Column({ type: 'varchar', length: 500, name: 'qr_code', nullable: true })
-  qrCode: string;
+  @Column({ type: 'varchar', length: 500, name: 'qr_code_hash', nullable: true, unique: true })
+  qrCodeHash: string;
 
   @Column({
     type: 'varchar',
@@ -36,6 +38,17 @@ export class Ticket {
     default: TicketStatus.RESERVED,
   })
   status: TicketStatus;
+
+  @Column({
+    type: 'varchar',
+    length: 50,
+    name: 'checkin_status',
+    default: CheckinStatus.NOT_CHECKED_IN,
+  })
+  checkinStatus: CheckinStatus;
+
+  @Column({ type: 'timestamp', name: 'checked_in_at', nullable: true })
+  checkedInAt: Date;
 
   @ManyToOne(() => Order, (order) => order.tickets, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
