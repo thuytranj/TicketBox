@@ -31,8 +31,8 @@
 
 ## 5. Phòng chống vắt kiệt CPU (Failed Authentication IP Block)
 
-- [ ] 5.1 Cập nhật `JwtAuthGuard` để kiểm tra trạng thái khóa của IP client trước khi chạy xác thực JWT (`auth_blocked:<ip>`).
-- [ ] 5.2 Triển khai logic ghi nhận lỗi xác thực trong `JwtAuthGuard`, tăng bộ đếm lỗi `auth_fail_count:<ip>` trong 60 giây khi JWT auth thất bại.
-- [ ] 5.3 Nếu bộ đếm lỗi đạt 5 lần, tạo key khóa IP `auth_blocked:<ip>` với TTL 900 giây (15 phút) và reset bộ đếm lỗi.
-- [ ] 5.4 Chuyển đổi `BookingController` sử dụng `JwtAuthGuard` thay vì `AuthGuard('jwt')` trực tiếp để được thừa hưởng lớp bảo mật IP block.
-- [ ] 5.5 Bổ sung các unit test cho `JwtAuthGuard` nhằm bao phủ kịch bản khóa IP khi gặp lỗi xác thực liên tục, đảm bảo cơ chế hoạt động đúng đắn và an toàn (fail-open hoạt động khi lỗi kết nối Redis).
+- [x] 5.1 Cập nhật `JwtAuthGuard` để kiểm tra trạng thái khóa của IP client trước khi chạy xác thực JWT (`auth_blocked:<ip>`).
+- [x] 5.2 Triển khai logic ghi nhận lỗi xác thực trong `JwtAuthGuard`, tăng bộ đếm lỗi `auth_fail_count:<ip>` trong 60 giây khi JWT auth thất bại.
+- [x] 5.3 Nếu bộ đếm lỗi đạt 5 lần, tạo key khóa IP `auth_blocked:<ip>` với TTL 900 giây (15 phút) và reset bộ đếm lỗi.
+- [x] 5.4 Chuyển đổi `BookingController` sử dụng `JwtAuthGuard` thay vì `AuthGuard('jwt')` trực tiếp để được thừa hưởng lớp bảo mật IP block.
+- [x] 5.5 Bổ sung các unit test cho `JwtAuthGuard` nhằm bao phủ kịch bản khóa IP khi gặp lỗi xác thực liên tục, đảm bảo cơ chế hoạt động đúng đắn và an toàn (fail-open hoạt động khi lỗi kết nối Redis).

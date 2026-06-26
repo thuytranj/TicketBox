@@ -12,7 +12,7 @@ import {
   Param,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SkipThrottle } from '@nestjs/throttler';
 import { BookingService } from './booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -21,7 +21,7 @@ import { RedisRateLimit } from '../common/decorators/redis-rate-limit.decorator'
 import { RedisRateLimitGuard } from '../common/guards/redis-rate-limit.guard';
 
 @Controller('bookings')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(JwtAuthGuard)
 export class BookingController {
   constructor(private readonly bookingService: BookingService) {}
 
