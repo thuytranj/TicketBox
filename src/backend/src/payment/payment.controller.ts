@@ -12,6 +12,7 @@ import {
   HttpCode,
   HttpStatus,
   Query,
+  All,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SkipThrottle } from '@nestjs/throttler';
@@ -75,8 +76,7 @@ export class PaymentController {
    * KHÔNG yêu cầu JWT (MoMo gọi trực tiếp về server).
    * Bảo mật bằng chữ ký HMAC SHA256 trong payload.
    */
-  @Get('momo/webhook')
-  @Post('momo/webhook')
+  @All('momo/webhook')
   @HttpCode(HttpStatus.OK)
   async momoWebhook(@Body() payload: Record<string, any>, @Query() query: Record<string, any>) {
     const fullPayload = { ...query, ...payload };
@@ -88,8 +88,7 @@ export class PaymentController {
    * IPN từ VNPAY gọi về để thông báo kết quả giao dịch.
    * VNPAY yêu cầu trả về JSON { RspCode: '00', Message: 'Confirm Success' }.
    */
-  @Get('vnpay/webhook')
-  @Post('vnpay/webhook')
+  @All('vnpay/webhook')
   @HttpCode(HttpStatus.OK)
   async vnpayWebhook(@Body() payload: Record<string, any>, @Query() query: Record<string, any>) {
     // VNPAY có thể gửi qua cả body lẫn query string tùy cấu hình
