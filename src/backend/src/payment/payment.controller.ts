@@ -14,10 +14,12 @@ import {
   Query,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle } from '@nestjs/throttler';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor';
 import { PaymentService } from './payment.service';
 import { InitiatePaymentDto } from './dto/initiate-payment.dto';
+import { RedisRateLimit } from '../common/decorators/redis-rate-limit.decorator';
+import { RedisRateLimitGuard } from '../common/guards/redis-rate-limit.guard';
 
 @Controller('payments')
 export class PaymentController {
@@ -28,11 +30,13 @@ export class PaymentController {
    * Khởi tạo thanh toán qua MoMo Sandbox.
    * Yêu cầu xác thực JWT + Idempotency-Key header.
    * Circuit Breaker sẽ tự động bảo vệ nếu MoMo sandbox lỗi.
+   * Rate limited to 3 requests per 1 minute (60 seconds) per user ID using Redis sliding window.
    */
   @Post('momo')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RedisRateLimitGuard)
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 10, ttl: 10000 } })
+  @SkipThrottle()
+  @RedisRateLimit({ limit: 3, ttlMs: 60000 })
   @UseInterceptors(IdempotencyInterceptor)
   async initiateMomo(
     @Body() dto: InitiatePaymentDto,
@@ -47,11 +51,13 @@ export class PaymentController {
   /**
    * POST /api/v1/payments/vnpay
    * Khởi tạo thanh toán qua VNPAY Sandbox.
+   * Rate limited to 3 requests per 1 minute (60 seconds) per user ID using Redis sliding window.
    */
   @Post('vnpay')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RedisRateLimitGuard)
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 3, ttl: 10000 } })
+  @SkipThrottle()
+  @RedisRateLimit({ limit: 3, ttlMs: 60000 })
   @UseInterceptors(IdempotencyInterceptor)
   async initiateVnpay(
     @Body() dto: InitiatePaymentDto,

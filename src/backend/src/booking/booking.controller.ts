@@ -13,10 +13,12 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle } from '@nestjs/throttler';
 import { BookingService } from './booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor';
+import { RedisRateLimit } from '../common/decorators/redis-rate-limit.decorator';
+import { RedisRateLimitGuard } from '../common/guards/redis-rate-limit.guard';
 
 @Controller('bookings')
 @UseGuards(AuthGuard('jwt'))
@@ -26,14 +28,16 @@ export class BookingController {
   /**
    * POST /api/v1/bookings
    *
-   * Rate limited to 5 requests per 10 seconds per user/IP.
+   * Rate limited to 10 requests per 1 minute (60 seconds) per user ID using Redis sliding window.
    * Idempotency-Key header is required to prevent duplicate orders.
    *
    * Returns 202 Accepted immediately; booking is processed asynchronously.
    */
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
-  @Throttle({ default: { limit: 5, ttl: 10000 } })
+  @SkipThrottle()
+  @UseGuards(RedisRateLimitGuard)
+  @RedisRateLimit({ limit: 10, ttlMs: 60000 })
   @UseInterceptors(IdempotencyInterceptor)
   async createBooking(
     @Body() dto: CreateBookingDto,
