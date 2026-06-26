@@ -12,12 +12,15 @@ import {
   HttpCode,
   HttpStatus,
   Query,
+  All,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle } from '@nestjs/throttler';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor';
 import { PaymentService } from './payment.service';
 import { InitiatePaymentDto } from './dto/initiate-payment.dto';
+import { RedisRateLimit } from '../common/decorators/redis-rate-limit.decorator';
+import { RedisRateLimitGuard } from '../common/guards/redis-rate-limit.guard';
 
 @Controller('payments')
 export class PaymentController {
@@ -28,11 +31,13 @@ export class PaymentController {
    * Khởi tạo thanh toán qua MoMo Sandbox.
    * Yêu cầu xác thực JWT + Idempotency-Key header.
    * Circuit Breaker sẽ tự động bảo vệ nếu MoMo sandbox lỗi.
+   * Rate limited to 3 requests per 1 minute (60 seconds) per user ID using Redis sliding window.
    */
   @Post('momo')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RedisRateLimitGuard)
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 10, ttl: 10000 } })
+  @SkipThrottle()
+  @RedisRateLimit({ limit: 3, ttlMs: 60000 })
   @UseInterceptors(IdempotencyInterceptor)
   async initiateMomo(
     @Body() dto: InitiatePaymentDto,
@@ -47,11 +52,13 @@ export class PaymentController {
   /**
    * POST /api/v1/payments/vnpay
    * Khởi tạo thanh toán qua VNPAY Sandbox.
+   * Rate limited to 3 requests per 1 minute (60 seconds) per user ID using Redis sliding window.
    */
   @Post('vnpay')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RedisRateLimitGuard)
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 3, ttl: 10000 } })
+  @SkipThrottle()
+  @RedisRateLimit({ limit: 3, ttlMs: 60000 })
   @UseInterceptors(IdempotencyInterceptor)
   async initiateVnpay(
     @Body() dto: InitiatePaymentDto,
@@ -69,8 +76,7 @@ export class PaymentController {
    * KHÔNG yêu cầu JWT (MoMo gọi trực tiếp về server).
    * Bảo mật bằng chữ ký HMAC SHA256 trong payload.
    */
-  @Get('momo/webhook')
-  @Post('momo/webhook')
+  @All('momo/webhook')
   @HttpCode(HttpStatus.OK)
   async momoWebhook(@Body() payload: Record<string, any>, @Query() query: Record<string, any>) {
     const fullPayload = { ...query, ...payload };
@@ -82,8 +88,7 @@ export class PaymentController {
    * IPN từ VNPAY gọi về để thông báo kết quả giao dịch.
    * VNPAY yêu cầu trả về JSON { RspCode: '00', Message: 'Confirm Success' }.
    */
-  @Get('vnpay/webhook')
-  @Post('vnpay/webhook')
+  @All('vnpay/webhook')
   @HttpCode(HttpStatus.OK)
   async vnpayWebhook(@Body() payload: Record<string, any>, @Query() query: Record<string, any>) {
     // VNPAY có thể gửi qua cả body lẫn query string tùy cấu hình

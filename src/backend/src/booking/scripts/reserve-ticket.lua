@@ -21,8 +21,15 @@ local userBought  = KEYS[2]
 local quantity    = tonumber(ARGV[1])
 local maxPerUser  = tonumber(ARGV[2])
 
--- Get current stock (default 0 if not exist)
-local currentStock = tonumber(redis.call('GET', stockKey) or '0')
+-- Get current stock (initialize if not exist)
+local stockExists = redis.call('EXISTS', stockKey)
+local currentStock
+if stockExists == 0 then
+  currentStock = tonumber(ARGV[3])
+  redis.call('SET', stockKey, currentStock)
+else
+  currentStock = tonumber(redis.call('GET', stockKey) or '0')
+end
 
 -- Check stock availability
 if currentStock < quantity then

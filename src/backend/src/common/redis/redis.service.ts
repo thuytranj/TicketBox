@@ -1,6 +1,8 @@
 import { Injectable, OnModuleDestroy, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 @Injectable()
 export class RedisService extends Redis implements OnModuleDestroy {
@@ -23,6 +25,19 @@ export class RedisService extends Redis implements OnModuleDestroy {
     this.on('error', (err) => {
       this.logger.error('Redis connection error:', err);
     });
+
+    // Load and register sliding window rate limit Lua script
+    const scriptPath = join(__dirname, 'scripts', 'sliding-window-rate-limit.lua');
+    try {
+      const luaScript = readFileSync(scriptPath, 'utf8');
+      this.defineCommand('slidingWindowRateLimit', {
+        numberOfKeys: 1,
+        lua: luaScript,
+      });
+      this.logger.log('Successfully registered slidingWindowRateLimit Redis command');
+    } catch (err) {
+      this.logger.error('Failed to load sliding-window-rate-limit.lua script:', err);
+    }
   }
 
   async acquireLock(key: string, ttlMs: number): Promise<boolean> {
@@ -32,6 +47,21 @@ export class RedisService extends Redis implements OnModuleDestroy {
 
   async releaseLock(key: string): Promise<void> {
     await this.del(key);
+  }
+
+  async checkRateLimit(
+    key: string,
+    windowMs: number,
+    maxRequests: number,
+    uniqueId: string,
+  ): Promise<boolean> {
+    const result = await (this as any).slidingWindowRateLimit(
+      key,
+      windowMs.toString(),
+      maxRequests.toString(),
+      uniqueId,
+    );
+    return result === 1;
   }
 
   onModuleDestroy() {

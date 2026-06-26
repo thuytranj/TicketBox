@@ -893,7 +893,7 @@ flowchart TD
     Internet --> Nginx
 
     subgraph Layer1["Lớp 1: API Gateway"]
-        Nginx["Nginx Reverse Proxy<br/>(limit_req: 30 req/s per IP)<br/>Token Bucket - In-memory"]:::gateway
+        Nginx["Nginx Reverse Proxy<br/>(limit_req: 50 req/s per IP)<br/>Token Bucket - In-memory"]:::gateway
     end
 
     Nginx -->|"Request hợp lệ (IP chưa vượt ngưỡng)"| NestJS
@@ -901,7 +901,7 @@ flowchart TD
 
     subgraph Layer2["Lớp 2: Application - Bảo vệ nghiệp vụ"]
         NestJS["NestJS Application<br/>(Decode JWT -> lấy User ID)"]:::app
-        SlidingWindow["Redis Sliding Window Counter<br/>(Lua Script - theo User ID)<br/>5 req/min cho POST /bookings"]:::db
+        SlidingWindow["Redis Sliding Window Counter<br/>(Lua Script - theo User ID)<br/>10 req/min cho POST /bookings"]:::db
     end
 
     NestJS --> SlidingWindow
@@ -918,14 +918,14 @@ flowchart TD
 **Cấu hình Nginx:**
 
 ```nginx
-# Khai báo zone: 10MB shared memory, 30 req/s per IP
-limit_req_zone $binary_remote_addr zone=global:10m rate=30r/s;
+# Khai báo zone: 10MB shared memory, 50 req/s per IP
+limit_req_zone $binary_remote_addr zone=global:10m rate=50r/s;
 
 server {
     location / {
-        # burst=10: cho phép burst tối đa 10 request trước khi reject
+        # burst=30: cho phép burst tối đa 30 request trước khi reject
         # nodelay: xử lý burst ngay lập tức, không queue chờ
-        limit_req zone=global burst=10 nodelay;
+        limit_req zone=global burst=30 nodelay;
         limit_req_status 429;
 
         # Trả về JSON thay vì HTML mặc định của Nginx
@@ -944,8 +944,8 @@ server {
 
 | Tham số   | Giá trị      | Ý nghĩa                                                              |
 | --------- | ------------ | -------------------------------------------------------------------- |
-| `rate`    | `30r/s`      | Tối đa 30 request/giây cho mỗi IP address                            |
-| `burst`   | `10`         | Cho phép burst thêm 10 request vượt ngưỡng (phù hợp người dùng thật) |
+| `rate`    | `50r/s`      | Tối đa 50 request/giây cho mỗi IP address                            |
+| `burst`   | `30`         | Cho phép burst thêm 30 request vượt ngưỡng (phù hợp người dùng thật) |
 | `nodelay` | —            | Xử lý burst ngay, không delay/queue                                  |
 | `zone`    | `global:10m` | 10MB shared memory (~160,000 IP addresses đồng thời)                 |
 
@@ -959,7 +959,7 @@ server {
 
 | Endpoint                      | Window | Max Requests | Áp dụng theo | Lý do                                |
 | ----------------------------- | ------ | ------------ | ------------ | ------------------------------------ |
-| `POST /bookings` (đặt vé)     | 1 phút | 5            | User ID      | Chống script spam đặt chỗ hàng loạt  |
+| `POST /bookings` (đặt vé)     | 1 phút | 10           | User ID      | Chống script spam đặt chỗ hàng loạt  |
 | `POST /payments` (thanh toán) | 1 phút | 3            | User ID      | Chống gửi request thanh toán lặp lại |
 
 > **Lưu ý:** Endpoint đọc dữ liệu (`GET /concerts`) **không cần** rate limit ở Lớp 2 vì đã được bảo vệ bởi Nginx (Lớp 1) và CDN Cache.
@@ -968,29 +968,31 @@ server {
 
 ```lua
 -- KEYS[1] = rate_limit:{user_id}:{endpoint}
--- ARGV[1] = now (timestamp hiện tại, milliseconds)
--- ARGV[2] = window_size (kích thước cửa sổ, milliseconds, ví dụ: 60000 = 1 phút)
--- ARGV[3] = max_requests (số request tối đa trong window)
+-- ARGV[1] = window_size (kích thước cửa sổ, milliseconds, ví dụ: 60000 = 1 phút)
+-- ARGV[2] = max_requests (số request tối đa trong window)
 
 local key = KEYS[1]
-local now = tonumber(ARGV[1])
-local window = tonumber(ARGV[2])
-local max_req = tonumber(ARGV[3])
+local window = tonumber(ARGV[1])
+local max_req = tonumber(ARGV[2])
 
--- 1. Xóa các bản ghi cũ nằm ngoài cửa sổ thời gian
+-- 1. Lấy thời gian đồng nhất từ Redis Server (giây + microgiây)
+local redis_time = redis.call('time')
+local now = (tonumber(redis_time[1]) * 1000) + math.floor(tonumber(redis_time[2]) / 1000)
+
+-- 2. Xóa các bản ghi cũ nằm ngoài cửa sổ thời gian trượt
 redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
 
--- 2. Đếm số request hiện tại trong cửa sổ
+-- 3. Đếm số request hiện tại trong cửa sổ trượt
 local current = redis.call('ZCARD', key)
 
 if current >= max_req then
     return 0  -- VƯỢT NGƯỠNG → chặn
 end
 
--- 3. Ghi nhận request mới (score = timestamp, member = unique ID)
+-- 4. Ghi nhận request mới (score = timestamp, member = unique ID)
 redis.call('ZADD', key, now, now .. ':' .. math.random(1000000))
 
--- 4. Đặt TTL tự động dọn dẹp key khi hết window
+-- 5. Đặt TTL tự động dọn dẹp key khi hết window
 redis.call('PEXPIRE', key, window)
 
 return 1  -- CHO PHÉP
@@ -1003,7 +1005,38 @@ return 1  -- CHO PHÉP
 | `rate_limit:{user_id}:bookings` | Sorted Set | Đếm số lần đặt vé trong 1 phút     |
 | `rate_limit:{user_id}:payments` | Sorted Set | Đếm số lần thanh toán trong 1 phút |
 
-**Hành vi khi vượt ngưỡng:** Trả về `HTTP 429 Too Many Requests` kèm header `X-RateLimit-Source: app-user` và `Retry-After` (giây) để client phân biệt với lỗi 429 từ Nginx Gateway.
+**Hành vi khi vượt ngưỡng:** Trả về `HTTP 429 Too Many Requests` kèm header `X-RateLimit-Source: app-user` để client phân biệt với lỗi 429 từ Nginx Gateway.
+
+**Thiết kế chịu lỗi & Đồng bộ đa thực thể (Resilience & Cluster-ready):**
+- **Đồng bộ thời gian:** Sử dụng `redis.call('time')` đảm bảo các thực thể NestJS khác nhau không bị ảnh hưởng bởi lỗi lệch múi giờ (Clock Drift).
+- **Cơ chế dự phòng (Fail-Open):** Custom Guard sẽ bọc lệnh gọi Redis trong khối try-catch. Nếu Redis bị gián đoạn, Guard ghi log warning và cho phép yêu cầu đi tiếp (`return true`) để không gián đoạn dịch vụ.
+- **Trust Proxy:** Cấu hình `trust proxy` trong `main.ts` để đọc đúng địa chỉ IP của Client khi chạy sau Nginx phục vụ fallback rate limit theo IP.
+
+#### Phòng chống vắt kiệt CPU (Failed Authentication IP-based Rate Limiter)
+
+**Mục đích:** Bảo vệ tài nguyên tính toán (CPU) của NestJS trước các cuộc tấn công DDoS hoặc brute-force xoay vòng token giả. Việc xác thực chữ ký số JWT bằng mật mã học (cryptography) tiêu tốn rất nhiều CPU. Nếu kẻ tấn công gửi hàng triệu request mang token giả (chuỗi ngẫu nhiên hoặc token sai signature), NestJS vẫn phải giải mã chữ ký cho mỗi request, dẫn đến CPU của server bị vắt kiệt và gây nghẽn tiến trình Node.js (đơn luồng).
+
+**Cơ chế hoạt động:**
+1. Khi request đi vào `JwtAuthGuard` (áp dụng cho tất cả các endpoint cần xác thực JWT), hệ thống sẽ lấy địa chỉ IP của client (nhờ vào `trust proxy`).
+2. Kiểm tra IP xem có bị block tạm thời trong Redis hay không thông qua key `auth_blocked:<ip>`.
+   - Nếu **Có**: Từ chối request ngay lập tức với mã lỗi `HTTP 429 Too Many Requests` và header `X-RateLimit-Source: failed-auth-ip`. Lớp này hoàn toàn không thực hiện giải mã hay xác thực chữ ký JWT, giúp bảo vệ CPU tối đa.
+   - Nếu **Không**: Cho phép tiếp tục thực hiện giải mã và xác thực chữ ký JWT.
+3. Nếu xác thực JWT **thành công**: Cho phép request đi tiếp đến lớp rate limit theo User ID (`RedisRateLimitGuard`).
+4. Nếu xác thực JWT **thất bại** (throws 401 Unauthorized do token fake/sai signature):
+   - Bắt exception thất bại này và ghi nhận đếm lỗi vào Redis: tăng giá trị key `auth_fail_count:<ip>` thêm 1 đơn vị, đặt TTL cho key này là 60 giây.
+   - Nếu số lần xác thực sai của IP đó đạt ngưỡng **5 lần** trong vòng 60 giây, tiến hành tạo key block `auth_blocked:<ip>` trong Redis với giá trị là `1` và thời gian hết hạn TTL là 900 giây (15 phút). Đồng thời xóa key đếm lỗi `auth_fail_count:<ip>`.
+   - Ném ra lỗi `401 Unauthorized` ban đầu cho client.
+
+**Redis Key Schema cho Bảo vệ CPU:**
+
+| Key Pattern | Kiểu dữ liệu | TTL | Mô tả |
+| :--- | :--- | :--- | :--- |
+| `auth_fail_count:<ip>` | String (Counter) | 60 giây | Đếm số lần xác thực JWT thất bại của một IP |
+| `auth_blocked:<ip>` | String | 900 giây (15 phút) | Đánh dấu IP bị khóa, chặn mọi xác thực JWT |
+
+**Ưu điểm vượt trội:**
+- **Không block nhầm người dùng hợp lệ:** Dù nhiều người dùng hợp lệ dùng chung một mạng NAT (cùng IP public), họ gửi token hợp lệ nên không phát sinh lỗi 401. Chỉ những IP thực sự gửi token giả liên tục mới bị block.
+- **Tối ưu hiệu năng:** Chi phí đọc ghi key string đơn giản trên Redis cực kỳ rẻ và nhanh so với chi phí tính toán mật mã giải mã chữ ký JWT trên Node.js.
 
 ---
 
