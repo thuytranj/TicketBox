@@ -83,7 +83,7 @@ export class BookingConsumer implements OnModuleInit {
                   orderId: order.id,
                   ticketTypeId: item.ticketTypeId,
                   status: TicketStatus.RESERVED,
-                  qrCode: generateUuidV7(), // placeholder QR code; replace with real QR generation
+                  qrCodeHash: generateUuidV7(), // placeholder QR code; replace with real QR generation
                 });
                 tickets.push(ticket);
               }

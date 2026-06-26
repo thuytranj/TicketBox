@@ -1,9 +1,12 @@
-import { DataSource, DataSourceOptions } from 'typeorm';
-import { SeederOptions } from 'typeorm-extension';
+import { DataSource, type DataSourceOptions } from 'typeorm';
+import type { SeederOptions } from 'typeorm-extension';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
-dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
+// Fix for ES Module scope where __dirname is undefined
+const baseDir = typeof __dirname !== 'undefined' ? __dirname : path.join(process.cwd(), 'src/data');
+
+dotenv.config({ path: path.resolve(baseDir, '../../../../.env') });
 
 export const ormConfig: DataSourceOptions & SeederOptions = {
   type: 'postgres',
@@ -12,10 +15,10 @@ export const ormConfig: DataSourceOptions & SeederOptions = {
   username: process.env.DB_USERNAME,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_DATABASE,
-  entities: [path.join(__dirname, '../**/*.entity{.ts,.js}')],
-  migrations: [path.join(__dirname, 'migrations/*{.ts,.js}')],
-  seeds: [path.join(__dirname, 'seeds/**/*{.ts,.js}')],
-  factories: [path.join(__dirname, 'factories/**/*{.ts,.js}')],
+  entities: [path.join(baseDir, '../**/*.entity{.ts,.js}')],
+  migrations: [path.join(baseDir, 'migrations/*{.ts,.js}')],
+  seeds: [path.join(baseDir, 'seeds/**/*{.ts,.js}')],
+  factories: [path.join(baseDir, 'factories/**/*{.ts,.js}')],
   synchronize: false,
 };
 
