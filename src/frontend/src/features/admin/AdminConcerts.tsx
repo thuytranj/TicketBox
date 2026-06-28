@@ -3,10 +3,24 @@ import { Link, useNavigate } from 'react-router-dom';
 import { apiClient } from '../../api/client';
 import type { Concert } from '../concerts/ConcertList';
 import { Plus, Edit2, Trash2, Users, FileText } from 'lucide-react';
+import heroPreview from '../../assets/hero.png';
 
 interface TicketType {
   id: string;
   name: 'GA' | 'SVIP' | 'VIP' | 'CAT1' | 'CAT2';
+  price: number;
+  total_quantity: number;
+  available_quantity: number;
+  max_per_user: number;
+}
+
+type TicketTypeName = TicketType['name'];
+type ConcertStatus = 'draft' | 'active' | 'cancelled';
+
+interface FormTicketType {
+  id?: string;
+  clientId?: string;
+  name: TicketTypeName;
   price: number;
   total_quantity: number;
   available_quantity: number;
@@ -28,6 +42,7 @@ export const AdminConcerts: React.FC = () => {
   const [location, setLocation] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [status, setStatus] = useState<ConcertStatus>('active');
   const [tagsInput, setTagsInput] = useState('');
   const [svgStageMap, setSvgStageMap] = useState('');
   const [posterUrl, setPosterUrl] = useState('');
@@ -35,8 +50,8 @@ export const AdminConcerts: React.FC = () => {
   const [uploadingPoster, setUploadingPoster] = useState(false);
 
   // Ticket types management states (associated with currently edited concert)
-  const [ticketTypes, setTicketTypes] = useState<TicketType[]>([]);
-  const [newTicketName, setNewTicketName] = useState<'GA' | 'SVIP' | 'VIP' | 'CAT1' | 'CAT2'>('GA');
+  const [ticketTypes, setTicketTypes] = useState<FormTicketType[]>([]);
+  const [newTicketName, setNewTicketName] = useState<TicketTypeName>('GA');
   const [newTicketPrice, setNewTicketPrice] = useState(500000);
   const [newTicketQty, setNewTicketQty] = useState(100);
   const [newTicketMaxUser, setNewTicketMaxUser] = useState(4);
@@ -48,7 +63,7 @@ export const AdminConcerts: React.FC = () => {
       const response = await apiClient.request<{ data: { concerts: Concert[] } }>('/concerts');
       setConcerts(response?.data?.concerts || []);
     } catch (err: any) {
-      setError(err.message || 'Failed to load concerts');
+      setError(err.message || 'Không tải được danh sách sự kiện');
     } finally {
       setLoading(false);
     }
@@ -65,6 +80,7 @@ export const AdminConcerts: React.FC = () => {
     setLocation('');
     setStartTime('');
     setEndTime('');
+    setStatus('active');
     setTagsInput('');
     setSvgStageMap('');
     setPosterUrl('');
@@ -83,6 +99,7 @@ export const AdminConcerts: React.FC = () => {
     // Parse times to datetime-local compatible string
     setStartTime(new Date(concert.start_time).toISOString().substring(0, 16));
     setEndTime(new Date(new Date(concert.start_time).getTime() + 3 * 3600000).toISOString().substring(0, 16));
+    setStatus(concert.status);
     setTagsInput((concert.tags || []).join(', '));
     setPosterUrl(concert.posterUrl || '');
     setError('');
@@ -97,7 +114,7 @@ export const AdminConcerts: React.FC = () => {
       setTicketTypes(ticketsRes.data);
       setSvgStageMap(svgRes.svgStageMap || '');
     } catch (err: any) {
-      setError('Could not load ticket types or stage map: ' + err.message);
+      setError('Không tải được hạng vé hoặc sơ đồ sân khấu: ' + err.message);
     }
   };
 
@@ -117,11 +134,24 @@ export const AdminConcerts: React.FC = () => {
       });
       setPosterUrl(res.url);
       setPosterPublicId(res.publicId);
-      setSuccess('Poster uploaded successfully.');
+      setSuccess('Đã tải poster lên.');
     } catch (err: any) {
-      setError('Poster upload failed: ' + err.message);
+      setError('Tải poster thất bại: ' + err.message);
     } finally {
       setUploadingPoster(false);
+    }
+  };
+
+  const handleSvgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      setSvgStageMap(text);
+      setSuccess('Đã đọc file SVG.');
+    } catch (err: any) {
+      setError('Không đọc được file SVG: ' + err.message);
     }
   };
 
@@ -141,10 +171,19 @@ export const AdminConcerts: React.FC = () => {
       location,
       startTime: new Date(startTime).toISOString(),
       endTime: new Date(endTime).toISOString(),
+      status,
       tags,
       svgStageMap: svgStageMap || undefined,
       posterUrl: posterUrl || undefined,
       posterPublicId: posterPublicId || undefined,
+      ticketTypes: editingConcertId
+        ? undefined
+        : ticketTypes.map((type) => ({
+            name: type.name,
+            price: type.price,
+            totalQuantity: type.total_quantity,
+            maxPerUser: type.max_per_user,
+          })),
     };
 
     try {
@@ -153,23 +192,23 @@ export const AdminConcerts: React.FC = () => {
           method: 'PATCH',
           body: JSON.stringify(bodyData),
         });
-        setSuccess('Concert updated successfully.');
+        setSuccess('Đã cập nhật concert.');
       } else {
         await apiClient.request('/concerts', {
           method: 'POST',
           body: JSON.stringify(bodyData),
         });
-        setSuccess('Concert created successfully.');
+        setSuccess('Đã tạo concert.');
       }
       setShowForm(false);
       fetchConcerts();
     } catch (err: any) {
-      setError(err.message || 'Failed to save concert');
+      setError(err.message || 'Không lưu được concert');
     }
   };
 
   const handleDeleteConcert = async (concertId: string) => {
-    if (!window.confirm('Are you sure you want to delete this concert?')) return;
+    if (!window.confirm('Bạn chắc chắn muốn xóa concert này?')) return;
     setError('');
     setSuccess('');
 
@@ -177,19 +216,33 @@ export const AdminConcerts: React.FC = () => {
       await apiClient.request(`/concerts/${concertId}`, {
         method: 'DELETE',
       });
-      setSuccess('Concert deleted successfully.');
+      setSuccess('Đã xóa concert.');
       fetchConcerts();
     } catch (err: any) {
       setError(
         err.message ||
-          'Failed to delete concert. If bookings exist, please consider setting its status to cancelled.'
+          'Không thể xóa concert. Nếu đã có booking, hãy cân nhắc chuyển trạng thái sang cancelled.'
       );
     }
   };
 
   // Ticket Types functions
   const handleAddTicketType = async () => {
-    if (!editingConcertId) return;
+    const nextTicketType: FormTicketType = {
+      clientId: crypto.randomUUID(),
+      name: newTicketName,
+      price: newTicketPrice,
+      total_quantity: newTicketQty,
+      available_quantity: newTicketQty,
+      max_per_user: newTicketMaxUser,
+    };
+
+    if (!editingConcertId) {
+      setTicketTypes((current) => [...current, nextTicketType]);
+      setSuccess('Đã thêm hạng vé vào concert mới.');
+      return;
+    }
+
     setAddingTicketType(true);
     setError('');
     try {
@@ -202,28 +255,34 @@ export const AdminConcerts: React.FC = () => {
           maxPerUser: newTicketMaxUser,
         }),
       });
-      setSuccess('Ticket type added successfully.');
+      setSuccess('Đã thêm hạng vé.');
       // Refresh ticket types list
       const ticketsRes = await apiClient.request<{ data: TicketType[] }>(`/concerts/${editingConcertId}/ticket-types`);
       setTicketTypes(ticketsRes.data);
     } catch (err: any) {
-      setError(err.message || 'Failed to add ticket type');
+      setError(err.message || 'Không thêm được hạng vé');
     } finally {
       setAddingTicketType(false);
     }
   };
 
-  const handleDeleteTicketType = async (typeId: string) => {
-    if (!window.confirm('Delete this ticket type?')) return;
+  const handleDeleteTicketType = async (type: FormTicketType) => {
+    if (!window.confirm('Xóa hạng vé này?')) return;
     setError('');
+
+    if (!editingConcertId || !type.id) {
+      setTicketTypes(ticketTypes.filter((t) => t.clientId !== type.clientId));
+      return;
+    }
+
     try {
-      await apiClient.request(`/ticket-types/${typeId}`, {
+      await apiClient.request(`/ticket-types/${type.id}`, {
         method: 'DELETE',
       });
-      setSuccess('Ticket type deleted.');
-      setTicketTypes(ticketTypes.filter((t) => t.id !== typeId));
+      setSuccess('Đã xóa hạng vé.');
+      setTicketTypes(ticketTypes.filter((t) => t.id !== type.id));
     } catch (err: any) {
-      setError(err.message || 'Failed to delete ticket type');
+      setError(err.message || 'Không xóa được hạng vé');
     }
   };
 
@@ -232,11 +291,11 @@ export const AdminConcerts: React.FC = () => {
       <header className="section-heading">
         <div>
           <h1>Concerts</h1>
-          <p>Manage your events, ticket zones, and uploads.</p>
+          <p>Quản lý sự kiện, hạng vé, poster và khách mời trong một nơi.</p>
         </div>
         {!showForm && (
           <button className="btn btn-primary" onClick={handleOpenCreate}>
-            <Plus size={18} style={{ marginRight: '0.5rem' }} /> Create Concert
+            <Plus size={18} style={{ marginRight: '0.5rem' }} /> Tạo concert
           </button>
         )}
       </header>
@@ -248,13 +307,13 @@ export const AdminConcerts: React.FC = () => {
         <div className="card" style={{ marginBottom: '3rem' }}>
           <div className="card-body">
             <h2 style={{ fontSize: '1.5rem', marginBottom: '2rem' }}>
-              {editingConcertId ? 'Edit Concert' : 'Create New Concert'}
+              {editingConcertId ? 'Chỉnh sửa concert' : 'Tạo concert mới'}
             </h2>
             
             <form onSubmit={handleSubmitConcert} className="admin-form-grid">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                 <div className="form-group">
-                  <label htmlFor="concert-title" className="form-label">Concert Title</label>
+                  <label htmlFor="concert-title" className="form-label">Tên concert</label>
                   <input
                     id="concert-title"
                     type="text"
@@ -266,7 +325,7 @@ export const AdminConcerts: React.FC = () => {
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="concert-location" className="form-label">Location / Venue</label>
+                  <label htmlFor="concert-location" className="form-label">Địa điểm</label>
                   <input
                     id="concert-location"
                     type="text"
@@ -279,7 +338,7 @@ export const AdminConcerts: React.FC = () => {
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
                   <div className="form-group">
-                    <label htmlFor="concert-start-time" className="form-label">Start Time</label>
+                    <label htmlFor="concert-start-time" className="form-label">Thời gian bắt đầu</label>
                     <input
                       id="concert-start-time"
                       type="datetime-local"
@@ -290,7 +349,7 @@ export const AdminConcerts: React.FC = () => {
                     />
                   </div>
                   <div className="form-group">
-                    <label htmlFor="concert-end-time" className="form-label">End Time</label>
+                    <label htmlFor="concert-end-time" className="form-label">Thời gian kết thúc</label>
                     <input
                       id="concert-end-time"
                       type="datetime-local"
@@ -303,11 +362,11 @@ export const AdminConcerts: React.FC = () => {
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="concert-tags" className="form-label">Tags (separated by comma)</label>
+                  <label htmlFor="concert-tags" className="form-label">Thể loại (cách nhau bằng dấu phẩy)</label>
                   <input
                     id="concert-tags"
                     type="text"
-                    placeholder="e.g. pop, ballad, live"
+                    placeholder="pop, ballad, live"
                     value={tagsInput}
                     onChange={(e) => setTagsInput(e.target.value)}
                     className="form-control"
@@ -315,7 +374,21 @@ export const AdminConcerts: React.FC = () => {
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="concert-poster" className="form-label">Upload Poster Image</label>
+                  <label htmlFor="concert-status" className="form-label">Trạng thái</label>
+                  <select
+                    id="concert-status"
+                    className="form-control"
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as ConcertStatus)}
+                  >
+                    <option value="active">Đang bán</option>
+                    <option value="draft">Bản nháp</option>
+                    <option value="cancelled">Đã hủy</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="concert-poster" className="form-label">Poster sự kiện</label>
                   <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                     <input
                       id="concert-poster"
@@ -330,7 +403,7 @@ export const AdminConcerts: React.FC = () => {
                   {posterUrl && (
                     <img
                       src={posterUrl}
-                      alt="Poster Preview"
+                      alt="Xem trước poster"
                       style={{ width: '100px', height: '120px', objectFit: 'cover', borderRadius: 'var(--radius-sm)', marginTop: '0.5rem' }}
                     />
                   )}
@@ -339,7 +412,7 @@ export const AdminConcerts: React.FC = () => {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                 <div className="form-group">
-                  <label htmlFor="concert-description" className="form-label">Description</label>
+                  <label htmlFor="concert-description" className="form-label">Mô tả</label>
                   <textarea
                     id="concert-description"
                     rows={4}
@@ -352,7 +425,16 @@ export const AdminConcerts: React.FC = () => {
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="concert-svg-map" className="form-label">SVG Seating Map Content (XML String)</label>
+                  <label htmlFor="concert-svg-map" className="form-label">Sơ đồ ghế SVG</label>
+                  <input
+                    id="concert-svg-file"
+                    type="file"
+                    accept=".svg,image/svg+xml"
+                    onChange={handleSvgUpload}
+                    className="form-control"
+                    aria-label="Tải file SVG"
+                    style={{ marginBottom: '0.75rem' }}
+                  />
                   <textarea
                     id="concert-svg-map"
                     rows={6}
@@ -366,25 +448,24 @@ export const AdminConcerts: React.FC = () => {
 
                 <div style={{ display: 'flex', gap: '1rem', marginTop: 'auto', justifyContent: 'flex-end' }}>
                   <button type="button" className="btn btn-outline" onClick={() => setShowForm(false)}>
-                    Cancel
+                    Hủy
                   </button>
                   <button type="submit" className="btn btn-primary" disabled={uploadingPoster}>
-                    Save Concert
+                    Lưu concert
                   </button>
                 </div>
               </div>
             </form>
 
-            {/* Ticket types section (Only visible when editing an existing concert) */}
-            {editingConcertId && (
+            {/* Ticket types section */}
               <div style={{ marginTop: '3.5rem', borderTop: '1px solid var(--border)', paddingTop: '2.5rem' }}>
-                <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Manage Ticket Types</h3>
+                <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Quản lý hạng vé</h3>
                 
                 {/* Add ticket type mini-form */}
                 <div className="ticket-mini-form">
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Type Name</label>
-                    <select className="form-control" value={newTicketName} onChange={(e: any) => setNewTicketName(e.target.value)}>
+                    <label htmlFor="ticket-type-name" className="form-label">Hạng vé</label>
+                    <select id="ticket-type-name" className="form-control" value={newTicketName} onChange={(e: any) => setNewTicketName(e.target.value)}>
                       <option value="GA">GA</option>
                       <option value="SVIP">SVIP</option>
                       <option value="VIP">VIP</option>
@@ -393,39 +474,39 @@ export const AdminConcerts: React.FC = () => {
                     </select>
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Price (VND)</label>
-                    <input type="number" className="form-control" value={newTicketPrice} onChange={(e) => setNewTicketPrice(Number(e.target.value))} />
+                    <label htmlFor="ticket-type-price" className="form-label">Giá (VND)</label>
+                    <input id="ticket-type-price" type="number" className="form-control" value={newTicketPrice} onChange={(e) => setNewTicketPrice(Number(e.target.value))} />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Quantity</label>
-                    <input type="number" className="form-control" value={newTicketQty} onChange={(e) => setNewTicketQty(Number(e.target.value))} />
+                    <label htmlFor="ticket-type-qty" className="form-label">Số lượng</label>
+                    <input id="ticket-type-qty" type="number" className="form-control" value={newTicketQty} onChange={(e) => setNewTicketQty(Number(e.target.value))} />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Max Per User</label>
-                    <input type="number" className="form-control" value={newTicketMaxUser} onChange={(e) => setNewTicketMaxUser(Number(e.target.value))} />
+                    <label htmlFor="ticket-type-max" className="form-label">Tối đa/người</label>
+                    <input id="ticket-type-max" type="number" className="form-control" value={newTicketMaxUser} onChange={(e) => setNewTicketMaxUser(Number(e.target.value))} />
                   </div>
                   <button className="btn btn-primary" onClick={handleAddTicketType} disabled={addingTicketType}>
-                    Add
+                    Thêm
                   </button>
                 </div>
 
                 {/* List of ticket types */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                   {ticketTypes.length === 0 ? (
-                    <p style={{ color: 'var(--text-muted)' }}>No ticket types configured yet.</p>
+                    <p style={{ color: 'var(--text-muted)' }}>Chưa có hạng vé nào.</p>
                   ) : (
                     ticketTypes.map((type) => (
-                      <div key={type.id} className="ticket-row">
+                      <div key={type.id || type.clientId} className="ticket-row">
                         <div>
                           <strong style={{ fontSize: '1.1rem', color: 'var(--text-strong)' }}>{type.name}</strong>
                           <span style={{ marginLeft: '1.5rem', color: 'var(--text-muted)' }}>
                             {type.price.toLocaleString()} VND
                           </span>
                           <span style={{ marginLeft: '1.5rem', color: 'var(--text-muted)' }}>
-                            Qty: {type.available_quantity} / {type.total_quantity}
+                            Còn: {type.available_quantity} / {type.total_quantity}
                           </span>
                         </div>
-                        <button className="btn" style={{ padding: '0.5rem', color: 'var(--danger)' }} onClick={() => handleDeleteTicketType(type.id)}>
+                        <button className="btn" style={{ padding: '0.5rem', color: 'var(--danger)' }} onClick={() => handleDeleteTicketType(type)}>
                           <Trash2 size={18} />
                         </button>
                       </div>
@@ -433,7 +514,6 @@ export const AdminConcerts: React.FC = () => {
                   )}
                 </div>
               </div>
-            )}
           </div>
         </div>
       ) : (
@@ -444,9 +524,9 @@ export const AdminConcerts: React.FC = () => {
             </div>
           ) : concerts.length === 0 ? (
             <div className="empty-state">
-              <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '1.1rem' }}>No concerts found.</p>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '1.1rem' }}>Chưa có concert nào.</p>
               <button className="btn btn-primary" onClick={handleOpenCreate}>
-                Create Your First Concert
+                Tạo concert đầu tiên
               </button>
             </div>
           ) : (
@@ -455,7 +535,7 @@ export const AdminConcerts: React.FC = () => {
                 <div key={concert.id} className="card interactive-card concert-card">
                   <div className="concert-poster">
                     <img
-                      src={concert.posterUrl || 'https://picsum.photos/seed/' + encodeURIComponent(concert.title) + '/600/400'}
+                      src={concert.posterUrl || heroPreview}
                       alt={concert.title}
                       loading="lazy"
                     />
@@ -469,10 +549,10 @@ export const AdminConcerts: React.FC = () => {
                     {/* Operation links */}
                     <div className="admin-card-actions">
                       <Link to={`/admin/concerts/${concert.id}/guests`} className="btn btn-outline" style={{ gap: '0.5rem', padding: '0.5rem', fontSize: '0.85rem' }}>
-                        <Users size={16} /> Guests
+                        <Users size={16} /> Khách mời
                       </Link>
                       <Link to={`/admin/concerts/${concert.id}/bio`} className="btn btn-outline" style={{ gap: '0.5rem', padding: '0.5rem', fontSize: '0.85rem' }}>
-                        <FileText size={16} /> AI Bio
+                        <FileText size={16} /> Hồ sơ AI
                       </Link>
                     </div>
 

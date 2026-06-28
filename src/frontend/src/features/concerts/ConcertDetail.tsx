@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../../api/client';
 import { CalendarDays, MapPin, Minus, Plus, Ticket } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import heroPreview from '../../assets/hero.png';
 
 interface TicketType {
   id: string;
@@ -51,7 +52,7 @@ export const ConcertDetail: React.FC = () => {
         setTicketTypes(ticketsRes.data);
         setSvgMap(svgRes.svgStageMap || '');
       } catch (err: any) {
-        setError(err.message || 'Failed to load details');
+        setError(err.message || 'Không tải được thông tin sự kiện');
       } finally {
         setLoading(false);
       }
@@ -97,7 +98,7 @@ export const ConcertDetail: React.FC = () => {
 
       navigate(`/bookings/processing/${response.orderId}`);
     } catch (err: any) {
-      setError(err.message || 'Failed to create booking');
+      setError(err.message || 'Không thể tạo đơn đặt vé');
       setBookingSubmit(false);
     }
   };
@@ -113,7 +114,7 @@ export const ConcertDetail: React.FC = () => {
   if (!concert) {
     return (
       <div className="flex-center" style={{ padding: 64, minHeight: '50dvh' }}>
-        <p style={{ color: 'var(--text-muted)' }}>Concert not found.</p>
+        <p style={{ color: 'var(--text-muted)' }}>Không tìm thấy sự kiện.</p>
       </div>
     );
   }
@@ -126,11 +127,11 @@ export const ConcertDetail: React.FC = () => {
         <div>
           <section className="detail-hero">
             <img
-              src={concert.posterUrl || `https://picsum.photos/seed/${encodeURIComponent(concert.title)}/1000/640`}
+              src={concert.posterUrl || heroPreview}
               alt={concert.title}
             />
             <div className="detail-hero-content">
-              <div className="eyebrow">Live event</div>
+              <div className="eyebrow">Sự kiện trực tiếp</div>
               <h1>{concert.title}</h1>
               <div className="meta-list">
                 <div className="meta-item">
@@ -146,20 +147,20 @@ export const ConcertDetail: React.FC = () => {
           </section>
 
           <section className="content-section soft-panel">
-            <h2>Description</h2>
+            <h2>Mô tả</h2>
             <p>{concert.description}</p>
           </section>
 
           {(concert.biography || concert.artistSummary) && (
             <section className="content-section soft-panel">
-              <h2>Artist Biography</h2>
+              <h2>Thông tin nghệ sĩ</h2>
               <p>{concert.biography || concert.artistSummary}</p>
             </section>
           )}
 
           {svgMap && (
             <section className="content-section">
-              <h2>Interactive Stage Map</h2>
+              <h2>Sơ đồ sân khấu</h2>
               <div
                 className="stage-map"
                 dangerouslySetInnerHTML={{ __html: svgMap }}
@@ -178,7 +179,7 @@ export const ConcertDetail: React.FC = () => {
         <aside className="aside-sticky">
           <h2 className="aside-title">
             <Ticket size={20} style={{ verticalAlign: 'middle', marginRight: 8, color: 'var(--accent)' }} />
-            Select Ticket Type
+            Chọn hạng vé
           </h2>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
@@ -194,7 +195,7 @@ export const ConcertDetail: React.FC = () => {
                 <div>
                   <strong style={{ display: 'block', color: 'var(--text-strong)' }}>{type.name}</strong>
                   <span style={{ fontSize: '0.85rem', color: type.available_quantity > 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 700 }}>
-                    {type.available_quantity} available
+                    Còn {type.available_quantity} vé
                   </span>
                 </div>
                 <span style={{ fontWeight: 800 }}>{type.price.toLocaleString()} VND</span>
@@ -205,12 +206,12 @@ export const ConcertDetail: React.FC = () => {
           {selectedTicketType && (
             <div>
               <div className="summary-row" style={{ alignItems: 'center', marginBottom: 20 }}>
-                <span style={{ color: 'var(--text)' }}>Quantity</span>
+                <span style={{ color: 'var(--text)' }}>Số lượng</span>
                 <div className="quantity-control">
                   <button
                     onClick={() => setQuantity((q) => Math.max(1, q - 1))}
                     className="btn btn-outline"
-                    aria-label="Decrease quantity"
+                    aria-label="Giảm số lượng"
                   >
                     <Minus size={16} />
                   </button>
@@ -218,7 +219,7 @@ export const ConcertDetail: React.FC = () => {
                   <button
                     onClick={() => setQuantity((q) => Math.min(selectedTicketType.max_per_user, selectedTicketType.available_quantity, q + 1))}
                     className="btn btn-outline"
-                    aria-label="Increase quantity"
+                    aria-label="Tăng số lượng"
                   >
                     <Plus size={16} />
                   </button>
@@ -227,11 +228,11 @@ export const ConcertDetail: React.FC = () => {
 
               <div className="summary-total" style={{ marginBottom: 22 }}>
                 <div className="summary-row">
-                  <span>Ticket tier</span>
+                  <span>Hạng vé</span>
                   <strong style={{ color: 'var(--text-strong)' }}>{selectedTicketType.name}</strong>
                 </div>
                 <div className="summary-row">
-                  <span>Total Amount</span>
+                  <span>Tổng tiền</span>
                   <strong>{(selectedTicketType.price * quantity).toLocaleString()} VND</strong>
                 </div>
               </div>
@@ -242,7 +243,7 @@ export const ConcertDetail: React.FC = () => {
                 className="btn btn-primary"
                 style={{ width: '100%', minHeight: 52 }}
               >
-                {bookingSubmit ? 'Processing Booking...' : 'Book Tickets'}
+                {bookingSubmit ? 'Đang giữ vé...' : 'Đặt vé'}
               </button>
             </div>
           )}

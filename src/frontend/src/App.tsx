@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
-import { LogOut, Ticket, UserRound } from 'lucide-react';
+import { LogOut, ShieldAlert, Ticket, UserRound } from 'lucide-react';
 import { AuthProvider, useAuth, type User } from './features/auth/AuthContext';
 import { SocketProvider } from './features/socket/SocketContext';
 import { ProtectedRoute, AdminRoute } from './components/RouteGuards';
@@ -27,10 +27,10 @@ const NavigationHeader: React.FC = () => {
           <span>TicketBox</span>
         </Link>
 
-        <nav className="site-nav" aria-label="Primary navigation">
-          <Link to="/concerts" className="nav-link">Concerts</Link>
+        <nav className="site-nav" aria-label="Điều hướng chính">
+          <Link to="/concerts" className="nav-link">Sự kiện</Link>
           {user?.role === 'organizer' && (
-            <Link to="/admin" className="nav-link">Organizer Portal</Link>
+            <Link to="/admin" className="nav-link">Quản trị</Link>
           )}
         </nav>
 
@@ -43,13 +43,13 @@ const NavigationHeader: React.FC = () => {
               </span>
               <button onClick={logout} className="btn btn-outline">
                 <LogOut size={18} />
-                Logout
+                Đăng xuất
               </button>
             </>
           ) : (
             <Link to="/login" className="btn btn-primary">
               <Ticket size={18} />
-              Login
+              Đăng nhập
             </Link>
           )}
         </div>
@@ -67,9 +67,9 @@ const PublicLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 const LoginScreen: React.FC = () => {
   const { login, user } = useAuth();
-  const [email, setEmail] = useState('organizer@ticketboxz.me');
+  const [email, setEmail] = useState('');
   const [role, setRole] = useState<'audience' | 'organizer' | 'gate_staff'>('organizer');
-  const [fullName, setFullName] = useState('John Organizer');
+  const [fullName, setFullName] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,49 +93,51 @@ const LoginScreen: React.FC = () => {
       <div className="card state-card">
         <div className="card-body">
           <span className="brand-mark" style={{ margin: '0 auto 18px' }}>TB</span>
-          <h2 style={{ marginBottom: 8 }}>Login to TicketBox</h2>
+          <h2 style={{ marginBottom: 8 }}>Đăng nhập TicketBox</h2>
           <p style={{ color: 'var(--text-muted)', marginBottom: 28 }}>
-            Choose a demo role to enter the ticketing flow or organizer workspace.
+            Nhập thông tin của bạn để thử luồng đặt vé hoặc vào khu quản trị sự kiện.
           </p>
 
           <form onSubmit={handleSubmit} className="auth-form">
             <div className="form-group">
-              <label htmlFor="login-name" className="form-label">Full Name</label>
+              <label htmlFor="login-name" className="form-label">Họ và tên</label>
               <input
                 id="login-name"
                 type="text"
                 className="form-control"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
+                placeholder="Nhập tên hiển thị"
                 required
               />
             </div>
             <div className="form-group">
-              <label htmlFor="login-email" className="form-label">Email Address</label>
+              <label htmlFor="login-email" className="form-label">Email</label>
               <input
                 id="login-email"
                 type="email"
                 className="form-control"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
                 required
               />
             </div>
             <div className="form-group">
-              <label htmlFor="login-role" className="form-label">Role</label>
+              <label htmlFor="login-role" className="form-label">Vai trò</label>
               <select
                 id="login-role"
                 className="form-control"
                 value={role}
                 onChange={(e: any) => setRole(e.target.value)}
               >
-                <option value="organizer">Organizer (Admin)</option>
-                <option value="audience">Audience</option>
-                <option value="gate_staff">Gate Staff</option>
+                <option value="organizer">Ban tổ chức</option>
+                <option value="audience">Khán giả</option>
+                <option value="gate_staff">Soát vé</option>
               </select>
             </div>
             <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: 8 }}>
-              Login
+              Vào TicketBox
             </button>
           </form>
         </div>
@@ -147,11 +149,17 @@ const LoginScreen: React.FC = () => {
 const UnauthorizedPage: React.FC = () => (
   <div className="state-card card">
     <div className="card-body">
-      <h2 style={{ color: 'var(--danger)', marginBottom: 12 }}>Unauthorized Access</h2>
+      <div className="state-icon danger" aria-hidden="true">
+        <ShieldAlert size={28} />
+      </div>
+      <h2 style={{ color: 'var(--danger)', marginBottom: 12 }}>Không có quyền truy cập</h2>
       <p style={{ color: 'var(--text-muted)', marginBottom: 24 }}>
-        You do not have organizer permissions to access the admin portal.
+        Khu quản trị chỉ dành cho vai trò Ban tổ chức. Bạn có thể đổi tài khoản hoặc quay lại trang sự kiện.
       </p>
-      <Link to="/" className="btn btn-primary">Go to Home</Link>
+      <div className="state-actions">
+        <Link to="/login" className="btn btn-outline">Đổi tài khoản</Link>
+        <Link to="/" className="btn btn-primary">Về trang sự kiện</Link>
+      </div>
     </div>
   </div>
 );

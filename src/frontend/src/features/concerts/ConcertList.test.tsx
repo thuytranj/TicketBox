@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -31,6 +31,13 @@ describe('ConcertList', () => {
             status: 'active',
           },
         ],
+        meta: {
+          totalItems: 1,
+          itemCount: 1,
+          itemsPerPage: 9,
+          totalPages: 1,
+          currentPage: 1,
+        },
       },
     });
 
@@ -42,8 +49,40 @@ describe('ConcertList', () => {
 
     expect(screen.getByText('Đang tải sự kiện...')).toBeInTheDocument();
     await waitFor(() => {
+      expect(apiClient.request).toHaveBeenCalledWith('/concerts?status=active&page=1&limit=9');
       expect(screen.getByText('Anh Trai Say Hi')).toBeInTheDocument();
       expect(screen.getByText('Van Phuc City')).toBeInTheDocument();
+    });
+  });
+
+  it('supports pagination from backend metadata', async () => {
+    vi.spyOn(apiClient, 'request').mockResolvedValue({
+      data: {
+        concerts: [],
+        meta: {
+          totalItems: 18,
+          itemCount: 9,
+          itemsPerPage: 9,
+          totalPages: 2,
+          currentPage: 1,
+        },
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <ConcertList />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Trang/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Sau/i }));
+
+    await waitFor(() => {
+      expect(apiClient.request).toHaveBeenCalledWith('/concerts?status=active&page=2&limit=9');
     });
   });
 

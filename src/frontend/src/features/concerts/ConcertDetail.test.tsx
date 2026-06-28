@@ -55,7 +55,7 @@ describe('ConcertDetail', () => {
 
     // Select SVIP
     fireEvent.click(screen.getByText('SVIP'));
-    expect(screen.getByText('Total Amount')).toBeInTheDocument();
+    expect(screen.getByText('Tổng tiền')).toBeInTheDocument();
     expect(screen.getAllByText(/2[.,]000[.,]000 VND/).length).toBeGreaterThan(0);
   });
 });

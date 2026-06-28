@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../../api/client';
-import { CalendarDays, MapPin, Search, Sparkles, Ticket } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, MapPin, RotateCcw, Search, Sparkles, Ticket } from 'lucide-react';
 import heroPreview from '../../assets/hero.png';
 
 export interface Concert {
@@ -15,25 +15,44 @@ export interface Concert {
   status: 'draft' | 'active' | 'cancelled';
 }
 
+interface ConcertMeta {
+  totalItems: number;
+  itemCount: number;
+  itemsPerPage: number;
+  totalPages: number;
+  currentPage: number;
+}
+
+const PAGE_SIZE = 9;
+
 export const ConcertList: React.FC = () => {
   const [concerts, setConcerts] = useState<Concert[]>([]);
+  const [meta, setMeta] = useState<ConcertMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
+  const [page, setPage] = useState(1);
 
   const fetchConcerts = async () => {
     setLoading(true);
     setError('');
     try {
-      let path = '/concerts?status=active';
-      if (search) path += `&search=${encodeURIComponent(search)}`;
-      if (selectedTag) path += `&tag=${encodeURIComponent(selectedTag)}`;
-      
-      const response = await apiClient.request<{ data: { concerts: Concert[] } }>(path);
+      const params = new URLSearchParams({
+        status: 'active',
+        page: String(page),
+        limit: String(PAGE_SIZE),
+      });
+      if (search.trim()) params.set('search', search.trim());
+      if (selectedTag) params.set('tag', selectedTag);
+
+      const response = await apiClient.request<{ data: { concerts: Concert[]; meta?: ConcertMeta } }>(
+        `/concerts?${params.toString()}`
+      );
       setConcerts(response.data.concerts || []);
+      setMeta(response.data.meta || null);
     } catch (err: any) {
-      setError(err.message || 'Failed to load concerts');
+      setError(err.message || 'Không tải được danh sách sự kiện');
     } finally {
       setLoading(false);
     }
@@ -41,11 +60,12 @@ export const ConcertList: React.FC = () => {
 
   useEffect(() => {
     fetchConcerts();
-  }, [search, selectedTag]);
+  }, [page, search, selectedTag]);
 
-  const allTags = Array.from(new Set(concerts.flatMap((c) => c.tags || [])));
+  const allTags = useMemo(() => Array.from(new Set(concerts.flatMap((c) => c.tags || []))), [concerts]);
   const featuredConcert = concerts[0];
   const heroImage = featuredConcert?.posterUrl || heroPreview;
+  const totalPages = meta?.totalPages || 1;
 
   return (
     <>
@@ -91,17 +111,23 @@ export const ConcertList: React.FC = () => {
               type="text"
               placeholder="Tìm theo nghệ sĩ, địa điểm, thể loại..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
               className="form-control"
-              aria-label="Search concerts"
+              aria-label="Tìm kiếm sự kiện"
             />
           </div>
 
           <select
             value={selectedTag}
-            onChange={(e) => setSelectedTag(e.target.value)}
+            onChange={(e) => {
+              setSelectedTag(e.target.value);
+              setPage(1);
+            }}
             className="form-control"
-            aria-label="Filter by tag"
+            aria-label="Lọc theo thể loại"
           >
             <option value="">Tất cả thể loại</option>
             {allTags.map((tag) => (
@@ -117,7 +143,17 @@ export const ConcertList: React.FC = () => {
           </div>
         )}
 
-        {error && <div className="alert alert-danger">{error}</div>}
+        {error && (
+          <div className="alert alert-danger">
+            <div className="flex-between" style={{ gap: 12 }}>
+              <span>{error}</span>
+              <button className="btn btn-outline" onClick={fetchConcerts}>
+                <RotateCcw size={16} />
+                Thử lại
+              </button>
+            </div>
+          </div>
+        )}
 
         {!loading && !error && concerts.length === 0 && (
           <div className="empty-state">
@@ -162,6 +198,32 @@ export const ConcertList: React.FC = () => {
             </article>
           ))}
         </div>
+
+        {!loading && !error && totalPages > 1 && (
+          <div className="pagination-bar" aria-label="Phân trang sự kiện">
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={page <= 1}
+            >
+              <ChevronLeft size={16} />
+              Trước
+            </button>
+            <span>
+              Trang <strong>{page}</strong> / {totalPages}
+            </span>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              disabled={page >= totalPages}
+            >
+              Sau
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
       </div>
     </>
   );
