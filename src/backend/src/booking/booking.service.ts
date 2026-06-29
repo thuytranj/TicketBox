@@ -123,6 +123,7 @@ export class BookingService implements OnModuleInit {
           userId,
           item.quantity,
           tt.maxPerUser,
+          tt.availableQuantity,
         );
 
         if (result === LUA_INSUFFICIENT_STOCK) {
@@ -320,6 +321,7 @@ export class BookingService implements OnModuleInit {
     userId: string,
     quantity: number,
     maxPerUser: number,
+    availableQuantity: number,
   ): Promise<number> {
     const stockKey = this.stockKey(concertId, ticketTypeId);
     const userBoughtKey = this.userBoughtKey(concertId, userId, ticketTypeId);
@@ -330,6 +332,7 @@ export class BookingService implements OnModuleInit {
       userBoughtKey,
       String(quantity),
       String(maxPerUser),
+      String(availableQuantity),
     ) as Promise<number>;
   }
 
@@ -346,7 +349,7 @@ export class BookingService implements OnModuleInit {
   }
 
   stockKey(concertId: string, ticketTypeId: string) {
-    return `concert:${concertId}:ticket_type:${ticketTypeId}:stock`;
+    return `inventory:${concertId}:${ticketTypeId}`;
   }
 
   userBoughtKey(concertId: string, userId: string, ticketTypeId: string) {
