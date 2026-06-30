@@ -26,7 +26,7 @@ describe('AdminConcerts', () => {
         description: 'Show description',
         location: 'Van Phuc City',
         posterUrl: '',
-        start_time: '2026-06-30T19:30:00Z',
+        startTime: '2026-06-30T19:30:00Z',
         tags: ['pop'],
         status: 'active',
       },
@@ -34,13 +34,13 @@ describe('AdminConcerts', () => {
 
     vi.spyOn(apiClient, 'request').mockImplementation(async (url, options) => {
       if (url === '/concerts') {
-        return { data: { concerts: concertsList } };
+        return { concerts: concertsList };
       }
       if (url === '/concerts/c1' && options?.method === 'DELETE') {
         concertsList = [];
         return { message: 'Deleted' };
       }
-      return { data: { concerts: [] } };
+      return { concerts: [] };
     });
 
     render(
@@ -74,15 +74,15 @@ describe('AdminConcerts', () => {
             description: 'Great show.',
             location: 'Stadium',
             posterUrl: '',
-            start_time: '2026-07-01T18:00:00Z',
+            startTime: '2026-07-01T18:00:00Z',
             tags: [],
             status: 'active',
           });
           return { id: 'c2' };
         }
-        return { data: { concerts: concertsList } };
+        return { concerts: concertsList };
       }
-      return { data: { concerts: [] } };
+      return { concerts: [] };
     });
 
     render(
@@ -132,12 +132,12 @@ describe('AdminConcerts', () => {
   it('triggers poster image upload on file change', async () => {
     vi.spyOn(apiClient, 'request').mockImplementation(async (url, options) => {
       if (url === '/concerts') {
-        return { data: { concerts: [] } };
+        return { concerts: [] };
       }
       if (url === '/concerts/upload-poster' && options?.method === 'POST') {
         return { url: 'https://cloudinary.com/poster.jpg', publicId: 'pid123' };
       }
-      return { data: { concerts: [] } };
+      return { concerts: [] };
     });
 
     render(
@@ -173,7 +173,7 @@ describe('AdminConcerts', () => {
   });
 
   it('reads uploaded SVG text into the stage map field before saving', async () => {
-    vi.spyOn(apiClient, 'request').mockResolvedValue({ data: { concerts: [] } });
+    vi.spyOn(apiClient, 'request').mockResolvedValue({ concerts: [] });
 
     render(
       <MemoryRouter>
@@ -199,6 +199,132 @@ describe('AdminConcerts', () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText(/Sơ đồ ghế SVG/i)).toHaveValue(svgText);
+    });
+  });
+
+  it('filters concerts by status without refetching from the backend', async () => {
+    vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
+      if (url === '/concerts') {
+        return {
+          concerts: [
+            {
+              id: 'active-1',
+              title: 'Active Show',
+              description: 'Active desc',
+              location: 'Arena',
+              posterUrl: '',
+              startTime: '2026-07-01T18:00:00Z',
+              tags: [],
+              status: 'active',
+            },
+            {
+              id: 'draft-1',
+              title: 'Draft Show',
+              description: 'Draft desc',
+              location: 'Studio',
+              posterUrl: '',
+              startTime: '2026-08-01T18:00:00Z',
+              tags: [],
+              status: 'draft',
+            },
+          ],
+        };
+      }
+      return { concerts: [] };
+    });
+
+    render(
+      <MemoryRouter>
+        <AdminConcerts />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Active Show')).toBeInTheDocument();
+      expect(screen.getByText('Draft Show')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/Lọc trạng thái/i), { target: { value: 'draft' } });
+
+    expect(screen.queryByText('Active Show')).not.toBeInTheDocument();
+    expect(screen.getByText('Draft Show')).toBeInTheDocument();
+  });
+
+  it('updates an existing ticket type through PATCH', async () => {
+    vi.spyOn(apiClient, 'request').mockImplementation(async (url, options) => {
+      if (url === '/concerts') {
+        return {
+          concerts: [
+            {
+              id: 'c1',
+              title: 'Editable Show',
+              description: 'Editable desc',
+              location: 'Arena',
+              posterUrl: '',
+              startTime: '2026-07-01T18:00:00Z',
+              tags: [],
+              status: 'active',
+            },
+          ],
+        };
+      }
+      if (url === '/concerts/c1/ticket-types') {
+        return [
+          {
+            id: 't1',
+            name: 'GA',
+            price: 500000,
+            totalQuantity: 100,
+            availableQuantity: 100,
+            maxPerUser: 4,
+          },
+        ];
+      }
+      if (url === '/concerts/c1/stagemap') {
+        return { svgStageMap: '' };
+      }
+      if (url === '/ticket-types/t1' && options?.method === 'PATCH') {
+        return { id: 't1' };
+      }
+      return {};
+    });
+
+    render(
+      <MemoryRouter>
+        <AdminConcerts />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Editable Show')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('Chỉnh sửa concert Editable Show'));
+
+    await waitFor(() => {
+      expect(screen.getByText('GA')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('Sửa hạng vé GA'));
+    fireEvent.change(screen.getByLabelText('Giá hạng vé đang sửa'), { target: { value: '650000' } });
+    fireEvent.change(screen.getByLabelText('Số lượng hạng vé đang sửa'), { target: { value: '120' } });
+    fireEvent.change(screen.getByLabelText('Tối đa mỗi người hạng vé đang sửa'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: /Lưu hạng vé/i }));
+
+    await waitFor(() => {
+      expect(apiClient.request).toHaveBeenCalledWith(
+        '/ticket-types/t1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: 'GA',
+            price: 650000,
+            totalQuantity: 120,
+            maxPerUser: 2,
+          }),
+        })
+      );
+      expect(screen.getByText('Đã cập nhật hạng vé.')).toBeInTheDocument();
     });
   });
 });

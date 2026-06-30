@@ -11,12 +11,18 @@ describe('ApiClient', () => {
     localStorage.setItem('accessToken', 'test-token');
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ data: 'success' }),
+      json: async () => ({
+        success: true,
+        statusCode: 200,
+        message: 'Request processed successfully',
+        data: 'success',
+        timestamp: '2026-06-28T00:00:00.000Z',
+      }),
     });
     global.fetch = mockFetch;
 
     const result = await apiClient.request('/test');
-    expect(result).toEqual({ data: 'success' });
+    expect(result).toBe('success');
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining('/test'),
       expect.objectContaining({
@@ -40,45 +46,59 @@ describe('ApiClient', () => {
       }) // First request fails
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ accessToken: 'new-access-token', refreshToken: 'new-refresh-token' }),
+        json: async () => ({
+          success: true,
+          statusCode: 200,
+          message: 'Request processed successfully',
+          data: { accessToken: 'new-access-token', refreshToken: 'new-refresh-token' },
+          timestamp: '2026-06-28T00:00:00.000Z',
+        }),
       }) // Refresh call succeeds
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ data: 'retry-success' }),
+        json: async () => ({
+          success: true,
+          statusCode: 200,
+          message: 'Request processed successfully',
+          data: 'retry-success',
+          timestamp: '2026-06-28T00:00:00.000Z',
+        }),
       }); // Retry succeeds
 
     global.fetch = mockFetch;
 
     const result = await apiClient.request('/test');
-    expect(result).toEqual({ data: 'retry-success' });
+    expect(result).toBe('retry-success');
     expect(localStorage.getItem('accessToken')).toBe('new-access-token');
   });
 
-  it('keeps demo sessions when an API request returns 401', async () => {
-    localStorage.setItem('accessToken', 'mock-access-token');
-    localStorage.setItem('refreshToken', 'mock-refresh-token');
-    localStorage.setItem(
-      'demoUser',
-      JSON.stringify({ id: 'demo-organizer', email: 'demo@example.com', fullName: 'Demo User', role: 'organizer' })
-    );
+  it('clears tokens and notifies the app when refresh fails after a 401', async () => {
+    localStorage.setItem('accessToken', 'old-access-token');
+    localStorage.setItem('refreshToken', 'old-refresh-token');
     const logoutListener = vi.fn();
     window.addEventListener('auth-logout', logoutListener);
 
-    const mockFetch = vi.fn().mockResolvedValue({
-      status: 401,
-      ok: false,
-      json: async () => ({ message: 'Unauthorized' }),
-    });
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({
+        status: 401,
+        ok: false,
+        json: async () => ({ message: 'Unauthorized' }),
+      })
+      .mockResolvedValueOnce({
+        status: 401,
+        ok: false,
+        json: async () => ({ message: 'Invalid refresh token' }),
+      });
     global.fetch = mockFetch;
 
     await expect(apiClient.request('/admin-only')).rejects.toMatchObject({
       statusCode: 401,
-      message: 'Unauthorized',
+      message: 'Session expired',
     });
 
-    expect(localStorage.getItem('accessToken')).toBe('mock-access-token');
-    expect(localStorage.getItem('demoUser')).toContain('Demo User');
-    expect(logoutListener).not.toHaveBeenCalled();
+    expect(localStorage.getItem('accessToken')).toBeNull();
+    expect(localStorage.getItem('refreshToken')).toBeNull();
+    expect(logoutListener).toHaveBeenCalledOnce();
 
     window.removeEventListener('auth-logout', logoutListener);
   });

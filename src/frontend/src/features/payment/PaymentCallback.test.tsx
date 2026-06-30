@@ -17,14 +17,13 @@ describe('PaymentCallback', () => {
     vi.restoreAllMocks();
   });
 
-
   it('renders successful payment outcome along with ticket and mock QR code', async () => {
     vi.spyOn(apiClient, 'request').mockResolvedValue({
       id: 'order_123',
       status: 'paid',
-      total_amount: 2000000,
+      totalAmount: 2000000,
       tickets: [
-        { id: 'ticket_xyz789', ticket_type_id: 't1', qr_code_hash: 'hash1', checkin_status: 'pending' },
+        { id: 'ticket_xyz789', ticketTypeId: 't1', qrCode: 'hash1', status: 'reserved' },
       ],
     });
 
@@ -37,8 +36,8 @@ describe('PaymentCallback', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Payment Successful!')).toBeInTheDocument();
-      expect(screen.getByText('ID: ticket_xyz789')).toBeInTheDocument();
+      expect(screen.getByText(/Payment Successful!/i)).toBeInTheDocument();
+      expect(screen.getByText(/ticket_xyz789/i)).toBeInTheDocument();
       expect(screen.getByLabelText('QR Code')).toBeInTheDocument();
     });
   });
@@ -47,7 +46,7 @@ describe('PaymentCallback', () => {
     vi.spyOn(apiClient, 'request').mockResolvedValue({
       id: 'order_123',
       status: 'expired',
-      total_amount: 2000000,
+      totalAmount: 2000000,
     });
 
     render(
@@ -59,8 +58,8 @@ describe('PaymentCallback', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Payment Failed or Pending')).toBeInTheDocument();
-      expect(screen.getByText(/We could not confirm your payment/i).toBeInTheDocument ? screen.getByText(/We could not confirm your payment/i) : screen.queryByText(/confirm/i)).toBeInTheDocument();
+      expect(screen.getByText(/Payment Failed/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/expired/i).length).toBeGreaterThan(0);
     });
   });
 

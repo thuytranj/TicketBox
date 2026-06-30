@@ -40,8 +40,8 @@ describe('CheckoutPage', () => {
     vi.spyOn(apiClient, 'request')
       .mockResolvedValueOnce({
         id: 'order_abc123',
-        total_amount: 1500000,
-        expires_at: '2026-06-30T19:40:00Z',
+        totalAmount: 1500000,
+        createdAt: '2026-06-30T19:30:00Z',
         status: 'pending',
       })
       .mockResolvedValueOnce({
@@ -77,8 +77,8 @@ describe('CheckoutPage', () => {
     vi.spyOn(apiClient, 'request')
       .mockResolvedValueOnce({
         id: 'order_abc123',
-        total_amount: 1500000,
-        expires_at: '2026-06-30T19:40:00Z',
+        totalAmount: 1500000,
+        createdAt: '2026-06-30T19:30:00Z',
         status: 'pending',
       })
       .mockResolvedValueOnce({

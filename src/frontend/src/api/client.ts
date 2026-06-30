@@ -1,4 +1,12 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+
+interface ApiSuccessEnvelope<T> {
+  success: boolean;
+  statusCode: number;
+  message: string;
+  data: T;
+  timestamp: string;
+}
 
 export interface ApiError {
   statusCode: number;
@@ -7,6 +15,20 @@ export interface ApiError {
 }
 
 class ApiClient {
+  private unwrapResponse<T>(payload: T | ApiSuccessEnvelope<T>): T {
+    if (
+      payload &&
+      typeof payload === 'object' &&
+      'success' in payload &&
+      'statusCode' in payload &&
+      'data' in payload
+    ) {
+      return (payload as ApiSuccessEnvelope<T>).data;
+    }
+
+    return payload as T;
+  }
+
   private getTokens() {
     const accessToken = localStorage.getItem('accessToken');
     const refreshToken = localStorage.getItem('refreshToken');
@@ -42,10 +64,6 @@ class ApiClient {
     const response = await fetch(url, { ...options, headers });
 
     if (response.status === 401) {
-      if (localStorage.getItem('demoUser')) {
-        throw await this.parseError(response);
-      }
-
       const refreshed = await this.handleTokenRefresh();
       if (refreshed) {
         const newTokens = this.getTokens();
@@ -58,7 +76,7 @@ class ApiClient {
         }
         const retryResponse = await fetch(url, { ...options, headers: retryHeaders });
         if (retryResponse.ok) {
-          return retryResponse.json();
+          return this.unwrapResponse<T>(await retryResponse.json());
         }
         throw await this.parseError(retryResponse);
       } else {
@@ -76,7 +94,7 @@ class ApiClient {
       return {} as T;
     }
 
-    return response.json();
+    return this.unwrapResponse<T>(await response.json());
   }
 
   private async handleTokenRefresh(): Promise<boolean> {
@@ -92,7 +110,9 @@ class ApiClient {
 
       if (!response.ok) return false;
 
-      const data = await response.json();
+      const data = this.unwrapResponse<{ accessToken: string; refreshToken: string }>(
+        await response.json(),
+      );
       if (data.accessToken && data.refreshToken) {
         this.setTokens(data.accessToken, data.refreshToken);
         return true;

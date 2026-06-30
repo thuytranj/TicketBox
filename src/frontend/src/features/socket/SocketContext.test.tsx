@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { SocketProvider, useSocket } from './SocketContext';
 import { io } from 'socket.io-client';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/useAuth';
 
 vi.mock('socket.io-client', () => {
   const mockSocket = {
@@ -16,7 +16,7 @@ vi.mock('socket.io-client', () => {
   };
 });
 
-vi.mock('../auth/AuthContext', () => ({
+vi.mock('../auth/useAuth', () => ({
   useAuth: vi.fn(),
 }));
 
@@ -63,7 +63,7 @@ describe('SocketContext', () => {
 
   it('connects to backend passing the token when user is logged in', () => {
     vi.mocked(useAuth).mockReturnValue({ user: { id: 'u1', role: 'organizer' }, loading: false } as any);
-    localStorage.setItem('token', 'mock_jwt_token');
+    localStorage.setItem('accessToken', 'mock_jwt_token');
 
     render(
       <SocketProvider>
@@ -76,9 +76,25 @@ describe('SocketContext', () => {
     }));
   });
 
+  it('uses VITE_SOCKET_URL when configured', () => {
+    vi.stubEnv('VITE_SOCKET_URL', 'http://ticketbox.test:4000');
+    vi.mocked(useAuth).mockReturnValue({ user: { id: 'u1', role: 'organizer' }, loading: false } as any);
+    localStorage.setItem('accessToken', 'mock_jwt_token');
+
+    render(
+      <SocketProvider>
+        <TestComponent />
+      </SocketProvider>
+    );
+
+    expect(io).toHaveBeenCalledWith('http://ticketbox.test:4000', expect.objectContaining({
+      auth: { token: 'mock_jwt_token' },
+    }));
+  });
+
   it('updates connection state when connection events fire', () => {
     vi.mocked(useAuth).mockReturnValue({ user: { id: 'u1', role: 'organizer' }, loading: false } as any);
-    localStorage.setItem('token', 'mock_jwt_token');
+    localStorage.setItem('accessToken', 'mock_jwt_token');
 
     render(
       <SocketProvider>
@@ -107,7 +123,7 @@ describe('SocketContext', () => {
 
   it('disconnects and closes the socket connection on unmount', () => {
     vi.mocked(useAuth).mockReturnValue({ user: { id: 'u1', role: 'organizer' }, loading: false } as any);
-    localStorage.setItem('token', 'mock_jwt_token');
+    localStorage.setItem('accessToken', 'mock_jwt_token');
 
     const { unmount } = render(
       <SocketProvider>

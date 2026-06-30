@@ -5,8 +5,8 @@ import { apiClient } from '../../api/client';
 interface BookingData {
   id: string;
   status: 'pending' | 'paid' | 'expired' | 'cancelled';
-  total_amount: number;
-  expires_at: string;
+  totalAmount: number;
+  createdAt: string;
 }
 
 export const BookingProcess: React.FC = () => {
