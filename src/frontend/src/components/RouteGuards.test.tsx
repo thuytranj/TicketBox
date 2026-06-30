@@ -3,9 +3,9 @@ import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { ProtectedRoute, AdminRoute } from './RouteGuards';
-import { useAuth } from '../features/auth/AuthContext';
+import { useAuth } from '../features/auth/useAuth';
 
-vi.mock('../features/auth/AuthContext', () => ({
+vi.mock('../features/auth/useAuth', () => ({
   useAuth: vi.fn(),
 }));
 
@@ -15,7 +15,7 @@ describe('Route Guards', () => {
       user: null,
       loading: false,
       login: async () => {},
-      logout: () => {},
+      logout: async () => {},
     });
 
     render(
@@ -36,7 +36,7 @@ describe('Route Guards', () => {
       user: { id: '1', email: 'a@a.com', fullName: 'John Doe', role: 'audience' },
       loading: false,
       login: async () => {},
-      logout: () => {},
+      logout: async () => {},
     });
 
     render(
@@ -55,7 +55,7 @@ describe('Route Guards', () => {
       user: { id: '1', email: 'a@a.com', fullName: 'John Doe', role: 'audience' },
       loading: false,
       login: async () => {},
-      logout: () => {},
+      logout: async () => {},
     });
 
     render(
@@ -70,12 +70,12 @@ describe('Route Guards', () => {
     expect(screen.getByText('Access Denied')).toBeInTheDocument();
   });
 
-  it('renders AdminRoute content for organizer demo users', () => {
+  it('renders AdminRoute content for organizer users', () => {
     vi.mocked(useAuth).mockReturnValue({
-      user: { id: 'demo-organizer', email: 'demo@example.com', fullName: 'Demo Organizer', role: 'organizer' },
+      user: { id: 'organizer-1', email: 'organizer@example.com', fullName: 'Organizer User', role: 'organizer' },
       loading: false,
       login: async () => {},
-      logout: () => {},
+      logout: async () => {},
     });
 
     render(

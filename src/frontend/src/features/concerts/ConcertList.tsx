@@ -10,7 +10,8 @@ export interface Concert {
   description: string;
   location: string;
   posterUrl: string;
-  start_time: string;
+  startTime: string;
+  endTime?: string;
   tags: string[];
   status: 'draft' | 'active' | 'cancelled';
 }
@@ -46,11 +47,11 @@ export const ConcertList: React.FC = () => {
       if (search.trim()) params.set('search', search.trim());
       if (selectedTag) params.set('tag', selectedTag);
 
-      const response = await apiClient.request<{ data: { concerts: Concert[]; meta?: ConcertMeta } }>(
+      const response = await apiClient.request<{ concerts: Concert[]; meta?: ConcertMeta }>(
         `/concerts?${params.toString()}`
       );
-      setConcerts(response.data.concerts || []);
-      setMeta(response.data.meta || null);
+      setConcerts(response.concerts || []);
+      setMeta(response.meta || null);
     } catch (err: any) {
       setError(err.message || 'Không tải được danh sách sự kiện');
     } finally {
@@ -186,7 +187,7 @@ export const ConcertList: React.FC = () => {
                   </p>
                   <p className="meta-item">
                     <CalendarDays size={16} />
-                    {new Date(concert.start_time).toLocaleString()}
+                    {new Date(concert.startTime).toLocaleString()}
                   </p>
                 </div>
                 <div className="card-footer-action">

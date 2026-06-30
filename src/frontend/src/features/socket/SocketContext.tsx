@@ -1,6 +1,7 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/useAuth';
 
 interface SocketContextType {
   socket: Socket | null;
@@ -24,14 +25,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => {
     // Only connect if the user is authenticated and has a token stored
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('accessToken');
     if (!user || !token) {
-      setSocket(null);
-      setConnected(false);
       return;
     }
 
-    const socketUrl = 'http://localhost:3000';
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000';
     const newSocket = io(socketUrl, {
       auth: {
         token: token,
@@ -50,6 +49,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.log('Socket.IO disconnected');
     });
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSocket(newSocket);
 
     return () => {

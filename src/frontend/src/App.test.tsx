@@ -10,6 +10,8 @@ vi.mock('./api/client', () => ({
   },
 }));
 
+const mockApiRequest = vi.mocked(apiClient.request);
+
 describe('TicketBox app routing', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -18,76 +20,78 @@ describe('TicketBox app routing', () => {
   });
 
   it('renders landing page containing the header navigation', async () => {
-    vi.spyOn(apiClient, 'request').mockResolvedValue({ data: [] });
+    mockApiRequest.mockResolvedValue({ data: [] });
 
     render(<App />);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('link', { name: /ticketbox/i }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getAllByRole('link', { name: /sự kiện/i }).length,
-      ).toBeGreaterThan(0);
-      expect(
-        screen.getByRole('link', { name: /đăng nhập/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /ticketbox/i })).toBeInTheDocument();
+      expect(screen.getAllByRole('link', { name: /sự kiện/i }).length).toBeGreaterThan(0);
+      expect(screen.getByRole('link', { name: /đăng nhập/i })).toBeInTheDocument();
     });
   });
 
   it('does not prefill the login form with example account details', async () => {
     window.history.pushState({}, '', '/login');
-    vi.spyOn(apiClient, 'request').mockResolvedValue({ data: { concerts: [] } });
+    mockApiRequest.mockResolvedValue({ data: { concerts: [] } });
 
     render(<App />);
 
-    expect(await screen.findByLabelText(/họ và tên/i)).toHaveValue('');
-    expect(screen.getByLabelText(/email/i)).toHaveValue('');
+    expect(await screen.findByLabelText(/email/i)).toHaveValue('');
+    expect(screen.getByLabelText(/mật khẩu/i)).toHaveValue('');
     expect(screen.queryByDisplayValue('John Organizer')).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue('organizer@ticketboxz.me')).not.toBeInTheDocument();
   });
 
-  it('uses the entered demo account details after login', async () => {
+  it('logs in with the real auth API and shows the current account', async () => {
     window.history.pushState({}, '', '/login');
-    vi.spyOn(apiClient, 'request').mockResolvedValue({ data: { concerts: [] } });
+    mockApiRequest.mockImplementation(async (path) => {
+      if (path === '/auth/login') {
+        return { accessToken: 'access-token', refreshToken: 'refresh-token' };
+      }
+      if (path === '/auth/me') {
+        return { userId: 'user-1', email: 'a@example.com', role: 'audience' };
+      }
+      return { data: { concerts: [] } };
+    });
 
     render(<App />);
 
-    fireEvent.change(await screen.findByLabelText(/họ và tên/i), {
-      target: { value: 'Nguyen Van A' },
-    });
-    fireEvent.change(screen.getByLabelText(/email/i), {
+    fireEvent.change(await screen.findByLabelText(/email/i), {
       target: { value: 'a@example.com' },
     });
-    fireEvent.change(screen.getByLabelText(/vai trò/i), {
-      target: { value: 'audience' },
+    fireEvent.change(screen.getByLabelText(/mật khẩu/i), {
+      target: { value: 'password123' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /vào ticketbox/i }));
+    fireEvent.submit(screen.getByLabelText(/email/i).closest('form') as HTMLFormElement);
 
     await waitFor(() => {
-      expect(screen.getByText('Nguyen Van A')).toBeInTheDocument();
+      expect(mockApiRequest).toHaveBeenCalledWith(
+        '/auth/login',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ email: 'a@example.com', password: 'password123' }),
+        }),
+      );
+      expect(screen.getByText('a@example.com')).toBeInTheDocument();
     });
   });
 
   it('shows an unauthorized page when a non-organizer opens admin', async () => {
     window.history.pushState({}, '', '/admin');
-    localStorage.setItem('accessToken', 'mock-access-token');
-    localStorage.setItem('refreshToken', 'mock-refresh-token');
-    localStorage.setItem(
-      'demoUser',
-      JSON.stringify({
-        id: 'demo-audience',
-        email: 'audience@example.com',
-        fullName: 'Audience User',
-        role: 'audience',
-      })
-    );
-    vi.spyOn(apiClient, 'request').mockResolvedValue({ data: { concerts: [] } });
+    localStorage.setItem('accessToken', 'access-token');
+    localStorage.setItem('refreshToken', 'refresh-token');
+    mockApiRequest.mockImplementation(async (path) => {
+      if (path === '/auth/me') {
+        return { userId: 'user-1', email: 'audience@example.com', role: 'audience' };
+      }
+      return { data: { concerts: [] } };
+    });
 
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: /Không có quyền truy cập/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Đổi tài khoản/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Về trang sự kiện/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /không có quyền truy cập/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /đổi tài khoản/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /về trang sự kiện/i })).toBeInTheDocument();
   });
 });

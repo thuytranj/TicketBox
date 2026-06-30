@@ -2,16 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../../api/client';
 import { CalendarDays, MapPin, Minus, Plus, Ticket } from 'lucide-react';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../auth/useAuth';
 import heroPreview from '../../assets/hero.png';
+
+const INVENTORY_REFRESH_MS = 10000;
 
 interface TicketType {
   id: string;
   name: 'GA' | 'SVIP' | 'VIP' | 'CAT1' | 'CAT2';
   price: number;
-  total_quantity: number;
-  available_quantity: number;
-  max_per_user: number;
+  totalQuantity: number;
+  availableQuantity: number;
+  maxPerUser: number;
 }
 
 interface ConcertDetailData {
@@ -22,7 +24,7 @@ interface ConcertDetailData {
   biography?: string;
   location: string;
   posterUrl: string;
-  start_time: string;
+  startTime: string;
 }
 
 export const ConcertDetail: React.FC = () => {
@@ -39,20 +41,27 @@ export const ConcertDetail: React.FC = () => {
   const [bookingSubmit, setBookingSubmit] = useState(false);
   const [error, setError] = useState('');
 
+  const refreshTicketTypes = async () => {
+    if (!id) return;
+    const ticketsRes = await apiClient.request<TicketType[]>(`/concerts/${id}/ticket-types`);
+    setTicketTypes(ticketsRes);
+  };
+
   useEffect(() => {
     const loadDetails = async () => {
       try {
         const [concertRes, ticketsRes, svgRes] = await Promise.all([
-          apiClient.request<{ data: ConcertDetailData }>(`/concerts/${id}`),
-          apiClient.request<{ data: TicketType[] }>(`/concerts/${id}/ticket-types`),
+          apiClient.request<ConcertDetailData>(`/concerts/${id}`),
+          apiClient.request<TicketType[]>(`/concerts/${id}/ticket-types`),
           apiClient.request<{ svgStageMap?: string }>(`/concerts/${id}/stagemap`).catch(() => ({ svgStageMap: '' })),
         ]);
 
-        setConcert(concertRes.data);
-        setTicketTypes(ticketsRes.data);
+        setConcert(concertRes);
+        setTicketTypes(ticketsRes);
         setSvgMap(svgRes.svgStageMap || '');
-      } catch (err: any) {
-        setError(err.message || 'Không tải được thông tin sự kiện');
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : 'Không tải được thông tin sự kiện';
+        setError(errMsg);
       } finally {
         setLoading(false);
       }
@@ -61,13 +70,75 @@ export const ConcertDetail: React.FC = () => {
     loadDetails();
   }, [id]);
 
+  useEffect(() => {
+    if (!id) return;
+
+    const refreshInventory = () =>
+      refreshTicketTypes().catch(() => {
+        // Keep the last known inventory visible if a transient refresh fails.
+      });
+
+    const interval = window.setInterval(refreshInventory, INVENTORY_REFRESH_MS);
+
+    return () => window.clearInterval(interval);
+  }, [id]);
+
   const handleZoneClick = (zoneName: string) => {
     const matchingType = ticketTypes.find((t) => t.name.toLowerCase() === zoneName.toLowerCase());
-    if (matchingType) {
+    if (matchingType && matchingType.availableQuantity > 0) {
       setSelectedTicketType(matchingType);
       setQuantity(1);
     }
   };
+
+  // Effect to polish SVG Map zones with colors, highlighting, and tooltips
+  useEffect(() => {
+    if (!svgMap || ticketTypes.length === 0) return;
+
+    // Find the container element
+    const container = document.querySelector('.stage-map');
+    if (!container) return;
+
+    const svgElement = container.querySelector('svg');
+    if (!svgElement) return;
+
+    // Find clickable elements (paths, polygons, rects, circles, groups with IDs)
+    const elements = svgElement.querySelectorAll('path, polygon, rect, circle, g');
+    elements.forEach((el) => {
+      const id = el.getAttribute('id');
+      if (!id) return;
+
+      const matchingType = ticketTypes.find((t) => t.name.toLowerCase() === id.toLowerCase());
+      if (!matchingType) return;
+
+      // Reset classes
+      el.classList.remove('zone-available', 'zone-selected', 'zone-soldout', 'zone-svip', 'zone-vip', 'zone-ga', 'zone-cat');
+
+      // Determine category branding class
+      const nameLower = matchingType.name.toLowerCase();
+      if (nameLower === 'svip') {
+        el.classList.add('zone-svip');
+      } else if (nameLower === 'vip') {
+        el.classList.add('zone-vip');
+      } else if (nameLower === 'ga') {
+        el.classList.add('zone-ga');
+      } else {
+        el.classList.add('zone-cat');
+      }
+
+      // Add status class and tooltips
+      if (matchingType.availableQuantity === 0) {
+        el.classList.add('zone-soldout');
+        el.setAttribute('title', `${matchingType.name} (Hết vé / Sold Out)`);
+      } else if (selectedTicketType?.id === matchingType.id) {
+        el.classList.add('zone-selected');
+        el.setAttribute('title', `${matchingType.name} (Đang chọn - Còn ${matchingType.availableQuantity} vé)`);
+      } else {
+        el.classList.add('zone-available');
+        el.setAttribute('title', `${matchingType.name} (Còn ${matchingType.availableQuantity} vé - Giá: ${matchingType.price.toLocaleString()} VND)`);
+      }
+    });
+  }, [svgMap, ticketTypes, selectedTicketType]);
 
   const handleBook = async () => {
     if (!user) {
@@ -97,8 +168,9 @@ export const ConcertDetail: React.FC = () => {
       });
 
       navigate(`/bookings/processing/${response.orderId}`);
-    } catch (err: any) {
-      setError(err.message || 'Không thể tạo đơn đặt vé');
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Không thể tạo đơn đặt vé';
+      setError(errMsg);
       setBookingSubmit(false);
     }
   };
@@ -121,6 +193,52 @@ export const ConcertDetail: React.FC = () => {
 
   return (
     <div className="container">
+      <style>{`
+        .stage-map svg path,
+        .stage-map svg polygon,
+        .stage-map svg rect,
+        .stage-map svg circle {
+          transition: all 0.25s ease-in-out;
+        }
+        .zone-available {
+          cursor: pointer;
+          fill-opacity: 0.35;
+        }
+        .zone-available:hover {
+          fill-opacity: 0.65;
+        }
+        .zone-svip {
+          fill: #eab308;
+          stroke: #eab308;
+        }
+        .zone-vip {
+          fill: #a855f7;
+          stroke: #a855f7;
+        }
+        .zone-ga {
+          fill: #10b981;
+          stroke: #10b981;
+        }
+        .zone-cat {
+          fill: #3b82f6;
+          stroke: #3b82f6;
+        }
+        .zone-selected {
+          fill-opacity: 0.85 !important;
+          stroke: #ef4444 !important;
+          stroke-width: 4px !important;
+          filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.8));
+          cursor: pointer;
+        }
+        .zone-soldout {
+          fill: #64748b !important;
+          fill-opacity: 0.15 !important;
+          stroke: #94a3b8 !important;
+          stroke-width: 1px !important;
+          cursor: not-allowed !important;
+          pointer-events: none;
+        }
+      `}</style>
       {error && <div className="alert alert-danger">{error}</div>}
 
       <div className="split-layout">
@@ -140,7 +258,7 @@ export const ConcertDetail: React.FC = () => {
                 </div>
                 <div className="meta-item">
                   <CalendarDays size={20} />
-                  <span>{new Date(concert.start_time).toLocaleString()}</span>
+                  <span>{new Date(concert.startTime).toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -191,11 +309,12 @@ export const ConcertDetail: React.FC = () => {
                   setQuantity(1);
                 }}
                 className={`ticket-type-option ${selectedTicketType?.id === type.id ? 'selected' : ''}`}
+                disabled={type.availableQuantity === 0}
               >
                 <div>
                   <strong style={{ display: 'block', color: 'var(--text-strong)' }}>{type.name}</strong>
-                  <span style={{ fontSize: '0.85rem', color: type.available_quantity > 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 700 }}>
-                    Còn {type.available_quantity} vé
+                  <span style={{ fontSize: '0.85rem', color: type.availableQuantity > 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 700 }}>
+                    {type.availableQuantity > 0 ? `Còn ${type.availableQuantity} vé` : 'Hết vé / Sold Out'}
                   </span>
                 </div>
                 <span style={{ fontWeight: 800 }}>{type.price.toLocaleString()} VND</span>
@@ -217,7 +336,7 @@ export const ConcertDetail: React.FC = () => {
                   </button>
                   <span style={{ width: 24, textAlign: 'center', fontWeight: 800 }}>{quantity}</span>
                   <button
-                    onClick={() => setQuantity((q) => Math.min(selectedTicketType.max_per_user, selectedTicketType.available_quantity, q + 1))}
+                    onClick={() => setQuantity((q) => Math.min(selectedTicketType.maxPerUser, selectedTicketType.availableQuantity, q + 1))}
                     className="btn btn-outline"
                     aria-label="Tăng số lượng"
                   >
@@ -239,7 +358,7 @@ export const ConcertDetail: React.FC = () => {
 
               <button
                 onClick={handleBook}
-                disabled={bookingSubmit || selectedTicketType.available_quantity === 0}
+                disabled={bookingSubmit || selectedTicketType.availableQuantity === 0}
                 className="btn btn-primary"
                 style={{ width: '100%', minHeight: 52 }}
               >

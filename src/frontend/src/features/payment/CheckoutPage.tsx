@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { apiClient } from '../../api/client';
-import { Clock, CreditCard, Ticket } from 'lucide-react';
+import { Clock, CreditCard, Ticket, AlertTriangle } from 'lucide-react';
 
 interface CircuitBreakerStatus {
   momo: 'CLOSED' | 'OPEN' | 'HALF-OPEN';
@@ -10,20 +10,23 @@ interface CircuitBreakerStatus {
 
 interface BookingData {
   id: string;
-  total_amount: number;
-  expires_at: string;
+  totalAmount: number;
+  createdAt: string;
   status: string;
 }
 
 export const CheckoutPage: React.FC = () => {
   const { orderId } = useParams<{ orderId: string }>();
-  const navigate = useNavigate();
   
   const [booking, setBooking] = useState<BookingData | null>(null);
   const [cbStatus, setCbStatus] = useState<CircuitBreakerStatus>({ momo: 'CLOSED', vnpay: 'CLOSED' });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  
+  // Hold countdown timer states
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [isExpired, setIsExpired] = useState(false);
 
   useEffect(() => {
     const loadCheckoutData = async () => {
@@ -35,8 +38,23 @@ export const CheckoutPage: React.FC = () => {
 
         setBooking(bookingRes);
         setCbStatus(cbRes);
-      } catch (err: any) {
-        setError(err.message || 'Failed to load checkout details');
+        
+        // If booking is already expired/cancelled/paid, mark appropriate flags
+        if (bookingRes.status === 'expired' || bookingRes.status === 'cancelled') {
+          setIsExpired(true);
+          setTimeLeft(0);
+        } else {
+          // Calculate remaining seconds
+          const expiresTime = new Date(bookingRes.createdAt).getTime() + 10 * 60 * 1000;
+          const initialTimeLeft = Math.max(0, Math.floor((expiresTime - Date.now()) / 1000));
+          setTimeLeft(initialTimeLeft);
+          if (initialTimeLeft === 0) {
+            setIsExpired(true);
+          }
+        }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : 'Failed to load checkout details';
+        setError(errMsg);
       } finally {
         setLoading(false);
       }
@@ -45,7 +63,27 @@ export const CheckoutPage: React.FC = () => {
     loadCheckoutData();
   }, [orderId]);
 
+  // Timer countdown loop
+  useEffect(() => {
+    if (timeLeft === null || timeLeft <= 0 || isExpired || !booking) return;
+
+    const interval = setInterval(() => {
+      const expiresTime = new Date(booking.createdAt).getTime() + 10 * 60 * 1000;
+      const secondsRemaining = Math.max(0, Math.floor((expiresTime - Date.now()) / 1000));
+      
+      setTimeLeft(secondsRemaining);
+      
+      if (secondsRemaining <= 0) {
+        setIsExpired(true);
+        clearInterval(interval);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [booking, timeLeft, isExpired]);
+
   const handlePayment = async (gateway: 'momo' | 'vnpay') => {
+    if (isExpired) return;
     setSubmitting(true);
     setError('');
     try {
@@ -66,8 +104,9 @@ export const CheckoutPage: React.FC = () => {
       } else {
         throw new Error('No redirect URL returned by gateway');
       }
-    } catch (err: any) {
-      setError(err.message || 'Payment initiation failed. Please try another method.');
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Payment initiation failed. Please try another method.';
+      setError(errMsg);
       setSubmitting(false);
     }
   };
@@ -89,12 +128,27 @@ export const CheckoutPage: React.FC = () => {
   }
 
   const allGatewaysOffline = cbStatus.momo === 'OPEN' && cbStatus.vnpay === 'OPEN';
+  
+  // Format MM:SS
+  const formatTimeLeft = (totalSeconds: number | null) => {
+    if (totalSeconds === null) return '--:--';
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div className="container-narrow">
       {error && (
         <div className="alert alert-danger" style={{ marginBottom: '1.5rem' }}>
           {error}
+        </div>
+      )}
+
+      {isExpired && (
+        <div className="alert alert-danger" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <AlertTriangle size={20} />
+          <span>Thời gian giữ vé đã hết hạn. Vui lòng quay lại chọn vé mới. / Your ticket hold reservation has expired. Please select new tickets.</span>
         </div>
       )}
 
@@ -116,15 +170,15 @@ export const CheckoutPage: React.FC = () => {
               <div className="summary-row">
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <Clock size={16} />
-                  Expiry time
+                  Remaining Time
                 </span>
-                <strong style={{ color: 'var(--danger)' }}>
-                  {new Date(booking.expires_at).toLocaleTimeString()}
+                <strong style={{ color: isExpired ? 'var(--danger)' : 'var(--accent)', fontSize: '1.25rem' }}>
+                  {formatTimeLeft(timeLeft)}
                 </strong>
               </div>
               <div className="summary-row summary-total">
                 <span style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-strong)' }}>Amount Due</span>
-                <strong>{booking.total_amount.toLocaleString()} VND</strong>
+                <strong>{booking.totalAmount.toLocaleString()} VND</strong>
               </div>
             </div>
           )}
@@ -132,34 +186,39 @@ export const CheckoutPage: React.FC = () => {
           <div className="payment-options">
             <button
               onClick={() => handlePayment('momo')}
-              disabled={submitting || cbStatus.momo === 'OPEN'}
+              disabled={submitting || cbStatus.momo === 'OPEN' || isExpired}
               className="btn btn-primary payment-momo"
               style={{
-                backgroundColor: cbStatus.momo === 'OPEN' ? 'var(--border)' : '#A50064',
+                backgroundColor: (cbStatus.momo === 'OPEN' || isExpired) ? 'var(--border)' : '#A50064',
                 minHeight: 56,
+                cursor: isExpired ? 'not-allowed' : 'pointer'
               }}
             >
               <CreditCard size={18} />
-              Pay with MoMo {cbStatus.momo === 'OPEN' && '(Maintenance)'}
+              Pay with MoMo {cbStatus.momo === 'OPEN' ? '(Maintenance)' : ''}
             </button>
 
             <button
               onClick={() => handlePayment('vnpay')}
-              disabled={submitting || cbStatus.vnpay === 'OPEN'}
+              disabled={submitting || cbStatus.vnpay === 'OPEN' || isExpired}
               className="btn btn-primary payment-vnpay"
               style={{
-                backgroundColor: cbStatus.vnpay === 'OPEN' ? 'var(--border)' : '#005BAA',
+                backgroundColor: (cbStatus.vnpay === 'OPEN' || isExpired) ? 'var(--border)' : '#005BAA',
                 minHeight: 56,
+                cursor: isExpired ? 'not-allowed' : 'pointer'
               }}
             >
               <CreditCard size={18} />
-              Pay with VNPAY {cbStatus.vnpay === 'OPEN' && '(Maintenance)'}
+              Pay with VNPAY {cbStatus.vnpay === 'OPEN' ? '(Maintenance)' : ''}
             </button>
           </div>
 
           {allGatewaysOffline && (
-            <div className="alert alert-danger" style={{ marginTop: '2rem', textAlign: 'center', marginBottom: 0 }}>
-              <strong>All payment gateways are currently offline.</strong> Please try again later. Pay Later is not supported.
+            <div className="alert alert-warning" style={{ marginTop: '2rem', textAlign: 'center', marginBottom: 0, borderLeft: '4px solid var(--warning)' }}>
+              <strong>Cổng thanh toán trực tuyến bảo trì / Payment Gateways Offline</strong>
+              <p style={{ margin: '8px 0 0 0', fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+                Hệ thống thanh toán trực tuyến hiện đang bảo trì. Vé của bạn đã được giữ tạm thời. Vui lòng liên hệ bộ phận CSKH hoặc Ban tổ chức để hoàn tất thanh toán thủ công hoặc thử lại sau.
+              </p>
             </div>
           )}
         </div>

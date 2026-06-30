@@ -18,14 +18,18 @@ describe('AdminDashboard', () => {
   });
 
   it('renders stats counters and recent events without unfinished analytics placeholder', async () => {
-    vi.spyOn(apiClient, 'request').mockResolvedValue({
-      data: {
-        concerts: [
-          { id: '1', title: 'Em Xinh Say Hi', status: 'active', tags: [], location: 'Ho Chi Minh City', start_time: '2026-06-30T19:30:00Z' },
-          { id: '2', title: 'Chị Đẹp Đạp Gió', status: 'draft', tags: [], location: 'Ha Noi', start_time: '2026-07-01T19:30:00Z' },
-          { id: '3', title: 'Anh Trai Vượt Ngàn', status: 'active', tags: [], location: 'Da Nang', start_time: '2026-07-02T19:30:00Z' },
-        ],
-      },
+    vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
+      if (url === '/concerts') {
+        return {
+          concerts: [
+            { id: '1', title: 'Em Xinh Say Hi', status: 'active', tags: [], location: 'Ho Chi Minh City', startTime: '2026-06-30T19:30:00Z' },
+            { id: '2', title: 'Chị Đẹp Đạp Gió', status: 'draft', tags: [], location: 'Ha Noi', startTime: '2026-07-01T19:30:00Z' },
+            { id: '3', title: 'Anh Trai Vượt Ngàn', status: 'active', tags: [], location: 'Da Nang', startTime: '2026-07-02T19:30:00Z' },
+          ],
+        };
+      }
+
+      return [];
     });
 
     render(
@@ -45,7 +49,7 @@ describe('AdminDashboard', () => {
       expect(screen.getByText('2')).toBeInTheDocument();
       expect(screen.getByText('1')).toBeInTheDocument();
       expect(screen.getByText('Sự kiện gần đây')).toBeInTheDocument();
-      expect(screen.getByText('Em Xinh Say Hi')).toBeInTheDocument();
+      expect(screen.getAllByText('Em Xinh Say Hi').length).toBeGreaterThan(0);
       expect(screen.queryByText(/Revenue Analytics/i)).not.toBeInTheDocument();
       expect(screen.queryByText(/backend stats API/i)).not.toBeInTheDocument();
     });
@@ -62,6 +66,88 @@ describe('AdminDashboard', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Connection refused')).toBeInTheDocument();
+    });
+  });
+
+  it('summarizes ticket inventory from real ticket type endpoints', async () => {
+    vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
+      if (url === '/concerts') {
+        return {
+          concerts: [
+            { id: '1', title: 'Em Xinh Say Hi', status: 'active', tags: [], location: 'Ho Chi Minh City', startTime: '2026-06-30T19:30:00Z' },
+            { id: '2', title: 'Chị Đẹp Đạp Gió', status: 'draft', tags: [], location: 'Ha Noi', startTime: '2026-07-01T19:30:00Z' },
+          ],
+        };
+      }
+
+      if (url === '/concerts/1/ticket-types') {
+        return [
+          { id: 'svip', name: 'SVIP', totalQuantity: 100, availableQuantity: 25, price: 3000000, maxPerUser: 2 },
+          { id: 'ga', name: 'GA', totalQuantity: 400, availableQuantity: 300, price: 800000, maxPerUser: 4 },
+        ];
+      }
+
+      if (url === '/concerts/2/ticket-types') {
+        return [{ id: 'vip', name: 'VIP', totalQuantity: 200, availableQuantity: 200, price: 2000000, maxPerUser: 2 }];
+      }
+
+      return {};
+    });
+
+    render(
+      <MemoryRouter>
+        <AdminDashboard />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Tổng vé phát hành')).toBeInTheDocument();
+      expect(screen.getByText('700')).toBeInTheDocument();
+      expect(screen.getByText('Đã bán/giữ')).toBeInTheDocument();
+      expect(screen.getByText('175')).toBeInTheDocument();
+      expect(screen.getByText('Tỷ lệ lấp đầy')).toBeInTheDocument();
+      expect(screen.getByText('25%')).toBeInTheDocument();
+      expect(screen.getByText('Tiến độ bán vé')).toBeInTheDocument();
+      expect(screen.getAllByText('Em Xinh Say Hi').length).toBeGreaterThan(0);
+      expect(screen.getByText('35%')).toBeInTheDocument();
+      expect(screen.getByText('175 / 500 vé')).toBeInTheDocument();
+    });
+  });
+
+  it('keeps dashboard usable when one concert ticket type request fails', async () => {
+    vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
+      if (url === '/concerts') {
+        return {
+          concerts: [
+            { id: '1', title: 'Healthy Show', status: 'active', tags: [], location: 'Ho Chi Minh City', startTime: '2026-06-30T19:30:00Z' },
+            { id: '2', title: 'Partial Show', status: 'active', tags: [], location: 'Ha Noi', startTime: '2026-07-01T19:30:00Z' },
+          ],
+        };
+      }
+
+      if (url === '/concerts/1/ticket-types') {
+        return [{ id: 'ga', name: 'GA', totalQuantity: 100, availableQuantity: 40, price: 800000, maxPerUser: 4 }];
+      }
+
+      if (url === '/concerts/2/ticket-types') {
+        throw new Error('ticket types unavailable');
+      }
+
+      return {};
+    });
+
+    render(
+      <MemoryRouter>
+        <AdminDashboard />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Healthy Show').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Partial Show').length).toBeGreaterThan(0);
+      expect(screen.getByText('Không tải được hạng vé của 1 concert.')).toBeInTheDocument();
+      expect(screen.getByText('100')).toBeInTheDocument();
+      expect(screen.getByText('60')).toBeInTheDocument();
     });
   });
 });
