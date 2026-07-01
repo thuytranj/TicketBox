@@ -1,15 +1,30 @@
 # Proposal: Mobile App Initialization & Offline Check-in
 
 ## What
-Khởi tạo ứng dụng Mobile (Flutter) cho hệ thống TicketBox dành riêng cho nhân sự kiểm soát vé. Ứng dụng bao gồm tính năng đăng nhập, chọn sự kiện, và quét mã QR offline. Điểm cốt lõi là giải mã chữ ký số của vé ngoại tuyến bằng Public Key và tự động đồng bộ lên Server qua RabbitMQ khi có mạng.
+Khởi tạo ứng dụng Flutter cho nhân sự soát vé của TicketBox, bám đúng contract backend hiện có để có thể triển khai ngay. Ứng dụng cần hỗ trợ:
+
+- đăng nhập bằng `POST /auth/login`
+- kiểm tra vai trò bằng `GET /auth/me`
+- chọn sự kiện từ `GET /concerts`
+- tải dữ liệu soát vé bằng `GET /checkin/data`
+- quét QR trực tuyến bằng `POST /checkin/scan`
+- fallback offline bằng tra cứu local theo `qrCodeHash` và đồng bộ lại bằng `POST /checkin/sync`
 
 ## Why
-Trong các sự kiện lớn, kết nối Internet thường xuyên bị chập chờn hoặc mất hoàn toàn. Việc quét vé yêu cầu tốc độ phản hồi cực nhanh (dưới 1s/vé) và phải đảm bảo tính bảo mật (không làm giả được vé). Việc sử dụng chữ ký số (Public/Private Key) kết hợp cơ chế lưu trữ Local DB (offline-first) và background sync giúp đảm bảo hệ thống vẫn hoạt động trơn tru trong mọi điều kiện mạng.
+Trong môi trường sự kiện thực tế, mạng thường chập chờn nên mobile app phải hoạt động theo hướng offline-first. Tuy nhiên backend check-in hiện tại không expose cơ chế verify HMAC trên thiết bị; contract thực tế của app là:
+
+- QR scan được xem như chuỗi `qrCodeHash` opaque
+- mobile preload danh sách `tickets` và `vipGuests` từ backend
+- mobile tự tra cứu local để cho phép check-in offline
+- khi có mạng, mobile gửi lại các log offline để backend xử lý bất đồng bộ qua RabbitMQ
+
+Việc chỉnh lại tài liệu theo đúng code backend hiện có giúp tránh xây Flutter dựa trên giả định không tồn tại, đặc biệt ở phần verify QR và response payload.
 
 ## Scope
-- Khởi tạo project Flutter.
-- UI Đăng nhập, Chọn sự kiện, Quét QR.
-- Tích hợp camera quét QR (`mobile_scanner`).
-- Giải mã chữ ký số RSA/ECDSA để kiểm tra tính hợp lệ.
-- Local DB để lưu trữ danh sách khách mời tải trước và cập nhật trạng thái `is_checked_in`.
-- WorkManager / Background Tasks để đồng bộ với RabbitMQ khi có internet.
+- Khởi tạo project Flutter và cấu hình `API_BASE_URL`.
+- UI đăng nhập, chọn sự kiện, quét QR.
+- API client cho `auth`, `concerts`, `checkin`.
+- Local DB để lưu `checkin_entries` và hàng đợi `offline_checkin_logs`.
+- Quét QR bằng `mobile_scanner`, dùng chính chuỗi quét được làm `qrCodeHash`.
+- Online scan qua `/checkin/scan` khi có mạng ổn định.
+- Offline lookup + background sync qua `/checkin/sync` khi mất mạng.
