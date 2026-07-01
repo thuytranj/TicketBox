@@ -186,4 +186,155 @@ export class EmailService implements OnModuleInit {
       throw new Error(`Failed to send VIP invitation email: ${error.message}`);
     }
   }
+
+  /**
+   * Gửi email E-ticket tổng hợp cho tất cả vé trong một đơn hàng
+   * Bao gồm thông tin concert + danh sách vé + QR code inline cho mỗi vé
+   */
+  async sendETicketEmail(
+    to: string,
+    fullName: string,
+    concertTitle: string,
+    concertDate: string,
+    concertLocation: string,
+    tickets: Array<{ ticketId: string; ticketTypeName: string; qrBuffer: Buffer }>,
+  ): Promise<void> {
+    // Build HTML cho từng vé
+    const ticketRowsHtml = tickets
+      .map(
+        (ticket, index) => `
+        <tr>
+          <td style="padding: 10px 0; border-top: 1px dashed #e2e8f0;">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+              <tr>
+                <td style="font-size: 11px; color: #64748b;">Ticket ${index + 1}</td>
+              </tr>
+              <tr>
+                <td style="padding: 3px 0;">
+                  <strong>Type:</strong> ${ticket.ticketTypeName}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; text-align: center;">
+                  <img
+                    src="cid:ticket-qr-${index}"
+                    alt="Ticket QR Code"
+                    width="140"
+                    height="140"
+                    style="display: inline-block; border: 1px solid #e2e8f0; padding: 4px; border-radius: 4px;"
+                  />
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>`,
+      )
+      .join('');
+
+    const html = this.buildMasterTemplate({
+      title: 'Your E-Tickets',
+      description: `Hi ${fullName},<br><br>Your booking for "<strong>${concertTitle}</strong>" has been confirmed! Here are your e-tickets.`,
+      headerBgColor: '#059669',
+      contentHtml: `
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-size: 12px; color: #334155; line-height: 1.5;">
+          <tr>
+            <td style="padding: 5px 0;">
+              <strong>Concert:</strong> ${concertTitle}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0;">
+              <strong>Date:</strong> ${concertDate}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0;">
+              <strong>Location:</strong> ${concertLocation}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0;">
+              <strong>Total Tickets:</strong> ${tickets.length}
+            </td>
+          </tr>
+          ${ticketRowsHtml}
+        </table>
+      `,
+      footerText:
+        'Please present the QR code at the venue entrance for check-in. Do not share your tickets with anyone.',
+    });
+
+    const attachments = tickets.map((ticket, index) => ({
+      filename: `ticket-qr-${index}.png`,
+      content: ticket.qrBuffer,
+      contentId: `ticket-qr-${index}`,
+    }));
+
+    const fromEmail =
+      this.configService.get<string>('MAIL_FROM') || 'no-reply@ticketboxz.me';
+    const { error } = await this.resend.emails.send({
+      from: `TicketBox <${fromEmail}>`,
+      to: [to],
+      subject: `Your E-Tickets: ${concertTitle} - TicketBox`,
+      html,
+      attachments,
+    });
+
+    if (error) {
+      throw new Error(`Failed to send E-ticket email: ${error.message}`);
+    }
+  }
+
+  /**
+   * Gửi email nhắc nhở concert sắp diễn ra trong 24h
+   */
+  async sendConcertReminderEmail(
+    to: string,
+    fullName: string,
+    concertTitle: string,
+    concertDate: string,
+    concertLocation: string,
+  ): Promise<void> {
+    const html = this.buildMasterTemplate({
+      title: 'Concert Reminder',
+      description: `Hi ${fullName},<br><br>This is a friendly reminder that "<strong>${concertTitle}</strong>" is happening tomorrow! Don't forget to bring your e-ticket.`,
+      headerBgColor: '#d97706',
+      contentHtml: `
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-size: 12px; color: #334155; line-height: 1.5;">
+          <tr>
+            <td style="padding: 5px 0;">
+              <strong>Concert:</strong> ${concertTitle}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0;">
+              <strong>Date:</strong> ${concertDate}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 5px 0;">
+              <strong>Location:</strong> ${concertLocation}
+            </td>
+          </tr>
+        </table>
+      `,
+      footerText:
+        'Make sure to arrive early and have your e-ticket QR code ready for check-in at the venue.',
+    });
+
+    const fromEmail =
+      this.configService.get<string>('MAIL_FROM') || 'no-reply@ticketboxz.me';
+    const { error } = await this.resend.emails.send({
+      from: `TicketBox <${fromEmail}>`,
+      to: [to],
+      subject: `Reminder: ${concertTitle} is tomorrow! - TicketBox`,
+      html,
+    });
+
+    if (error) {
+      throw new Error(
+        `Failed to send concert reminder email: ${error.message}`,
+      );
+    }
+  }
 }
