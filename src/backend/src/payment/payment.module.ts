@@ -10,10 +10,13 @@ import { IdempotencyInterceptor } from '../common/interceptors/idempotency.inter
 import { Payment } from './entities/payment.entity';
 import { Order } from '../booking/entities/order.entity';
 import { Ticket } from '../booking/entities/ticket.entity';
+import { User } from '../auth/entities/user.entity';
+import { Concert } from '../concert/entities/concert.entity';
+import { TicketType } from '../concert/entities/ticket-type.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Payment, Order, Ticket]),
+    TypeOrmModule.forFeature([Payment, Order, Ticket, User, Concert, TicketType]),
   ],
   controllers: [PaymentController],
   providers: [
