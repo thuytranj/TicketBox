@@ -18,26 +18,24 @@ describe('ConcertList', () => {
 
   it('renders list of active concerts', async () => {
     vi.spyOn(apiClient, 'request').mockResolvedValue({
-      data: {
-        concerts: [
-          {
-            id: 'c1',
-            title: 'Anh Trai Say Hi',
-            description: 'A live pop concert',
-            location: 'Van Phuc City',
-            posterUrl: '',
-            start_time: '2026-06-30T19:30:00Z',
-            tags: ['pop', 'live'],
-            status: 'active',
-          },
-        ],
-        meta: {
-          totalItems: 1,
-          itemCount: 1,
-          itemsPerPage: 9,
-          totalPages: 1,
-          currentPage: 1,
+      concerts: [
+        {
+          id: 'c1',
+          title: 'Anh Trai Say Hi',
+          description: 'A live pop concert',
+          location: 'Van Phuc City',
+          posterUrl: '',
+          startTime: '2026-06-30T19:30:00Z',
+          tags: ['pop', 'live'],
+          status: 'active',
         },
+      ],
+      meta: {
+        totalItems: 1,
+        itemCount: 1,
+        itemsPerPage: 9,
+        totalPages: 1,
+        currentPage: 1,
       },
     });
 
@@ -57,15 +55,13 @@ describe('ConcertList', () => {
 
   it('supports pagination from backend metadata', async () => {
     vi.spyOn(apiClient, 'request').mockResolvedValue({
-      data: {
-        concerts: [],
-        meta: {
-          totalItems: 18,
-          itemCount: 9,
-          itemsPerPage: 9,
-          totalPages: 2,
-          currentPage: 1,
-        },
+      concerts: [],
+      meta: {
+        totalItems: 18,
+        itemCount: 9,
+        itemsPerPage: 9,
+        totalPages: 2,
+        currentPage: 1,
       },
     });
 
@@ -88,9 +84,7 @@ describe('ConcertList', () => {
 
   it('uses a friendly event discovery hero without external stock imagery', async () => {
     vi.spyOn(apiClient, 'request').mockResolvedValue({
-      data: {
-        concerts: [],
-      },
+      concerts: [],
     });
 
     render(

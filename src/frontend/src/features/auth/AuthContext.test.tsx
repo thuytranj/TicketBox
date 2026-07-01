@@ -1,7 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
-import { AuthProvider, useAuth } from './AuthContext';
+import { AuthProvider } from './AuthContext';
+import { useAuth } from './useAuth';
 import { apiClient } from '../../api/client';
 
 vi.mock('../../api/client', () => ({
@@ -16,7 +17,7 @@ const TestComponent = () => {
   if (!user) return <div>Guest</div>;
   return (
     <div>
-      <span>User: {user.fullName} ({user.role})</span>
+      <span>User: {user.fullName || user.email} ({user.role})</span>
       <button onClick={logout}>Logout</button>
     </div>
   );
@@ -44,7 +45,9 @@ describe('AuthProvider', () => {
   it('fetches current user details if token is in localStorage', async () => {
     localStorage.setItem('accessToken', 'token');
     const mockRequest = vi.spyOn(apiClient, 'request').mockResolvedValue({
-      data: { id: '1', email: 'a@a.com', fullName: 'Tester Name', role: 'organizer' }
+      userId: '1',
+      email: 'a@a.com',
+      role: 'organizer',
     });
 
     render(
@@ -54,7 +57,7 @@ describe('AuthProvider', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('User: Tester Name (organizer)')).toBeInTheDocument();
+      expect(screen.getByText('User: a@a.com (organizer)')).toBeInTheDocument();
     });
     expect(mockRequest).toHaveBeenCalledWith('/auth/me');
   });

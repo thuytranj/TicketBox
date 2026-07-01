@@ -43,8 +43,8 @@ describe('BookingProcess', () => {
     vi.spyOn(apiClient, 'request').mockResolvedValue({
       id: 'order123',
       status: 'pending',
-      total_amount: 500000,
-      expires_at: '2026-06-30T19:40:00Z',
+      totalAmount: 500000,
+      createdAt: '2026-06-30T19:30:00Z',
     });
 
     render(
@@ -64,8 +64,8 @@ describe('BookingProcess', () => {
     vi.spyOn(apiClient, 'request').mockResolvedValue({
       id: 'order123',
       status: 'expired',
-      total_amount: 500000,
-      expires_at: '2026-06-30T19:40:00Z',
+      totalAmount: 500000,
+      createdAt: '2026-06-30T19:30:00Z',
     });
 
     render(
