@@ -205,6 +205,54 @@ describe('NotificationsPanel', () => {
     expect(screen.getByText('Bio generation failed')).toBeInTheDocument();
   });
 
+  it('refreshes notifications from REST when the socket reconnects', async () => {
+    let connectCallback: (() => void) | null = null;
+    mockSocket.on.mockImplementation((event, cb) => {
+      if (event === 'connect') {
+        connectCallback = cb;
+      }
+    });
+
+    vi.spyOn(apiClient, 'request')
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            id: 4,
+            userId: 'user123',
+            type: 'concert_reminder',
+            title: 'Concert Tomorrow!',
+            body: 'Bring your e-ticket.',
+            channel: 'in_app',
+            status: 'unread',
+            referenceId: 'concert_456',
+            readAt: null,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      });
+
+    renderPanel();
+
+    await waitFor(() => {
+      expect(apiClient.request).toHaveBeenCalledTimes(1);
+    });
+
+    if (connectCallback) {
+      await act(async () => {
+        await (connectCallback as any)();
+      });
+    }
+
+    await waitFor(() => {
+      expect(apiClient.request).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('1')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Toggle notifications/i }));
+    expect(screen.getByText('Concert Tomorrow!')).toBeInTheDocument();
+  });
+
   it('shows backend notification event labels and routes action links by reference id', async () => {
     vi.spyOn(apiClient, 'request').mockResolvedValue({
       data: [

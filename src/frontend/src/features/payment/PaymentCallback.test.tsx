@@ -17,13 +17,13 @@ describe('PaymentCallback', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders successful payment outcome along with ticket and mock QR code', async () => {
+  it('renders successful payment outcome with a local QR image generated from backend qrCodeHash', async () => {
     vi.spyOn(apiClient, 'request').mockResolvedValue({
       id: 'order_123',
       status: 'paid',
       totalAmount: 2000000,
       tickets: [
-        { id: 'ticket_xyz789', ticketTypeId: 't1', qrCode: 'hash1', status: 'reserved' },
+        { id: 'ticket_xyz789', ticketTypeId: 't1', qrCodeHash: 'hash1', status: 'active', checkinStatus: 'not_checked_in' },
       ],
     });
 
@@ -38,7 +38,7 @@ describe('PaymentCallback', () => {
     await waitFor(() => {
       expect(screen.getByText(/Payment Successful!/i)).toBeInTheDocument();
       expect(screen.getByText(/ticket_xyz789/i)).toBeInTheDocument();
-      expect(screen.getByLabelText('QR Code')).toBeInTheDocument();
+      expect(screen.getByLabelText('QR Code')).toHaveAttribute('src', expect.stringMatching(/^data:image\/png;base64,/));
     });
   });
 

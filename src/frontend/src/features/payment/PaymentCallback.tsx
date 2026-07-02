@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import * as QRCode from 'qrcode';
 import { apiClient } from '../../api/client';
 import { CheckCircle, XCircle, Clock, ArrowLeft, RefreshCw } from 'lucide-react';
 
@@ -25,6 +26,65 @@ interface BookingDetails {
   totalAmount: number;
   tickets?: TicketData[];
 }
+
+const TicketQrCode: React.FC<{ value: string }> = ({ value }) => {
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [qrError, setQrError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    setQrDataUrl('');
+    setQrError('');
+
+    QRCode.toDataURL(value, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 200,
+    })
+      .then((dataUrl) => {
+        if (active) {
+          setQrDataUrl(dataUrl);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setQrError('QR Code is unavailable.');
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [value]);
+
+  if (qrError) {
+    return (
+      <div style={{ padding: '2rem', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+        {qrError}
+      </div>
+    );
+  }
+
+  if (!qrDataUrl) {
+    return (
+      <div style={{ padding: '2rem', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+        QR Code is generating...
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={qrDataUrl}
+      alt="QR Code"
+      aria-label="QR Code"
+      width="200"
+      height="200"
+      style={{ display: 'block' }}
+    />
+  );
+};
 
 export const PaymentCallback: React.FC = () => {
   const { orderId } = useParams<{ orderId: string }>();
@@ -163,14 +223,7 @@ export const PaymentCallback: React.FC = () => {
                       
                       {qrHash ? (
                         <div style={{ background: '#fff', padding: '1rem', borderRadius: 'var(--radius-sm)', display: 'inline-block', margin: '0 auto' }}>
-                          <img
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrHash)}`}
-                            alt="QR Code"
-                            aria-label="QR Code"
-                            width="200"
-                            height="200"
-                            style={{ display: 'block' }}
-                          />
+                          <TicketQrCode value={qrHash} />
                         </div>
                       ) : (
                         <div style={{ padding: '2rem', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>

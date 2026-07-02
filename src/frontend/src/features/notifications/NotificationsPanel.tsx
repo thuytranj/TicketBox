@@ -93,10 +93,16 @@ export const NotificationsPanel: React.FC = () => {
       }
     };
 
+    const handleSocketConnect = () => {
+      void fetchNotifications();
+    };
+
     socket.on('notification_received', handleNewNotification);
+    socket.on('connect', handleSocketConnect);
 
     return () => {
       socket.off('notification_received', handleNewNotification);
+      socket.off('connect', handleSocketConnect);
     };
   }, [socket]);
 
