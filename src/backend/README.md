@@ -66,8 +66,10 @@ npm run migration:run
 Nạp dữ liệu thử nghiệm ban đầu (bao gồm thông tin các buổi hòa nhạc, danh sách hạng vé chuẩn như GA, SVIP, VIP...) vào database:
 ```bash
 # Đứng tại thư mục src/backend
-npm run db:seed
+npm run db:seed:direct
 ```
+
+Script `db:seed` cũ vẫn được giữ nguyên để tương thích với `typeorm-extension`. Nếu CLI cũ thoát `0` nhưng không insert dữ liệu, hãy dùng `db:seed:direct` vì script này chạy trực tiếp qua `DataSource` và các seed class hiện có của dự án.
 
 ### Bước 3: Lựa chọn Quy trình Khởi chạy (Workflow)
 

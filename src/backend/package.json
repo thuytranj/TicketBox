@@ -26,7 +26,8 @@
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/data/ormconfig.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/data/ormconfig.ts",
     "schema:drop": "typeorm-ts-node-commonjs schema:drop -d src/data/ormconfig.ts",
-    "db:seed": "ts-node ./node_modules/typeorm-extension/bin/cli.cjs seed:run -d src/data/ormconfig.ts"
+    "db:seed": "ts-node ./node_modules/typeorm-extension/bin/cli.cjs seed:run -d src/data/ormconfig.ts",
+    "db:seed:direct": "node ./scripts/run-seed.cjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

@@ -108,6 +108,8 @@ export class CheckinService {
       if (ticket.checkinStatus === CheckinStatus.CHECKED_IN) {
         throw new BadRequestException({
           success: false,
+          code: 'ALREADY_USED',
+          status: 'ALREADY_USED',
           message: 'Ticket has already been used',
           error: 'Duplicate Check-in',
           statusCode: 400,
@@ -155,6 +157,8 @@ export class CheckinService {
       if (vipGuest.checkinStatus === CheckinStatus.CHECKED_IN) {
         throw new BadRequestException({
           success: false,
+          code: 'ALREADY_USED',
+          status: 'ALREADY_USED',
           message: 'Ticket has already been used',
           error: 'Duplicate Check-in',
           statusCode: 400,
