@@ -14,7 +14,6 @@ interface TicketData {
   id: string;
   ticketTypeId: string;
   qrCodeHash: string | null;
-  qrCode?: string | null; // fallback for tests
   status: string;
   checkinStatus: string;
   ticketType?: TicketTypeData;
@@ -25,6 +24,20 @@ interface BookingDetails {
   status: 'pending' | 'paid' | 'expired' | 'cancelled';
   totalAmount: number;
   tickets?: TicketData[];
+}
+
+interface PaymentStatusDetails {
+  orderId: string;
+  orderStatus: string;
+  payments: Array<{
+    id: string;
+    gateway: string;
+    status: string;
+    transactionId: string | null;
+    amount: number;
+    payUrl?: string | null;
+    createdAt: string;
+  }>;
 }
 
 const TicketQrCode: React.FC<{ value: string }> = ({ value }) => {
@@ -91,6 +104,7 @@ export const PaymentCallback: React.FC = () => {
   const navigate = useNavigate();
   
   const [booking, setBooking] = useState<BookingDetails | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatusDetails | null>(null);
   const [status, setStatus] = useState<'processing' | 'success' | 'failed' | 'timeout'>('processing');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -110,6 +124,9 @@ export const PaymentCallback: React.FC = () => {
         setBooking(response);
         
         if (response.status === 'paid') {
+          const paymentResponse = await apiClient.request<PaymentStatusDetails>(`/payments/${orderId}`);
+          if (!active) return true;
+          setPaymentStatus(paymentResponse);
           setStatus('success');
           setLoading(false);
           return true; // Stop polling
@@ -199,7 +216,7 @@ export const PaymentCallback: React.FC = () => {
 
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem' }}>
                 {booking.tickets && booking.tickets.map((t) => {
-                  const qrHash = t.qrCodeHash || t.qrCode;
+                  const qrHash = t.qrCodeHash;
                   return (
                     <div
                       key={t.id}
@@ -240,6 +257,21 @@ export const PaymentCallback: React.FC = () => {
                   );
                 })}
               </div>
+
+              {paymentStatus?.payments.length ? (
+                <section className="soft-panel" aria-label="Payment status" style={{ marginTop: '2rem', textAlign: 'left' }}>
+                  <h2 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Payment status</h2>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {paymentStatus.payments.map((payment) => (
+                      <div key={payment.id} className="summary-row" style={{ gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <span>{payment.gateway}</span>
+                        <strong style={{ color: 'var(--text-strong)' }}>{payment.status}</strong>
+                        {payment.transactionId && <span>{payment.transactionId}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
             </div>
           )}
 

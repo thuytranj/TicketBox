@@ -24,44 +24,10 @@ interface ConcertInventorySummary {
   failed: boolean;
 }
 
-interface DashboardStatistics {
-  totals: {
-    concerts: number;
-    activeConcerts: number;
-    draftConcerts: number;
-    cancelledConcerts: number;
-    issuedTickets: number;
-    soldOrHeldTickets: number;
-    availableTickets: number;
-    fillRate: number;
-    revenue: number;
-  };
-  concerts: Array<{
-    id: string;
-    title: string;
-    status: string;
-    issuedTickets: number;
-    soldOrHeldTickets: number;
-    availableTickets: number;
-    fillRate: number;
-    revenue: number;
-  }>;
-}
-
 const formatVnd = (amount: number) => `${amount.toLocaleString('vi-VN')} VND`;
-
-const isDashboardStatistics = (value: unknown): value is DashboardStatistics => {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
-  const candidate = value as Partial<DashboardStatistics>;
-  return Boolean(candidate.totals && Array.isArray(candidate.concerts));
-};
 
 export const AdminDashboard: React.FC = () => {
   const [concerts, setConcerts] = useState<Concert[]>([]);
-  const [dashboardStats, setDashboardStats] = useState<DashboardStatistics | null>(null);
   const [inventorySummaries, setInventorySummaries] = useState<ConcertInventorySummary[]>([]);
   const [inventoryFailures, setInventoryFailures] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -70,41 +36,9 @@ export const AdminDashboard: React.FC = () => {
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
-        let stats: DashboardStatistics | null = null;
-
-        try {
-          const statsCandidate = await apiClient.request<DashboardStatistics>('/admin/dashboard/statistics');
-
-          if (isDashboardStatistics(statsCandidate)) {
-            stats = statsCandidate;
-            setDashboardStats(stats);
-            setInventorySummaries(
-              stats.concerts.map((concert) => ({
-                concertId: concert.id,
-                title: concert.title,
-                totalTickets: concert.issuedTickets,
-                availableTickets: concert.availableTickets,
-                soldTickets: concert.soldOrHeldTickets,
-                fillRate: concert.fillRate,
-                revenue: concert.revenue,
-                failed: false,
-              }))
-            );
-            setInventoryFailures(0);
-          } else {
-            setDashboardStats(null);
-          }
-        } catch {
-          setDashboardStats(null);
-        }
-
-        const response = await apiClient.request<{ concerts: Concert[] }>('/concerts');
+        const response = await apiClient.request<{ concerts: Concert[] }>('/concerts?page=1&limit=100');
         const loadedConcerts = response.concerts || [];
         setConcerts(loadedConcerts);
-
-        if (stats) {
-          return;
-        }
 
         const inventoryResults = await Promise.allSettled(
           loadedConcerts.map(async (concert) => {
@@ -155,14 +89,13 @@ export const AdminDashboard: React.FC = () => {
     fetchDashboard();
   }, []);
 
-  const totalConcerts = dashboardStats?.totals.concerts ?? concerts.length;
-  const activeConcerts = dashboardStats?.totals.activeConcerts ?? concerts.filter((c) => c.status === 'active').length;
-  const draftConcerts = dashboardStats?.totals.draftConcerts ?? concerts.filter((c) => c.status === 'draft').length;
+  const totalConcerts = concerts.length;
+  const activeConcerts = concerts.filter((c) => c.status === 'active').length;
+  const draftConcerts = concerts.filter((c) => c.status === 'draft').length;
   const recentConcerts = concerts.slice(0, 5);
-  const totalIssuedTickets = dashboardStats?.totals.issuedTickets ?? inventorySummaries.reduce((sum, summary) => sum + summary.totalTickets, 0);
-  const totalSoldTickets = dashboardStats?.totals.soldOrHeldTickets ?? inventorySummaries.reduce((sum, summary) => sum + summary.soldTickets, 0);
-  const overallFillRate =
-    dashboardStats?.totals.fillRate ?? (totalIssuedTickets > 0 ? Math.round((totalSoldTickets / totalIssuedTickets) * 100) : 0);
+  const totalIssuedTickets = inventorySummaries.reduce((sum, summary) => sum + summary.totalTickets, 0);
+  const totalSoldTickets = inventorySummaries.reduce((sum, summary) => sum + summary.soldTickets, 0);
+  const overallFillRate = totalIssuedTickets > 0 ? Math.round((totalSoldTickets / totalIssuedTickets) * 100) : 0;
   const salesProgress = [...inventorySummaries].sort((a, b) => b.soldTickets - a.soldTickets).slice(0, 5);
 
   return (
@@ -237,7 +170,7 @@ export const AdminDashboard: React.FC = () => {
                 <TrendingUp size={20} style={{ color: 'var(--success)' }} />
               </div>
               <strong className="metric-value metric-value-compact">
-                {dashboardStats ? formatVnd(dashboardStats.totals.revenue) : 'Chưa có endpoint thống kê doanh thu.'}
+                Chưa có endpoint thống kê doanh thu.
               </strong>
             </div>
           </div>

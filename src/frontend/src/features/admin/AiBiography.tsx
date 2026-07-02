@@ -56,8 +56,9 @@ export const AiBiography: React.FC = () => {
 
     const handleNotification = (notification: any) => {
       // Check if this notification is for our current concert's bio status
+      const notificationType = String(notification.type || '').toLowerCase();
       if (
-        (notification.type === 'AI_BIO_COMPLETED' || notification.type === 'AI_BIO_FAILED') &&
+        (notificationType === 'ai_bio_completed' || notificationType === 'ai_bio_failed') &&
         notification.referenceId === id
       ) {
         fetchBioStatus(false);

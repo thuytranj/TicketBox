@@ -72,7 +72,7 @@ export const AdminConcerts: React.FC = () => {
   const fetchConcerts = async () => {
     setLoading(true);
     try {
-      const response = await apiClient.request<{ concerts: Concert[] }>('/concerts');
+      const response = await apiClient.request<{ concerts: Concert[] }>('/concerts?page=1&limit=100');
       setConcerts(response?.concerts || []);
     } catch (err: any) {
       setError(err.message || 'Không tải được danh sách sự kiện');
@@ -242,6 +242,19 @@ export const AdminConcerts: React.FC = () => {
 
   // Ticket Types functions
   const handleAddTicketType = async () => {
+    if (newTicketPrice < 0) {
+      setError('Giá vé không được âm.');
+      return;
+    }
+    if (newTicketQty < 1) {
+      setError('Số lượng vé phải lớn hơn 0.');
+      return;
+    }
+    if (newTicketMaxUser < 1) {
+      setError('Tối đa/người phải lớn hơn 0.');
+      return;
+    }
+
     const nextTicketType: FormTicketType = {
       clientId: crypto.randomUUID(),
       name: newTicketName,
@@ -318,6 +331,19 @@ export const AdminConcerts: React.FC = () => {
 
   const handleUpdateTicketType = async () => {
     if (!editingTicketTypeId) return;
+    if (editTicketPrice < 0) {
+      setError('Giá vé không được âm.');
+      return;
+    }
+    if (editTicketQty < 1) {
+      setError('Số lượng vé phải lớn hơn 0.');
+      return;
+    }
+    if (editTicketMaxUser < 1) {
+      setError('Tối đa/người phải lớn hơn 0.');
+      return;
+    }
+
     setUpdatingTicketType(true);
     setError('');
     setSuccess('');
@@ -369,7 +395,7 @@ export const AdminConcerts: React.FC = () => {
         )}
       </header>
 
-      {error && <div className="alert alert-danger">{error}</div>}
+      {error && <div className="alert alert-danger" role="alert">{error}</div>}
       {success && <div className="alert alert-success">{success}</div>}
 
       {showForm ? (

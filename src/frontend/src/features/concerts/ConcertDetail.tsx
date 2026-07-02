@@ -84,7 +84,11 @@ export const ConcertDetail: React.FC = () => {
   }, [id]);
 
   const handleZoneClick = (zoneName: string) => {
-    const matchingType = ticketTypes.find((t) => t.name.toLowerCase() === zoneName.toLowerCase());
+    const normalizedZoneName = zoneName.toLowerCase();
+    const matchingType = ticketTypes.find((t) => {
+      const ticketName = t.name.toLowerCase();
+      return normalizedZoneName === ticketName || normalizedZoneName.startsWith(`${ticketName}-`) || normalizedZoneName.startsWith(`${ticketName}_`);
+    });
     if (matchingType && matchingType.availableQuantity > 0) {
       setSelectedTicketType(matchingType);
       setQuantity(1);

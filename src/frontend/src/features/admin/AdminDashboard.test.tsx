@@ -20,7 +20,7 @@ describe('AdminDashboard', () => {
 
   it('renders stats counters and recent events without unfinished analytics placeholder', async () => {
     vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
-      if (url === '/concerts') {
+      if (url === '/concerts?page=1&limit=100') {
         return {
           concerts: [
             { id: '1', title: 'Em Xinh Say Hi', status: 'active', tags: [], location: 'Ho Chi Minh City', startTime: '2026-06-30T19:30:00Z' },
@@ -72,7 +72,7 @@ describe('AdminDashboard', () => {
 
   it('summarizes ticket inventory from real ticket type endpoints', async () => {
     vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
-      if (url === '/concerts') {
+      if (url === '/concerts?page=1&limit=100') {
         return {
           concerts: [
             { id: '1', title: 'Em Xinh Say Hi', status: 'active', tags: [], location: 'Ho Chi Minh City', startTime: '2026-06-30T19:30:00Z' },
@@ -115,80 +115,9 @@ describe('AdminDashboard', () => {
     });
   });
 
-  it('uses admin dashboard statistics endpoint when it is available', async () => {
+  it('aggregates ticket data from available backend concert endpoints', async () => {
     vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
-      if (url === '/admin/dashboard/statistics') {
-        return {
-          totals: {
-            concerts: 2,
-            activeConcerts: 1,
-            draftConcerts: 1,
-            cancelledConcerts: 0,
-            issuedTickets: 900,
-            soldOrHeldTickets: 450,
-            availableTickets: 450,
-            fillRate: 50,
-            revenue: 125000000,
-          },
-          concerts: [
-            {
-              id: '1',
-              title: 'Backend Stats Show',
-              status: 'active',
-              issuedTickets: 600,
-              soldOrHeldTickets: 360,
-              availableTickets: 240,
-              fillRate: 60,
-              revenue: 90000000,
-            },
-          ],
-        };
-      }
-
-      if (url === '/concerts') {
-        return {
-          concerts: [
-            {
-              id: '1',
-              title: 'Backend Stats Show',
-              status: 'active',
-              tags: [],
-              location: 'Ho Chi Minh City',
-              startTime: '2026-06-30T19:30:00Z',
-            },
-          ],
-        };
-      }
-
-      throw new Error(`Unexpected request: ${url}`);
-    });
-
-    render(
-      <MemoryRouter>
-        <AdminDashboard />
-      </MemoryRouter>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText('900')).toBeInTheDocument();
-      expect(screen.getByText('450')).toBeInTheDocument();
-      expect(screen.getByText('50%')).toBeInTheDocument();
-      expect(screen.getByText('Doanh thu')).toBeInTheDocument();
-      expect(screen.getByText('125.000.000 VND')).toBeInTheDocument();
-      expect(screen.getAllByText('Backend Stats Show').length).toBeGreaterThan(0);
-      expect(screen.getByText('360 / 600 vé')).toBeInTheDocument();
-    });
-
-    expect(vi.mocked(apiClient.request).mock.calls.some(([url]) => url === '/concerts/1/ticket-types')).toBe(false);
-  });
-
-  it('falls back to ticket type aggregation when statistics endpoint is not ready', async () => {
-    vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
-      if (url === '/admin/dashboard/statistics') {
-        throw { statusCode: 404, message: 'Not found' };
-      }
-
-      if (url === '/concerts') {
+      if (url === '/concerts?page=1&limit=100') {
         return {
           concerts: [
             {
@@ -227,7 +156,7 @@ describe('AdminDashboard', () => {
 
   it('keeps dashboard usable when one concert ticket type request fails', async () => {
     vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
-      if (url === '/concerts') {
+      if (url === '/concerts?page=1&limit=100') {
         return {
           concerts: [
             { id: '1', title: 'Healthy Show', status: 'active', tags: [], location: 'Ho Chi Minh City', startTime: '2026-06-30T19:30:00Z' },
@@ -260,5 +189,43 @@ describe('AdminDashboard', () => {
       expect(screen.getByText('100')).toBeInTheDocument();
       expect(screen.getByText('60')).toBeInTheDocument();
     });
+  });
+  it('does not request unavailable dashboard statistics and loads enough concerts for admin summaries', async () => {
+    vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
+      if (url === '/concerts?page=1&limit=100') {
+        return {
+          concerts: [
+            {
+              id: '1',
+              title: 'Full Dashboard Show',
+              status: 'active',
+              tags: [],
+              location: 'Ho Chi Minh City',
+              startTime: '2026-06-30T19:30:00Z',
+            },
+          ],
+        };
+      }
+
+      if (url === '/concerts/1/ticket-types') {
+        return [{ id: 'ga', name: 'GA', totalQuantity: 120, availableQuantity: 20, price: 800000, maxPerUser: 4 }];
+      }
+
+      return {};
+    });
+
+    render(
+      <MemoryRouter>
+        <AdminDashboard />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Full Dashboard Show').length).toBeGreaterThan(0);
+      expect(screen.getByText('120')).toBeInTheDocument();
+      expect(apiClient.request).toHaveBeenCalledWith('/concerts?page=1&limit=100');
+    });
+
+    expect(vi.mocked(apiClient.request).mock.calls.some(([url]) => url === '/admin/dashboard/statistics')).toBe(false);
   });
 });

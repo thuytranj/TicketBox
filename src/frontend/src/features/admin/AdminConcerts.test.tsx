@@ -33,7 +33,7 @@ describe('AdminConcerts', () => {
     ];
 
     vi.spyOn(apiClient, 'request').mockImplementation(async (url, options) => {
-      if (url === '/concerts') {
+      if (url === '/concerts?page=1&limit=100') {
         return { concerts: concertsList };
       }
       if (url === '/concerts/c1' && options?.method === 'DELETE') {
@@ -66,20 +66,20 @@ describe('AdminConcerts', () => {
   it('submits a new concert with initial ticket types and status', async () => {
     let concertsList: any[] = [];
     vi.spyOn(apiClient, 'request').mockImplementation(async (url, options) => {
-      if (url === '/concerts') {
-        if (options?.method === 'POST') {
-          concertsList.push({
-            id: 'c2',
-            title: 'New Show',
-            description: 'Great show.',
-            location: 'Stadium',
-            posterUrl: '',
-            startTime: '2026-07-01T18:00:00Z',
-            tags: [],
-            status: 'active',
-          });
-          return { id: 'c2' };
-        }
+      if (url === '/concerts' && options?.method === 'POST') {
+        concertsList.push({
+          id: 'c2',
+          title: 'New Show',
+          description: 'Great show.',
+          location: 'Stadium',
+          posterUrl: '',
+          startTime: '2026-07-01T18:00:00Z',
+          tags: [],
+          status: 'active',
+        });
+        return { id: 'c2' };
+      }
+      if (url === '/concerts?page=1&limit=100') {
         return { concerts: concertsList };
       }
       return { concerts: [] };
@@ -131,7 +131,7 @@ describe('AdminConcerts', () => {
 
   it('triggers poster image upload on file change', async () => {
     vi.spyOn(apiClient, 'request').mockImplementation(async (url, options) => {
-      if (url === '/concerts') {
+      if (url === '/concerts?page=1&limit=100') {
         return { concerts: [] };
       }
       if (url === '/concerts/upload-poster' && options?.method === 'POST') {
@@ -204,7 +204,7 @@ describe('AdminConcerts', () => {
 
   it('filters concerts by status without refetching from the backend', async () => {
     vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
-      if (url === '/concerts') {
+      if (url === '/concerts?page=1&limit=100') {
         return {
           concerts: [
             {
@@ -252,7 +252,7 @@ describe('AdminConcerts', () => {
 
   it('updates an existing ticket type through PATCH', async () => {
     vi.spyOn(apiClient, 'request').mockImplementation(async (url, options) => {
-      if (url === '/concerts') {
+      if (url === '/concerts?page=1&limit=100') {
         return {
           concerts: [
             {
@@ -326,5 +326,56 @@ describe('AdminConcerts', () => {
       );
       expect(screen.getByText('Đã cập nhật hạng vé.')).toBeInTheDocument();
     });
+  });
+  it('loads the full admin concert list from the backend page size used for management views', async () => {
+    vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
+      if (url === '/concerts?page=1&limit=100') {
+        return {
+          concerts: [
+            {
+              id: 'c1',
+              title: 'Full List Show',
+              description: 'Show description',
+              location: 'Arena',
+              posterUrl: '',
+              startTime: '2026-07-01T18:00:00Z',
+              tags: [],
+              status: 'active',
+            },
+          ],
+        };
+      }
+      return { concerts: [] };
+    });
+
+    render(
+      <MemoryRouter>
+        <AdminConcerts />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(apiClient.request).toHaveBeenCalledWith('/concerts?page=1&limit=100');
+      expect(screen.getByText('Full List Show')).toBeInTheDocument();
+    });
+  });
+
+  it('validates ticket type values before storing them in the concert form', async () => {
+    vi.spyOn(apiClient, 'request').mockResolvedValue({ concerts: [] });
+
+    render(
+      <MemoryRouter>
+        <AdminConcerts />
+      </MemoryRouter>
+    );
+
+    const createButton = await screen.findByRole('button', { name: /Tạo concert/i });
+    fireEvent.click(createButton);
+    fireEvent.change(screen.getByLabelText(/Giá \(VND\)/i), { target: { value: '-1' } });
+    fireEvent.change(screen.getByLabelText(/Số lượng/i), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText(/Tối đa\/người/i), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Thêm$/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Giá vé không được âm');
   });
 });
