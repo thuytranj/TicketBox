@@ -1079,6 +1079,12 @@ img {
   line-height: 1;
 }
 
+.metric-value-compact {
+  display: block;
+  font-size: clamp(1rem, 2vw, 1.4rem);
+  line-height: 1.25;
+}
+
 .admin-panel-grid {
   display: grid;
   grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.3fr);

@@ -13,6 +13,7 @@ vi.mock('../../api/client', () => ({
 
 describe('CheckoutPage', () => {
   const originalLocation = window.location;
+  const activeBookingCreatedAt = () => new Date(Date.now()).toISOString();
 
   beforeAll(() => {
     // Mock window.location.href
@@ -41,7 +42,7 @@ describe('CheckoutPage', () => {
       .mockResolvedValueOnce({
         id: 'order_abc123',
         totalAmount: 1500000,
-        createdAt: '2026-06-30T19:30:00Z',
+        createdAt: activeBookingCreatedAt(),
         status: 'pending',
       })
       .mockResolvedValueOnce({
@@ -78,7 +79,7 @@ describe('CheckoutPage', () => {
       .mockResolvedValueOnce({
         id: 'order_abc123',
         totalAmount: 1500000,
-        createdAt: '2026-06-30T19:30:00Z',
+        createdAt: activeBookingCreatedAt(),
         status: 'pending',
       })
       .mockResolvedValueOnce({
