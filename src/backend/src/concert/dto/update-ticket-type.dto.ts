@@ -11,10 +11,8 @@ import { TicketTypeName } from '../entities/ticket-type.entity';
 
 export class UpdateTicketTypeDto {
   @IsOptional()
-  @IsEnum(TicketTypeName, {
-    message: 'Name must be one of: GA, SVIP, VIP, CAT1, CAT2',
-  })
-  name?: TicketTypeName;
+  @IsString({ message: 'Name must be a string' })
+  name?: string;
 
   @IsOptional()
   @IsNumber()

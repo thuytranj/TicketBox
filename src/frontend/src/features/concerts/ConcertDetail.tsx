@@ -272,7 +272,7 @@ export const ConcertDetail: React.FC = () => {
           {(concert.biography || concert.artistSummary) && (
             <section className="content-section soft-panel">
               <h2>Thông tin nghệ sĩ</h2>
-              <p>{concert.biography || concert.artistSummary}</p>
+              <p style={{ whiteSpace: 'pre-wrap' }}>{concert.biography || concert.artistSummary}</p>
             </section>
           )}
 

@@ -14,12 +14,12 @@ import { generateUuidV7 } from '../../auth/utils/uuid';
 export default class TransactionSeeder implements Seeder {
   public async run(dataSource: DataSource): Promise<any> {
     const orderRepository = dataSource.getRepository(Order);
-    const ticketRepository = dataSource.getRepository(Ticket);
-    const paymentRepository = dataSource.getRepository(Payment);
     const checkinLogRepository = dataSource.getRepository(CheckinLog);
     const userRepository = dataSource.getRepository(User);
     const concertRepository = dataSource.getRepository(Concert);
     const vipGuestRepository = dataSource.getRepository(VipGuest);
+
+    const now = new Date();
 
     // 1. Lấy danh sách Gate Staff và Khán giả đã được seed
     const gateStaffs = await userRepository.find({
@@ -34,95 +34,59 @@ export default class TransactionSeeder implements Seeder {
       return;
     }
 
-    // 2. Tìm các Concert cụ thể
-    const rapVietPast = await concertRepository.findOne({
-      where: { title: 'Rap Viet Finals 2025 (Past)' },
+    // 2. Lấy toàn bộ các Concert kèm các TicketType của chúng
+    const concerts = await concertRepository.find({
       relations: ['ticketTypes'],
     });
 
-    const indiePast = await concertRepository.findOne({
-      where: { title: 'Indie Sound Concert 2025 (Past)' },
-      relations: ['ticketTypes'],
-    });
+    // 3. Seed dữ liệu giao dịch động cho từng Concert
+    for (const concert of concerts) {
+      // Chỉ seed cho các concert ở trạng thái active
+      if (concert.status !== 'active') {
+        continue;
+      }
 
-    const erasTourFuture = await concertRepository.findOne({
-      where: { title: 'The Eras Tour - Ho Chi Minh City' },
-      relations: ['ticketTypes'],
-    });
-
-    // 3. Seed dữ liệu cho Concert Rap Viet Finals 2025 (Quá khứ)
-    if (rapVietPast) {
       const exists = await orderRepository.findOne({
-        where: { concertId: rapVietPast.id },
+        where: { concertId: concert.id },
       });
+
       if (!exists) {
-        console.log(`[seed] Seeding transactions for ${rapVietPast.title}...`);
+        const isPast = concert.startTime < now;
+        let counts;
+
+        if (isPast) {
+          // Sự kiện trong quá khứ: nhiều check-in, một ít no-show (PAID nhưng chưa checkin)
+          counts = {
+            checkedInCount: Math.floor(Math.random() * 25) + 20, // 20 đến 44 đơn đã check-in
+            paidCount: Math.floor(Math.random() * 4) + 1,        // 1 đến 4 đơn paid chưa check-in
+            pendingCount: 0,                                     // Quá khứ không có pending
+            cancelledCount: Math.floor(Math.random() * 5) + 2,   // 2 đến 6 đơn hủy
+            expiredCount: Math.floor(Math.random() * 5) + 2,     // 2 đến 6 đơn hết hạn
+          };
+        } else {
+          // Sự kiện trong tương lai: chưa check-in, chỉ có paid và pending
+          counts = {
+            checkedInCount: 0,
+            paidCount: Math.floor(Math.random() * 20) + 10,      // 10 đến 29 đơn đã mua
+            pendingCount: Math.floor(Math.random() * 6) + 2,     // 2 đến 7 đơn pending
+            cancelledCount: Math.floor(Math.random() * 4) + 1,   // 1 đến 4 đơn hủy
+            expiredCount: Math.floor(Math.random() * 4) + 1,     // 1 đến 4 đơn hết hạn
+          };
+        }
+
+        console.log(`[seed] Seeding transactions for "${concert.title}" (isPast: ${isPast})...`);
         await this.seedTransactionsForConcert(
           dataSource,
-          rapVietPast,
+          concert,
           audiences,
           gateStaffs,
-          {
-            paidCount: 3,        // PAID nhưng chưa check-in (no-show)
-            checkedInCount: 12,  // PAID và đã check-in thành công
-            pendingCount: 0,     // Sự kiện quá khứ không nên có pending
-            cancelledCount: 2,   // Đã hủy
-            expiredCount: 3,     // Đã hết hạn
-          },
-          true // là sự kiện trong quá khứ
+          counts,
+          isPast
         );
       }
     }
 
-    // 4. Seed dữ liệu cho Concert Indie Sound Concert 2025 (Quá khứ)
-    if (indiePast) {
-      const exists = await orderRepository.findOne({
-        where: { concertId: indiePast.id },
-      });
-      if (!exists) {
-        console.log(`[seed] Seeding transactions for ${indiePast.title}...`);
-        await this.seedTransactionsForConcert(
-          dataSource,
-          indiePast,
-          audiences,
-          gateStaffs,
-          {
-            paidCount: 2,
-            checkedInCount: 8,
-            pendingCount: 0,
-            cancelledCount: 1,
-            expiredCount: 1,
-          },
-          true
-        );
-      }
-    }
-
-    // 5. Seed dữ liệu cho Concert The Eras Tour - Ho Chi Minh City (Tương lai)
-    if (erasTourFuture) {
-      const exists = await orderRepository.findOne({
-        where: { concertId: erasTourFuture.id },
-      });
-      if (!exists) {
-        console.log(`[seed] Seeding transactions for ${erasTourFuture.title}...`);
-        await this.seedTransactionsForConcert(
-          dataSource,
-          erasTourFuture,
-          audiences,
-          gateStaffs,
-          {
-            paidCount: 10,       // Vé đang active, sẵn sàng đi diễn
-            checkedInCount: 0,   // Chưa diễn ra nên không có soát vé
-            pendingCount: 4,     // Đơn hàng đang chờ thanh toán
-            cancelledCount: 2,
-            expiredCount: 2,
-          },
-          false // sự kiện tương lai
-        );
-      }
-    }
-
-    // 6. Tạo CheckinLog cho khách mời VIP đã check-in (được seed ở VipGuestSeeder)
+    // 4. Tạo CheckinLog cho khách mời VIP đã check-in (được seed ở VipGuestSeeder)
     console.log('[seed] Generating check-in logs for VIP Guests...');
     const checkedInVips = await vipGuestRepository.find({
       where: { checkinStatus: CheckinStatus.CHECKED_IN },
@@ -193,10 +157,10 @@ export default class TransactionSeeder implements Seeder {
         const amount = ticketType.price * qty;
 
         // 1. Tạo Đơn Hàng (Order)
-        // Thời gian tạo đơn hàng: Nếu concert trong quá khứ thì đơn hàng tạo trước concert 15 ngày
+        // Thời gian tạo đơn hàng: Nếu concert trong quá khứ thì đơn hàng tạo trước concert từ 1 đến 15 ngày
         const orderDate = isPast
-          ? new Date(concert.startTime.getTime() - 15 * 24 * 60 * 60 * 1000 + i * 60 * 60 * 1000)
-          : new Date(Date.now() - i * 60 * 60 * 1000);
+          ? new Date(concert.startTime.getTime() - (Math.floor(Math.random() * 14) + 1) * 24 * 60 * 60 * 1000 + i * 30 * 60 * 1000)
+          : new Date(Date.now() - (Math.floor(Math.random() * 5) + 1) * 24 * 60 * 60 * 1000 - i * 60 * 60 * 1000);
 
         const order = orderRepository.create({
           id: generateUuidV7(),

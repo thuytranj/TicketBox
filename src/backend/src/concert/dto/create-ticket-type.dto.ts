@@ -11,11 +11,9 @@ import {
 import { TicketTypeName } from '../entities/ticket-type.entity';
 
 export class CreateTicketTypeDto {
-  @IsEnum(TicketTypeName, {
-    message: 'Name must be one of: GA, SVIP, VIP, CAT1, CAT2',
-  })
+  @IsString({ message: 'Name must be a string' })
   @IsNotEmpty({ message: 'Name is required' })
-  name: TicketTypeName;
+  name: string;
 
   @IsNumber()
   @Min(0, { message: 'Price must be greater than or equal to 0' })

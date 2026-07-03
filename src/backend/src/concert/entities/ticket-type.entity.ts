@@ -6,6 +6,7 @@ import {
   JoinColumn,
   BeforeInsert,
   Index,
+  Unique,
 } from 'typeorm';
 import { generateUuidV7 } from '../../auth/utils/uuid';
 import { Concert } from './concert.entity';
@@ -24,6 +25,7 @@ const numericTransformer = {
 };
 
 @Entity('ticket_types')
+@Unique('uq_concert_ticket_type_name', ['concertId', 'name'])
 export class TicketType {
   @PrimaryColumn({ type: 'uuid' })
   id: string;
@@ -33,7 +35,7 @@ export class TicketType {
   concertId: string;
 
   @Column({ type: 'varchar', length: 100 })
-  name: TicketTypeName;
+  name: string;
 
   @Column({
     type: 'decimal',
