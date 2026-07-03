@@ -1,6 +1,6 @@
-# Web Admin Portal Specifications — Current Implementation
+# Web Admin Portal Specifications - Current Implementation
 
-Tài liệu này mô tả Web Admin Portal của TicketBox theo code hiện tại trong `src/frontend` và backend NestJS hiện có. Trọng tâm là các luồng đã có API thật để demo: quản lý concert, ticket types, upload poster/SVG, AI Artist Bio, VIP guest import, notification realtime và dashboard tổng quan tối thiểu.
+Tài liệu này mô tả Web Admin Portal của TicketBox theo code hiện tại trong `src/frontend` và backend NestJS hiện có. Trọng tâm là các luồng đã có API thật để demo: dashboard thống kê, quản lý concert, ticket types, upload poster/SVG, AI Artist Bio, VIP guest import và notification realtime.
 
 ---
 
@@ -13,8 +13,9 @@ flowchart TD
     Start([Admin mở Web Admin]) --> Login[Đăng nhập JWT]
     Login --> Guard{Role organizer?}
     Guard -->|Không| Unauthorized[Không có quyền]
-    Guard -->|Có| Dashboard[Dashboard tổng quan]
+    Guard -->|Có| Dashboard[Dashboard thống kê]
 
+    Dashboard --> Stats[Statistics API]
     Dashboard --> Concerts[Quản lý concert]
     Concerts --> CreateEdit[Tạo/Sửa concert]
     CreateEdit --> Poster[Upload poster qua backend/Cloudinary]
@@ -41,17 +42,14 @@ flowchart TD
 
 ### 2.1. Dashboard
 
-Dashboard hiện tại lấy dữ liệu thật từ `/concerts` và từng `/concerts/:id/ticket-types`; không dùng Chart.js vì backend chưa có endpoint thống kê doanh thu riêng.
+Dashboard hiện tại lấy số liệu vận hành thật từ module Statistics mới của backend.
 
-- Hiển thị tổng số concert.
-- Hiển thị số concert `active`.
-- Hiển thị số concert `draft`.
-- Hiển thị tổng vé phát hành từ `totalQuantity`.
-- Hiển thị số vé đã bán/giữ theo `totalQuantity - availableQuantity`.
-- Hiển thị tỷ lệ lấp đầy tổng thể và tiến độ bán vé theo từng concert.
-- Nếu một request ticket types lỗi, dashboard vẫn hiển thị các concert còn lại và cảnh báo số concert không tải được hạng vé.
-- Hiển thị danh sách sự kiện gần đây.
-- Có quick actions sang trang quản lý concert.
+- Gọi `GET /statistics/overview` để hiển thị tổng concert, concert `active`, concert `draft`, tổng vé phát hành, vé đã bán/giữ, tỷ lệ lấp đầy, tổng doanh thu và check-in.
+- Gọi `GET /statistics/revenue?period=day` để hiển thị xu hướng doanh thu gần đây.
+- Gọi `GET /concerts?page=1&limit=100` để lấy danh sách sự kiện gần đây.
+- Gọi `GET /statistics/concerts/:id` cho từng concert cần hiển thị tiến độ bán vé và doanh thu theo concert.
+- Nếu một request thống kê chi tiết concert lỗi, dashboard vẫn hiển thị các dữ liệu còn lại và cảnh báo số concert không tải được thống kê.
+- Frontend không gọi endpoint cũ `GET /admin/dashboard/statistics`.
 
 ### 2.2. Concert Management
 
@@ -131,12 +129,12 @@ Notification bell trong admin topbar:
 
 **Options:**
 
-- Option A: Dùng Chart.js với endpoint thống kê doanh thu riêng.
-- Option B: Tổng hợp dashboard từ `/concerts` và `/concerts/:id/ticket-types` cho phase hiện tại.
+- Option A: Dùng module Statistics của backend: overview, revenue time series và per-concert statistics.
+- Option B: Tự tổng hợp dashboard từ `/concerts` và `/concerts/:id/ticket-types`.
 
-**Decision:** Chọn Option B trong code hiện tại.
+**Decision:** Chọn Option A.
 
-**Lý do:** Backend chưa expose `GET /admin/dashboard/statistics`. Dashboard tránh mock doanh thu, nhưng vẫn cung cấp chỉ số vận hành thật về tổng vé, vé đã bán/giữ và tỷ lệ lấp đầy từ các ticket type hiện có.
+**Lý do:** Backend đã expose `GET /statistics/overview`, `GET /statistics/revenue` và `GET /statistics/concerts/:id`. Frontend nên dùng contract thật này để hiển thị doanh thu/check-in và giảm logic tổng hợp thủ công ở client.
 
 ---
 
@@ -148,6 +146,13 @@ Notification bell trong admin topbar:
 - `POST /auth/refresh`
 - `POST /auth/logout`
 - `GET /auth/me`
+
+### Statistics
+
+- `GET /statistics/overview`
+- `GET /statistics/revenue?period=&from=&to=`
+- `GET /statistics/concerts/:id`
+- `GET /statistics/concerts/:id/revenue?period=&from=&to=`
 
 ### Concerts
 
