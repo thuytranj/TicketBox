@@ -37,6 +37,9 @@ interface StatisticsOverview {
   tickets: {
     totalIssued: number;
     totalSold: number;
+    paidTickets?: number;
+    reservedTickets?: number;
+    availableTickets?: number;
     fillRate: number;
   };
   checkins: {
@@ -75,6 +78,8 @@ interface ConcertStatistics {
     totalQuantity: number;
     availableQuantity: number;
     soldQuantity: number;
+    paidQuantity?: number;
+    reservedQuantity?: number;
     revenue: number;
   }>;
   checkins: {
@@ -90,6 +95,7 @@ interface ConcertSalesSummary {
   totalTickets: number;
   availableTickets: number;
   soldTickets: number;
+  reservedTickets: number;
   fillRate: number;
   revenue: number;
   failed: boolean;
@@ -99,7 +105,7 @@ const emptyOverview: StatisticsOverview = {
   concerts: { total: 0, active: 0, draft: 0, cancelled: 0 },
   orders: { total: 0, paid: 0, pending: 0, expired: 0, cancelled: 0 },
   revenue: { totalRevenue: 0, averageOrderValue: 0 },
-  tickets: { totalIssued: 0, totalSold: 0, fillRate: 0 },
+  tickets: { totalIssued: 0, totalSold: 0, paidTickets: 0, reservedTickets: 0, availableTickets: 0, fillRate: 0 },
   checkins: { totalCheckins: 0, checkinRate: 0 },
 };
 
@@ -113,8 +119,12 @@ const formatDateLabel = (date: string) =>
 
 const buildSummaryFromStats = (stats: ConcertStatistics): ConcertSalesSummary => {
   const totalTickets = stats.ticketTypes.reduce((sum, ticketType) => sum + ticketType.totalQuantity, 0);
-  const availableTickets = stats.ticketTypes.reduce((sum, ticketType) => sum + ticketType.availableQuantity, 0);
-  const soldTickets = stats.ticketTypes.reduce((sum, ticketType) => sum + ticketType.soldQuantity, 0);
+  const soldTickets = stats.ticketTypes.reduce(
+    (sum, ticketType) => sum + (ticketType.paidQuantity ?? ticketType.soldQuantity),
+    0
+  );
+  const reservedTickets = stats.ticketTypes.reduce((sum, ticketType) => sum + (ticketType.reservedQuantity ?? 0), 0);
+  const availableTickets = Math.max(totalTickets - soldTickets - reservedTickets, 0);
 
   return {
     concertId: stats.concert.id,
@@ -122,6 +132,7 @@ const buildSummaryFromStats = (stats: ConcertStatistics): ConcertSalesSummary =>
     totalTickets,
     availableTickets,
     soldTickets,
+    reservedTickets,
     fillRate: totalTickets > 0 ? Math.round((soldTickets / totalTickets) * 100) : 0,
     revenue: stats.revenue.totalRevenue,
     failed: false,
@@ -168,6 +179,7 @@ export const AdminDashboard: React.FC = () => {
             totalTickets: 0,
             availableTickets: 0,
             soldTickets: 0,
+            reservedTickets: 0,
             fillRate: 0,
             revenue: 0,
             failed: true,
@@ -190,13 +202,15 @@ export const AdminDashboard: React.FC = () => {
   const salesProgress = [...salesSummaries].sort((a, b) => b.soldTickets - a.soldTickets).slice(0, 5);
   const revenuePoints = useMemo(() => revenueSeries?.data.slice(-8) || [], [revenueSeries]);
   const maxRevenue = revenuePoints.reduce((max, point) => Math.max(max, point.revenue), 0);
+  const paidTicketCount = overview.tickets.paidTickets ?? overview.tickets.totalSold;
+  const reservedTicketCount = overview.tickets.reservedTickets ?? 0;
 
   return (
     <div className="container">
       <header className="section-heading">
         <div>
           <h1>Dashboard</h1>
-          <p>Theo dõi nhanh tình trạng sự kiện, doanh thu, lượng vé đã bán và check-in từ Statistics API.</p>
+          <p>Theo dõi nhanh tình trạng sự kiện, doanh thu, lượng vé đã thanh toán và lượt check-in.</p>
         </div>
       </header>
 
@@ -219,19 +233,19 @@ export const AdminDashboard: React.FC = () => {
 
             <div className="card metric-card">
               <div className="metric-label">
-                <span>Đang bán</span>
+                <span>Sự kiện đang mở bán</span>
                 <Calendar size={20} style={{ color: 'var(--success)' }} />
               </div>
               <strong className="metric-value">{overview.concerts.active}</strong>
             </div>
 
-            <div className="card metric-card">
+            <Link to="/admin/concerts?status=draft" className="card metric-card" style={{ textDecoration: 'none' }}>
               <div className="metric-label">
                 <span>Bản nháp</span>
                 <Calendar size={20} style={{ color: 'var(--warning)' }} />
               </div>
               <strong className="metric-value">{overview.concerts.draft}</strong>
-            </div>
+            </Link>
 
             <div className="card metric-card">
               <div className="metric-label">
@@ -243,15 +257,23 @@ export const AdminDashboard: React.FC = () => {
 
             <div className="card metric-card">
               <div className="metric-label">
-                <span>Đã bán/giữ</span>
+                <span>Vé đã thanh toán</span>
                 <Ticket size={20} style={{ color: 'var(--success)' }} />
               </div>
-              <strong className="metric-value">{overview.tickets.totalSold}</strong>
+              <strong className="metric-value">{paidTicketCount}</strong>
             </div>
 
             <div className="card metric-card">
               <div className="metric-label">
-                <span>Tỷ lệ lấp đầy</span>
+                <span>Vé đang giữ</span>
+                <Ticket size={20} style={{ color: 'var(--warning)' }} />
+              </div>
+              <strong className="metric-value">{reservedTicketCount}</strong>
+            </div>
+
+            <div className="card metric-card">
+              <div className="metric-label">
+                <span>Tỷ lệ bán vé</span>
                 <TrendingUp size={20} style={{ color: 'var(--accent)' }} />
               </div>
               <strong className="metric-value">{overview.tickets.fillRate}%</strong>
@@ -271,14 +293,14 @@ export const AdminDashboard: React.FC = () => {
                 <Users size={20} style={{ color: 'var(--primary)' }} />
               </div>
               <strong className="metric-value">{overview.checkins.totalCheckins}</strong>
-              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{overview.checkins.checkinRate}% vé đã bán</span>
+              <span className="metric-subtext">Tỷ lệ check-in: {overview.checkins.checkinRate}%</span>
             </div>
           </div>
 
           {statsFailures > 0 && (
             <div className="alert alert-warning dashboard-warning">
               <AlertTriangle size={18} />
-              <span>{`Không tải được thống kê chi tiết của ${statsFailures} concert.`}</span>
+              <span>{`Không tải được thống kê chi tiết của ${statsFailures} sự kiện.`}</span>
             </div>
           )}
 
@@ -288,7 +310,7 @@ export const AdminDashboard: React.FC = () => {
                 <h3 className="panel-title">Thao tác nhanh</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <Link to="/admin/concerts" className="btn btn-primary" style={{ justifyContent: 'space-between' }}>
-                    <span>Tạo concert</span>
+                    <span>Tạo sự kiện</span>
                     <Plus size={18} />
                   </Link>
                   <Link to="/admin/concerts" className="btn btn-outline" style={{ justifyContent: 'space-between' }}>
@@ -371,7 +393,7 @@ export const AdminDashboard: React.FC = () => {
                 <h3 className="panel-title">Tiến độ bán vé</h3>
                 {salesProgress.length === 0 ? (
                   <div className="soft-panel">
-                    <p style={{ color: 'var(--text-muted)', margin: 0 }}>Chưa có dữ liệu thống kê concert.</p>
+                    <p style={{ color: 'var(--text-muted)', margin: 0 }}>Chưa có dữ liệu thống kê sự kiện.</p>
                   </div>
                 ) : (
                   <div className="dashboard-progress-list">
@@ -386,8 +408,9 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                         <div className="dashboard-progress-meta">
                           <span>
-                            {summary.soldTickets} / {summary.totalTickets} vé
+                            {summary.soldTickets} / {summary.totalTickets} vé đã thanh toán
                           </span>
+                          <span>{summary.reservedTickets} vé đang giữ</span>
                           <span>Còn lại {summary.availableTickets}</span>
                           <span>{formatVnd(summary.revenue)}</span>
                         </div>

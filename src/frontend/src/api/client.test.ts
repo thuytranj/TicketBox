@@ -102,4 +102,25 @@ describe('ApiClient', () => {
 
     window.removeEventListener('auth-logout', logoutListener);
   });
+
+  it('does not replace login errors with session expired', async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce({
+      status: 401,
+      ok: false,
+      json: async () => ({ statusCode: 401, message: 'Email hoặc mật khẩu không đúng' }),
+    });
+    global.fetch = mockFetch;
+
+    await expect(
+      apiClient.request('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email: 'user@example.com', password: 'wrong-password' }),
+      })
+    ).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Email hoặc mật khẩu không đúng',
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
 });

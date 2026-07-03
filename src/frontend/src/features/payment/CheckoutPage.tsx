@@ -11,21 +11,82 @@ interface CircuitBreakerStatus {
 interface BookingData {
   id: string;
   totalAmount: number;
-  createdAt: string;
+  createdAt?: string;
+  expiresAt?: string;
   status: string;
 }
 
+const HOLD_DURATION_MS = 10 * 60 * 1000;
+
+const parseDateMs = (value?: string) => {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const getHoldExpiryMs = (booking: BookingData) => {
+  const explicitExpiryMs = parseDateMs(booking.expiresAt);
+  if (explicitExpiryMs !== null) return explicitExpiryMs;
+
+  const createdAtMs = parseDateMs(booking.createdAt);
+  if (createdAtMs !== null) return createdAtMs + HOLD_DURATION_MS;
+
+  return null;
+};
+
+const normalizeErrorMessage = (message: string) =>
+  message
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Ä‘/g, 'd');
+
+const extractErrorMessage = (err: unknown) => {
+  if (err instanceof Error) return err.message;
+
+  if (err && typeof err === 'object' && 'message' in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === 'string') return message;
+  }
+
+  return '';
+};
+
+const getPaymentInitErrorMessage = (gateway: 'momo' | 'vnpay', err: unknown) => {
+  const rawMessage = extractErrorMessage(err);
+  const normalized = normalizeErrorMessage(rawMessage);
+  const gatewayName = gateway === 'momo' ? 'MoMo' : 'VNPAY';
+  const alternateGateway = gateway === 'momo' ? 'VNPAY' : 'MoMo';
+
+  if (
+    normalized.includes('payment failed') ||
+    normalized.includes('service unavailable') ||
+    normalized.includes('circuit') ||
+    normalized.includes('don hang da bi huy') ||
+    normalized.includes('order has been cancelled') ||
+    normalized.includes('cancelled')
+  ) {
+    return `${gatewayName} chưa thể tạo giao dịch mới cho đơn này. Vui lòng thử ${alternateGateway} hoặc quay lại chọn vé mới.`;
+  }
+
+  if (normalized.includes('not in pending') || normalized.includes('expired')) {
+    return 'Đơn đặt vé không còn ở trạng thái chờ thanh toán. Vui lòng quay lại chọn vé mới.';
+  }
+
+  return rawMessage || `Không thể khởi tạo thanh toán qua ${gatewayName}. Vui lòng thử phương thức khác.`;
+};
+
 export const CheckoutPage: React.FC = () => {
   const { orderId } = useParams<{ orderId: string }>();
-  
+
   const [booking, setBooking] = useState<BookingData | null>(null);
   const [cbStatus, setCbStatus] = useState<CircuitBreakerStatus>({ momo: 'CLOSED', vnpay: 'CLOSED' });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  
-  // Hold countdown timer states
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [holdExpiresAtMs, setHoldExpiresAtMs] = useState<number | null>(null);
   const [isExpired, setIsExpired] = useState(false);
 
   useEffect(() => {
@@ -33,27 +94,41 @@ export const CheckoutPage: React.FC = () => {
       try {
         const [bookingRes, cbRes] = await Promise.all([
           apiClient.request<BookingData>(`/bookings/${orderId}`),
-          apiClient.request<CircuitBreakerStatus>('/payments/circuit-breaker/status').catch((): CircuitBreakerStatus => ({ momo: 'CLOSED', vnpay: 'CLOSED' })),
+          apiClient
+            .request<CircuitBreakerStatus>('/payments/circuit-breaker/status')
+            .catch((): CircuitBreakerStatus => ({ momo: 'CLOSED', vnpay: 'CLOSED' })),
         ]);
 
         setBooking(bookingRes);
         setCbStatus(cbRes);
-        
-        // If booking is already expired/cancelled/paid, mark appropriate flags
+
         if (bookingRes.status === 'expired' || bookingRes.status === 'cancelled') {
           setIsExpired(true);
           setTimeLeft(0);
-        } else {
-          // Calculate remaining seconds
-          const expiresTime = new Date(bookingRes.createdAt).getTime() + 10 * 60 * 1000;
-          const initialTimeLeft = Math.max(0, Math.floor((expiresTime - Date.now()) / 1000));
-          setTimeLeft(initialTimeLeft);
-          if (initialTimeLeft === 0) {
-            setIsExpired(true);
-          }
+          setHoldExpiresAtMs(null);
+          return;
         }
+
+        const expiresTime = getHoldExpiryMs(bookingRes);
+        if (expiresTime === null) {
+          setIsExpired(true);
+          setTimeLeft(0);
+          setHoldExpiresAtMs(null);
+          setError('Không xác định được thời gian giữ vé. Vui lòng quay lại chọn vé mới.');
+          return;
+        }
+
+        const secondsRemaining = Math.max(0, Math.floor((expiresTime - Date.now()) / 1000));
+        setHoldExpiresAtMs(expiresTime);
+        setTimeLeft(secondsRemaining);
+        if (secondsRemaining <= 0) {
+          setIsExpired(true);
+          return;
+        }
+
+        setIsExpired(false);
       } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : 'Failed to load checkout details';
+        const errMsg = err instanceof Error ? err.message : 'Không tải được thông tin thanh toán.';
         setError(errMsg);
       } finally {
         setLoading(false);
@@ -63,29 +138,29 @@ export const CheckoutPage: React.FC = () => {
     loadCheckoutData();
   }, [orderId]);
 
-  // Timer countdown loop
   useEffect(() => {
-    if (timeLeft === null || timeLeft <= 0 || isExpired || !booking) return;
+    if (holdExpiresAtMs === null || isExpired || !booking) return;
 
-    const interval = setInterval(() => {
-      const expiresTime = new Date(booking.createdAt).getTime() + 10 * 60 * 1000;
-      const secondsRemaining = Math.max(0, Math.floor((expiresTime - Date.now()) / 1000));
-      
+    const updateRemainingTime = () => {
+      const secondsRemaining = Math.max(0, Math.floor((holdExpiresAtMs - Date.now()) / 1000));
       setTimeLeft(secondsRemaining);
-      
+
       if (secondsRemaining <= 0) {
         setIsExpired(true);
-        clearInterval(interval);
       }
-    }, 1000);
+    };
+
+    updateRemainingTime();
+    const interval = setInterval(updateRemainingTime, 1000);
 
     return () => clearInterval(interval);
-  }, [booking, timeLeft, isExpired]);
+  }, [booking, holdExpiresAtMs, isExpired]);
 
   const handlePayment = async (gateway: 'momo' | 'vnpay') => {
     if (isExpired) return;
     setSubmitting(true);
     setError('');
+
     try {
       const idempotencyKey = crypto.randomUUID();
       const response = await apiClient.request<{ payUrl: string }>(`/payments/${gateway}`, {
@@ -94,19 +169,18 @@ export const CheckoutPage: React.FC = () => {
           'idempotency-key': idempotencyKey,
         },
         body: JSON.stringify({
-          orderId: orderId,
-          orderInfo: `Pay for TicketBox booking ${orderId}`,
+          orderId,
+          orderInfo: `Thanh toán đơn TicketBox ${orderId}`,
         }),
       });
 
       if (response.payUrl) {
         window.location.href = response.payUrl;
       } else {
-        throw new Error('No redirect URL returned by gateway');
+        throw new Error('Cổng thanh toán chưa trả về liên kết thanh toán.');
       }
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : 'Payment initiation failed. Please try another method.';
-      setError(errMsg);
+      setError(getPaymentInitErrorMessage(gateway, err));
       setSubmitting(false);
     }
   };
@@ -128,8 +202,7 @@ export const CheckoutPage: React.FC = () => {
   }
 
   const allGatewaysOffline = cbStatus.momo === 'OPEN' && cbStatus.vnpay === 'OPEN';
-  
-  // Format MM:SS
+
   const formatTimeLeft = (totalSeconds: number | null) => {
     if (totalSeconds === null) return '--:--';
     const minutes = Math.floor(totalSeconds / 60);
@@ -148,36 +221,36 @@ export const CheckoutPage: React.FC = () => {
       {isExpired && (
         <div className="alert alert-danger" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <AlertTriangle size={20} />
-          <span>Thời gian giữ vé đã hết hạn. Vui lòng quay lại chọn vé mới. / Your ticket hold reservation has expired. Please select new tickets.</span>
+          <span>Thời gian giữ vé đã hết hạn. Vui lòng quay lại chọn vé mới.</span>
         </div>
       )}
 
       <div className="card">
         <div className="card-body">
           <h1 style={{ fontSize: '2rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Ticket size={28} style={{ color: 'var(--accent)' }} /> Checkout
+            <Ticket size={28} style={{ color: 'var(--accent)' }} /> Thanh toán
           </h1>
           <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>
-            Complete payment to confirm your booking. Your reservation will expire in 10 minutes.
+            Hoàn tất thanh toán để xác nhận vé. Thời gian giữ vé tối đa là 10 phút.
           </p>
 
           {booking && (
             <div className="checkout-summary">
               <div className="summary-row">
-                <span>Booking ID</span>
+                <span>Mã đặt vé</span>
                 <strong style={{ color: 'var(--text-strong)' }}>{booking.id}</strong>
               </div>
               <div className="summary-row">
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <Clock size={16} />
-                  Remaining Time
+                  Thời gian còn lại
                 </span>
                 <strong style={{ color: isExpired ? 'var(--danger)' : 'var(--accent)', fontSize: '1.25rem' }}>
                   {formatTimeLeft(timeLeft)}
                 </strong>
               </div>
               <div className="summary-row summary-total">
-                <span style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-strong)' }}>Amount Due</span>
+                <span style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-strong)' }}>Số tiền cần thanh toán</span>
                 <strong>{booking.totalAmount.toLocaleString()} VND</strong>
               </div>
             </div>
@@ -191,11 +264,11 @@ export const CheckoutPage: React.FC = () => {
               style={{
                 backgroundColor: (cbStatus.momo === 'OPEN' || isExpired) ? 'var(--border)' : '#A50064',
                 minHeight: 56,
-                cursor: isExpired ? 'not-allowed' : 'pointer'
+                cursor: isExpired ? 'not-allowed' : 'pointer',
               }}
             >
               <CreditCard size={18} />
-              Pay with MoMo {cbStatus.momo === 'OPEN' ? '(Maintenance)' : ''}
+              Thanh toán bằng MoMo {cbStatus.momo === 'OPEN' ? '(Bảo trì)' : ''}
             </button>
 
             <button
@@ -205,19 +278,19 @@ export const CheckoutPage: React.FC = () => {
               style={{
                 backgroundColor: (cbStatus.vnpay === 'OPEN' || isExpired) ? 'var(--border)' : '#005BAA',
                 minHeight: 56,
-                cursor: isExpired ? 'not-allowed' : 'pointer'
+                cursor: isExpired ? 'not-allowed' : 'pointer',
               }}
             >
               <CreditCard size={18} />
-              Pay with VNPAY {cbStatus.vnpay === 'OPEN' ? '(Maintenance)' : ''}
+              Thanh toán bằng VNPAY {cbStatus.vnpay === 'OPEN' ? '(Bảo trì)' : ''}
             </button>
           </div>
 
           {allGatewaysOffline && (
             <div className="alert alert-warning" style={{ marginTop: '2rem', textAlign: 'center', marginBottom: 0, borderLeft: '4px solid var(--warning)' }}>
-              <strong>Cổng thanh toán trực tuyến bảo trì / Payment Gateways Offline</strong>
+              <strong>Cổng thanh toán trực tuyến đang bảo trì</strong>
               <p style={{ margin: '8px 0 0 0', fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-                Hệ thống thanh toán trực tuyến hiện đang bảo trì. Vé của bạn đã được giữ tạm thời. Vui lòng liên hệ bộ phận CSKH hoặc Ban tổ chức để hoàn tất thanh toán thủ công hoặc thử lại sau.
+                Hệ thống thanh toán trực tuyến hiện đang bảo trì. Vé của bạn đang được giữ tạm thời. Vui lòng liên hệ bộ phận hỗ trợ hoặc Ban tổ chức để hoàn tất thanh toán thủ công, hoặc thử lại sau.
               </p>
             </div>
           )}

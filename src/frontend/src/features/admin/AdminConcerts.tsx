@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiClient } from '../../api/client';
 import type { Concert } from '../concerts/ConcertList';
 import { Plus, Edit2, Trash2, Users, FileText } from 'lucide-react';
@@ -29,11 +29,15 @@ interface FormTicketType {
 
 export const AdminConcerts: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialStatus = searchParams.get('status');
   const [concerts, setConcerts] = useState<Concert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | ConcertStatus>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | ConcertStatus>(
+    initialStatus === 'active' || initialStatus === 'draft' || initialStatus === 'cancelled' ? initialStatus : 'all'
+  );
 
   // Form states
   const [showForm, setShowForm] = useState(false);
@@ -72,8 +76,24 @@ export const AdminConcerts: React.FC = () => {
   const fetchConcerts = async () => {
     setLoading(true);
     try {
-      const response = await apiClient.request<{ concerts: Concert[] }>('/concerts?page=1&limit=100');
-      setConcerts(response?.concerts || []);
+      const statuses: ConcertStatus[] = ['active', 'draft', 'cancelled'];
+      const responses = await Promise.all(
+        statuses.map((concertStatus) =>
+          apiClient
+            .request<{ concerts: Concert[] }>(`/concerts?status=${concertStatus}&page=1&limit=100`)
+            .catch(() => ({ concerts: [] }))
+        )
+      );
+      let loadedConcerts = responses.flatMap((response) => response?.concerts || []);
+
+      if (loadedConcerts.length === 0) {
+        const fallback = await apiClient.request<{ concerts: Concert[] }>('/concerts?page=1&limit=100');
+        loadedConcerts = fallback?.concerts || [];
+      }
+
+      const uniqueConcerts = Array.from(new Map(loadedConcerts.map((concert) => [concert.id, concert])).values());
+      uniqueConcerts.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+      setConcerts(uniqueConcerts);
     } catch (err: any) {
       setError(err.message || 'Không tải được danh sách sự kiện');
     } finally {
@@ -206,23 +226,23 @@ export const AdminConcerts: React.FC = () => {
           method: 'PATCH',
           body: JSON.stringify(bodyData),
         });
-        setSuccess('Đã cập nhật concert.');
+        setSuccess('Đã cập nhật sự kiện.');
       } else {
         await apiClient.request('/concerts', {
           method: 'POST',
           body: JSON.stringify(bodyData),
         });
-        setSuccess('Đã tạo concert.');
+        setSuccess('Đã tạo sự kiện.');
       }
       setShowForm(false);
       fetchConcerts();
     } catch (err: any) {
-      setError(err.message || 'Không lưu được concert');
+      setError(err.message || 'Không lưu được sự kiện');
     }
   };
 
   const handleDeleteConcert = async (concertId: string) => {
-    if (!window.confirm('Bạn chắc chắn muốn xóa concert này?')) return;
+    if (!window.confirm('Bạn chắc chắn muốn xóa sự kiện này?')) return;
     setError('');
     setSuccess('');
 
@@ -230,12 +250,12 @@ export const AdminConcerts: React.FC = () => {
       await apiClient.request(`/concerts/${concertId}`, {
         method: 'DELETE',
       });
-      setSuccess('Đã xóa concert.');
+      setSuccess('Đã xóa sự kiện.');
       fetchConcerts();
     } catch (err: any) {
       setError(
         err.message ||
-          'Không thể xóa concert. Nếu đã có booking, hãy cân nhắc chuyển trạng thái sang cancelled.'
+          'Không thể xóa sự kiện. Nếu đã có đơn đặt vé, hãy cân nhắc chuyển trạng thái sang đã hủy.'
       );
     }
   };
@@ -385,12 +405,12 @@ export const AdminConcerts: React.FC = () => {
     <div className="container">
       <header className="section-heading">
         <div>
-          <h1>Concerts</h1>
+          <h1>Sự kiện</h1>
           <p>Quản lý sự kiện, hạng vé, poster và khách mời trong một nơi.</p>
         </div>
         {!showForm && (
           <button className="btn btn-primary" onClick={handleOpenCreate}>
-            <Plus size={18} style={{ marginRight: '0.5rem' }} /> Tạo concert
+            <Plus size={18} style={{ marginRight: '0.5rem' }} /> Tạo sự kiện
           </button>
         )}
       </header>
@@ -402,13 +422,13 @@ export const AdminConcerts: React.FC = () => {
         <div className="card" style={{ marginBottom: '3rem' }}>
           <div className="card-body">
             <h2 style={{ fontSize: '1.5rem', marginBottom: '2rem' }}>
-              {editingConcertId ? 'Chỉnh sửa concert' : 'Tạo concert mới'}
+              {editingConcertId ? 'Chỉnh sửa sự kiện' : 'Tạo sự kiện mới'}
             </h2>
             
             <form onSubmit={handleSubmitConcert} className="admin-form-grid">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                 <div className="form-group">
-                  <label htmlFor="concert-title" className="form-label">Tên concert</label>
+                  <label htmlFor="concert-title" className="form-label">Tên sự kiện</label>
                   <input
                     id="concert-title"
                     type="text"
@@ -546,7 +566,7 @@ export const AdminConcerts: React.FC = () => {
                     Hủy
                   </button>
                   <button type="submit" className="btn btn-primary" disabled={uploadingPoster}>
-                    Lưu concert
+                    Lưu sự kiện
                   </button>
                 </div>
               </div>
@@ -702,7 +722,15 @@ export const AdminConcerts: React.FC = () => {
                 id="concert-status-filter"
                 className="form-control"
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as 'all' | ConcertStatus)}
+                onChange={(e) => {
+                  const nextStatus = e.target.value as 'all' | ConcertStatus;
+                  setStatusFilter(nextStatus);
+                  if (nextStatus === 'all') {
+                    setSearchParams({});
+                  } else {
+                    setSearchParams({ status: nextStatus });
+                  }
+                }}
               >
                 <option value="all">Tất cả</option>
                 <option value="active">Đang bán</option>
@@ -720,7 +748,7 @@ export const AdminConcerts: React.FC = () => {
             <div className="empty-state">
               <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '1.1rem' }}>Chưa có concert nào.</p>
               <button className="btn btn-primary" onClick={handleOpenCreate}>
-                Tạo concert đầu tiên
+                Tạo sự kiện đầu tiên
               </button>
             </div>
           ) : filteredConcerts.length === 0 ? (
@@ -786,7 +814,7 @@ export const AdminConcerts: React.FC = () => {
                           className="btn btn-outline"
                           style={{ padding: '0.5rem' }}
                           onClick={() => handleOpenEdit(concert)}
-                          aria-label={`Chỉnh sửa concert ${concert.title}`}
+                          aria-label={`Chỉnh sửa sự kiện ${concert.title}`}
                         >
                           <Edit2 size={16} />
                         </button>

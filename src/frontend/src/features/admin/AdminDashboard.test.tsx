@@ -32,6 +32,9 @@ const overview = {
   tickets: {
     totalIssued: 700,
     totalSold: 175,
+    paidTickets: 175,
+    reservedTickets: 10,
+    availableTickets: 515,
     fillRate: 25,
   },
   checkins: {
@@ -85,8 +88,26 @@ const concertOneStats = {
     paidOrderCount: 70,
   },
   ticketTypes: [
-    { name: 'SVIP', price: 3000000, totalQuantity: 100, availableQuantity: 25, soldQuantity: 75, revenue: 225000000 },
-    { name: 'GA', price: 800000, totalQuantity: 400, availableQuantity: 300, soldQuantity: 100, revenue: 80000000 },
+    {
+      name: 'SVIP',
+      price: 3000000,
+      totalQuantity: 100,
+      availableQuantity: 100,
+      soldQuantity: 70,
+      paidQuantity: 70,
+      reservedQuantity: 5,
+      revenue: 210000000,
+    },
+    {
+      name: 'GA',
+      price: 800000,
+      totalQuantity: 400,
+      availableQuantity: 400,
+      soldQuantity: 100,
+      paidQuantity: 100,
+      reservedQuantity: 0,
+      revenue: 80000000,
+    },
   ],
   checkins: {
     ticketCheckins: 60,
@@ -107,7 +128,16 @@ const concertTwoStats = {
     paidOrderCount: 0,
   },
   ticketTypes: [
-    { name: 'VIP', price: 2000000, totalQuantity: 200, availableQuantity: 200, soldQuantity: 0, revenue: 0 },
+    {
+      name: 'VIP',
+      price: 2000000,
+      totalQuantity: 200,
+      availableQuantity: 200,
+      soldQuantity: 0,
+      paidQuantity: 0,
+      reservedQuantity: 0,
+      revenue: 0,
+    },
   ],
   checkins: {
     ticketCheckins: 0,
@@ -149,11 +179,13 @@ describe('AdminDashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('Dashboard')).toBeInTheDocument();
       expect(screen.getByText('Tổng sự kiện')).toBeInTheDocument();
-      expect(screen.getByText('Đang bán')).toBeInTheDocument();
+      expect(screen.getByText('Sự kiện đang mở bán')).toBeInTheDocument();
       expect(screen.getByText('Bản nháp')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Bản nháp/i })).toHaveAttribute('href', '/admin/concerts?status=draft');
       expect(screen.getByText('Tổng vé phát hành')).toBeInTheDocument();
-      expect(screen.getByText('Đã bán/giữ')).toBeInTheDocument();
-      expect(screen.getByText('Tỷ lệ lấp đầy')).toBeInTheDocument();
+      expect(screen.getByText('Vé đã thanh toán')).toBeInTheDocument();
+      expect(screen.getByText('Vé đang giữ')).toBeInTheDocument();
+      expect(screen.getByText('Tỷ lệ bán vé')).toBeInTheDocument();
       expect(screen.getByText('Doanh thu')).toBeInTheDocument();
       expect(screen.getByText('Check-in')).toBeInTheDocument();
       expect(screen.getByText('3')).toBeInTheDocument();
@@ -183,10 +215,11 @@ describe('AdminDashboard', () => {
       expect(screen.getByText('Sự kiện gần đây')).toBeInTheDocument();
       expect(screen.getAllByText('Em Xinh Say Hi').length).toBeGreaterThan(0);
       expect(screen.getByText('Tiến độ bán vé')).toBeInTheDocument();
-      expect(screen.getByText('175 / 500 vé')).toBeInTheDocument();
+      expect(screen.getByText('170 / 500 vé đã thanh toán')).toBeInTheDocument();
+      expect(screen.getByText('5 vé đang giữ')).toBeInTheDocument();
       expect(screen.getByText('Còn lại 325')).toBeInTheDocument();
       expect(screen.getByText('210.000.000 VND')).toBeInTheDocument();
-      expect(screen.getByText('35%')).toBeInTheDocument();
+      expect(screen.getByText('34%')).toBeInTheDocument();
     });
   });
 
@@ -244,8 +277,9 @@ describe('AdminDashboard', () => {
     await waitFor(() => {
       expect(screen.getAllByText('Em Xinh Say Hi').length).toBeGreaterThan(0);
       expect(screen.getAllByText('Chi Dep Dap Gio').length).toBeGreaterThan(0);
-      expect(screen.getByText('Không tải được thống kê chi tiết của 1 concert.')).toBeInTheDocument();
-      expect(screen.getByText('175 / 500 vé')).toBeInTheDocument();
+      expect(screen.getByText('Không tải được thống kê chi tiết của 1 sự kiện.')).toBeInTheDocument();
+      expect(screen.getByText('170 / 500 vé đã thanh toán')).toBeInTheDocument();
+      expect(screen.getByText('5 vé đang giữ')).toBeInTheDocument();
       expect(screen.getByText('Lỗi dữ liệu')).toBeInTheDocument();
     });
   });

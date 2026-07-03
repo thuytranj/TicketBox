@@ -59,7 +59,7 @@ describe('AdminConcerts', () => {
 
     await waitFor(() => {
       expect(mockConfirm).toHaveBeenCalled();
-      expect(screen.getByText('Đã xóa concert.')).toBeInTheDocument();
+      expect(screen.getByText('Đã xóa sự kiện.')).toBeInTheDocument();
     });
   });
 
@@ -92,13 +92,13 @@ describe('AdminConcerts', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Tạo concert')).toBeInTheDocument();
+      expect(screen.getByText('Tạo sự kiện')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Tạo concert'));
-    expect(screen.getByText('Tạo concert mới')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Tạo sự kiện'));
+    expect(screen.getByText('Tạo sự kiện mới')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText(/Tên concert/i), { target: { value: 'New Show' } });
+    fireEvent.change(screen.getByLabelText(/Tên sự kiện/i), { target: { value: 'New Show' } });
     fireEvent.change(screen.getByLabelText(/Địa điểm/i), { target: { value: 'Stadium' } });
     fireEvent.change(screen.getByLabelText(/Mô tả/i), { target: { value: 'Great show.' } });
     fireEvent.change(screen.getByLabelText(/Thời gian bắt đầu/i), { target: { value: '2026-07-01T18:00' } });
@@ -107,7 +107,7 @@ describe('AdminConcerts', () => {
     fireEvent.change(screen.getByLabelText(/Số lượng/i), { target: { value: '80' } });
     fireEvent.click(screen.getByRole('button', { name: /^Thêm$/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /Lưu concert/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Lưu sự kiện/i }));
 
     await waitFor(() => {
       const createCall = vi.mocked(apiClient.request).mock.calls.find(([url, options]) => (
@@ -125,7 +125,7 @@ describe('AdminConcerts', () => {
           },
         ],
       });
-      expect(screen.getByText('Đã tạo concert.')).toBeInTheDocument();
+      expect(screen.getByText('Đã tạo sự kiện.')).toBeInTheDocument();
     });
   });
 
@@ -147,10 +147,10 @@ describe('AdminConcerts', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Tạo concert')).toBeInTheDocument();
+      expect(screen.getByText('Tạo sự kiện')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Tạo concert'));
+    fireEvent.click(screen.getByText('Tạo sự kiện'));
 
     const file = new File(['dummy content'], 'poster.png', { type: 'image/png' });
     const fileInput = screen.getByLabelText(/Poster sự kiện/i);
@@ -182,10 +182,10 @@ describe('AdminConcerts', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Tạo concert')).toBeInTheDocument();
+      expect(screen.getByText('Tạo sự kiện')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Tạo concert'));
+    fireEvent.click(screen.getByText('Tạo sự kiện'));
 
     const svgText = '<svg><g id="GA"></g></svg>';
     const svgFile = new File([svgText], 'map.svg', { type: 'image/svg+xml' });
@@ -250,6 +250,59 @@ describe('AdminConcerts', () => {
     expect(screen.getByText('Draft Show')).toBeInTheDocument();
   });
 
+  it('opens directly to the draft filter from the dashboard link', async () => {
+    vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
+      if (url === '/concerts?status=active&page=1&limit=100') {
+        return {
+          concerts: [
+            {
+              id: 'active-1',
+              title: 'Active Show',
+              description: 'Active desc',
+              location: 'Arena',
+              posterUrl: '',
+              startTime: '2026-07-01T18:00:00Z',
+              tags: [],
+              status: 'active',
+            },
+          ],
+        };
+      }
+      if (url === '/concerts?status=draft&page=1&limit=100') {
+        return {
+          concerts: [
+            {
+              id: 'draft-1',
+              title: 'Draft Show',
+              description: 'Draft desc',
+              location: 'Studio',
+              posterUrl: '',
+              startTime: '2026-08-01T18:00:00Z',
+              tags: [],
+              status: 'draft',
+            },
+          ],
+        };
+      }
+      if (url === '/concerts?status=cancelled&page=1&limit=100') {
+        return { concerts: [] };
+      }
+      return { concerts: [] };
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/admin/concerts?status=draft']}>
+        <AdminConcerts />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('Active Show')).not.toBeInTheDocument();
+      expect(screen.getByText('Draft Show')).toBeInTheDocument();
+      expect(screen.getByLabelText(/Lọc trạng thái/i)).toHaveValue('draft');
+    });
+  });
+
   it('updates an existing ticket type through PATCH', async () => {
     vi.spyOn(apiClient, 'request').mockImplementation(async (url, options) => {
       if (url === '/concerts?page=1&limit=100') {
@@ -299,7 +352,7 @@ describe('AdminConcerts', () => {
       expect(screen.getByText('Editable Show')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText('Chỉnh sửa concert Editable Show'));
+    fireEvent.click(screen.getByLabelText('Chỉnh sửa sự kiện Editable Show'));
 
     await waitFor(() => {
       expect(screen.getByText('GA')).toBeInTheDocument();
@@ -329,7 +382,7 @@ describe('AdminConcerts', () => {
   });
   it('loads the full admin concert list from the backend page size used for management views', async () => {
     vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
-      if (url === '/concerts?page=1&limit=100') {
+      if (url === '/concerts?status=active&page=1&limit=100') {
         return {
           concerts: [
             {
@@ -345,6 +398,25 @@ describe('AdminConcerts', () => {
           ],
         };
       }
+      if (url === '/concerts?status=draft&page=1&limit=100') {
+        return {
+          concerts: [
+            {
+              id: 'draft-1',
+              title: 'Draft List Show',
+              description: 'Draft description',
+              location: 'Studio',
+              posterUrl: '',
+              startTime: '2026-08-01T18:00:00Z',
+              tags: [],
+              status: 'draft',
+            },
+          ],
+        };
+      }
+      if (url === '/concerts?status=cancelled&page=1&limit=100') {
+        return { concerts: [] };
+      }
       return { concerts: [] };
     });
 
@@ -355,8 +427,11 @@ describe('AdminConcerts', () => {
     );
 
     await waitFor(() => {
-      expect(apiClient.request).toHaveBeenCalledWith('/concerts?page=1&limit=100');
+      expect(apiClient.request).toHaveBeenCalledWith('/concerts?status=active&page=1&limit=100');
+      expect(apiClient.request).toHaveBeenCalledWith('/concerts?status=draft&page=1&limit=100');
+      expect(apiClient.request).toHaveBeenCalledWith('/concerts?status=cancelled&page=1&limit=100');
       expect(screen.getByText('Full List Show')).toBeInTheDocument();
+      expect(screen.getByText('Draft List Show')).toBeInTheDocument();
     });
   });
 
@@ -369,7 +444,7 @@ describe('AdminConcerts', () => {
       </MemoryRouter>
     );
 
-    const createButton = await screen.findByRole('button', { name: /Tạo concert/i });
+    const createButton = await screen.findByRole('button', { name: /Tạo sự kiện/i });
     fireEvent.click(createButton);
     fireEvent.change(screen.getByLabelText(/Giá \(VND\)/i), { target: { value: '-1' } });
     fireEvent.change(screen.getByLabelText(/Số lượng/i), { target: { value: '0' } });

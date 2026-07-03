@@ -160,4 +160,54 @@ describe('ConcertDetail', () => {
     expect(screen.getByText('Tổng tiền')).toBeInTheDocument();
     expect(screen.getAllByText(/2[.,]000[.,]000 VND/).length).toBeGreaterThan(0);
   });
+
+  it('shows booking creation errors beside the booking controls', async () => {
+    localStorage.setItem('accessToken', 'token');
+    localStorage.setItem('refreshToken', 'refresh');
+
+    vi.spyOn(apiClient, 'request').mockImplementation(async (url, options) => {
+      if (url === '/auth/me') {
+        return { userId: 'u1', email: 'buyer@example.com', role: 'customer' };
+      }
+      if (url === '/concerts/c1') {
+        return {
+          id: 'c1',
+          title: 'Anh Trai Say Hi',
+          location: 'Van Phuc City',
+          startTime: '2026-06-30T19:30:00Z',
+          description: 'Concert event desc.',
+        };
+      }
+      if (url === '/concerts/c1/ticket-types') {
+        return [
+          { id: 't1', name: 'SVIP', price: 2000000, totalQuantity: 100, availableQuantity: 40, maxPerUser: 2 },
+        ];
+      }
+      if (url === '/concerts/c1/stagemap') {
+        return { svgStageMap: '' };
+      }
+      if (url === '/bookings' && options?.method === 'POST') {
+        throw new Error('Không thể tạo đơn đặt vé');
+      }
+      return {};
+    });
+
+    render(
+      <AuthProvider>
+        <MemoryRouter initialEntries={['/concerts/c1']}>
+          <Routes>
+            <Route path="/concerts/:id" element={<ConcertDetail />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>
+    );
+
+    fireEvent.click(await screen.findByText('SVIP'));
+    fireEvent.click(screen.getByRole('button', { name: /Đặt vé|Äáº·t vĂ©/i }));
+
+    const bookingPanel = screen.getByTestId('booking-panel');
+    await waitFor(() => {
+      expect(bookingPanel).toHaveTextContent('Không thể tạo đơn đặt vé');
+    });
+  });
 });
