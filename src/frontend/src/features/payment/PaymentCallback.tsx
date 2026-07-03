@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import * as QRCode from 'qrcode';
 import { apiClient } from '../../api/client';
 import { CheckCircle, XCircle, Clock, ArrowLeft, RefreshCw } from 'lucide-react';
 
@@ -13,7 +14,6 @@ interface TicketData {
   id: string;
   ticketTypeId: string;
   qrCodeHash: string | null;
-  qrCode?: string | null; // fallback for tests
   status: string;
   checkinStatus: string;
   ticketType?: TicketTypeData;
@@ -26,16 +26,114 @@ interface BookingDetails {
   tickets?: TicketData[];
 }
 
+interface PaymentStatusDetails {
+  orderId: string;
+  orderStatus: string;
+  payments: Array<{
+    id: string;
+    gateway: string;
+    status: string;
+    transactionId: string | null;
+    amount: number;
+    payUrl?: string | null;
+    createdAt: string;
+  }>;
+}
+
+type CallbackOutcome =
+  | { gateway: 'momo'; resultCode: number | null; message: string; isSuccess: boolean; isCancelled: boolean }
+  | null;
+
+const normalizeCallbackMessage = (message: string) =>
+  message
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd');
+
+const isCancellationMessage = (message: string) => {
+  const normalized = normalizeCallbackMessage(message);
+  return (
+    normalized.includes('huy') ||
+    normalized.includes('cancel') ||
+    normalized.includes('tu choi') ||
+    normalized.includes('rejected')
+  );
+};
+
+const TicketQrCode: React.FC<{ value: string }> = ({ value }) => {
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [qrError, setQrError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    setQrDataUrl('');
+    setQrError('');
+
+    QRCode.toDataURL(value, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 200,
+    })
+      .then((dataUrl) => {
+        if (active) {
+          setQrDataUrl(dataUrl);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setQrError('QR Code is unavailable.');
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [value]);
+
+  if (qrError) {
+    return (
+      <div style={{ padding: '2rem', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+        {qrError}
+      </div>
+    );
+  }
+
+  if (!qrDataUrl) {
+    return (
+      <div style={{ padding: '2rem', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+        QR Code is generating...
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={qrDataUrl}
+      alt="QR Code"
+      aria-label="QR Code"
+      width="200"
+      height="200"
+      style={{ display: 'block' }}
+    />
+  );
+};
+
 export const PaymentCallback: React.FC = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   
   const [booking, setBooking] = useState<BookingDetails | null>(null);
-  const [status, setStatus] = useState<'processing' | 'success' | 'failed' | 'timeout'>('processing');
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatusDetails | null>(null);
+  const [status, setStatus] = useState<'processing' | 'success' | 'failed' | 'cancelled' | 'timeout'>('processing');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [callbackMessage, setCallbackMessage] = useState('');
   
   const [retryTrigger, setRetryTrigger] = useState(0);
+  const forwardedGatewayCallbackRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -50,6 +148,9 @@ export const PaymentCallback: React.FC = () => {
         setBooking(response);
         
         if (response.status === 'paid') {
+          const paymentResponse = await apiClient.request<PaymentStatusDetails>(`/payments/${orderId}`);
+          if (!active) return true;
+          setPaymentStatus(paymentResponse);
           setStatus('success');
           setLoading(false);
           return true; // Stop polling
@@ -76,7 +177,68 @@ export const PaymentCallback: React.FC = () => {
       }
     };
 
+    const getMomoCallbackOutcome = (): CallbackOutcome => {
+      const routerSearch = location.search && location.search !== '?' ? location.search : '';
+      const search = (routerSearch || window.location.search).replace(/^\?/, '');
+      if (!search) return null;
+
+      const params = new URLSearchParams(search);
+      const partnerCode = params.get('partnerCode');
+      const momoOrderId = params.get('orderId');
+      const resultCodeRaw = params.get('resultCode');
+      const message = params.get('message') || '';
+
+      if (partnerCode !== 'MOMO' || momoOrderId !== orderId) {
+        return null;
+      }
+
+      const resultCode = resultCodeRaw === null ? null : Number(resultCodeRaw);
+      if (resultCodeRaw !== null && Number.isNaN(resultCode)) return null;
+
+      const messageLooksCancelled = isCancellationMessage(message);
+
+      return {
+        gateway: 'momo',
+        resultCode,
+        message,
+        isSuccess: resultCode === 0,
+        isCancelled: resultCode === 1002 || messageLooksCancelled,
+      };
+    };
+
+    const forwardGatewayCallback = async () => {
+      if (forwardedGatewayCallbackRef.current) return null;
+
+      const routerSearch = location.search && location.search !== '?' ? location.search : '';
+      const search = (routerSearch || window.location.search).replace(/^\?/, '');
+      if (!search) return null;
+
+      const params = new URLSearchParams(search);
+      const partnerCode = params.get('partnerCode');
+      const momoOrderId = params.get('orderId');
+      const momoSignature = params.get('signature');
+
+      if (partnerCode === 'MOMO' && momoOrderId === orderId && momoSignature) {
+        forwardedGatewayCallbackRef.current = true;
+        await apiClient.request(`/payments/momo/webhook?${search}`, {
+          method: 'POST',
+        });
+      }
+
+      return getMomoCallbackOutcome();
+    };
+
     const runPoll = async () => {
+      const gatewayOutcome = await forwardGatewayCallback();
+      if (!active) return;
+
+      if (gatewayOutcome && !gatewayOutcome.isSuccess) {
+        setCallbackMessage(gatewayOutcome.message);
+        setStatus(gatewayOutcome.isCancelled ? 'cancelled' : 'failed');
+        setLoading(false);
+        return;
+      }
+
       const stop = await fetchStatus();
       if (stop || !active) return;
 
@@ -96,7 +258,7 @@ export const PaymentCallback: React.FC = () => {
         clearInterval(intervalId);
       }
     };
-  }, [orderId, retryTrigger]);
+  }, [location.search, orderId, retryTrigger]);
 
   if (loading && status === 'processing') {
     return (
@@ -139,7 +301,7 @@ export const PaymentCallback: React.FC = () => {
 
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem' }}>
                 {booking.tickets && booking.tickets.map((t) => {
-                  const qrHash = t.qrCodeHash || t.qrCode;
+                  const qrHash = t.qrCodeHash;
                   return (
                     <div
                       key={t.id}
@@ -163,14 +325,7 @@ export const PaymentCallback: React.FC = () => {
                       
                       {qrHash ? (
                         <div style={{ background: '#fff', padding: '1rem', borderRadius: 'var(--radius-sm)', display: 'inline-block', margin: '0 auto' }}>
-                          <img
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrHash)}`}
-                            alt="QR Code"
-                            aria-label="QR Code"
-                            width="200"
-                            height="200"
-                            style={{ display: 'block' }}
-                          />
+                          <TicketQrCode value={qrHash} />
                         </div>
                       ) : (
                         <div style={{ padding: '2rem', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
@@ -187,6 +342,21 @@ export const PaymentCallback: React.FC = () => {
                   );
                 })}
               </div>
+
+              {paymentStatus?.payments.length ? (
+                <section className="soft-panel" aria-label="Payment status" style={{ marginTop: '2rem', textAlign: 'left' }}>
+                  <h2 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Payment status</h2>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {paymentStatus.payments.map((payment) => (
+                      <div key={payment.id} className="summary-row" style={{ gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <span>{payment.gateway}</span>
+                        <strong style={{ color: 'var(--text-strong)' }}>{payment.status}</strong>
+                        {payment.transactionId && <span>{payment.transactionId}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
             </div>
           )}
 
@@ -196,11 +366,24 @@ export const PaymentCallback: React.FC = () => {
                 <XCircle size={64} style={{ color: 'var(--danger)' }} />
               </div>
               <h1 style={{ fontSize: '2rem', marginBottom: '1rem', color: 'var(--danger)' }}>
-                Thanh toán thất bại hoặc hết hạn / Payment Failed or Expired
+                Thanh toán thất bại
               </h1>
               <p style={{ color: 'var(--text-muted)', marginBottom: '2.5rem', maxWidth: '500px', marginLeft: 'auto', marginRight: 'auto' }}>
-                Đơn hàng của bạn đã bị hủy hoặc thời gian giữ chỗ đã hết hạn. Nếu tài khoản của bạn đã bị trừ tiền, vui lòng liên hệ Ban tổ chức để được hỗ trợ đối soát.
-                (Your order has been cancelled or expired. If you have been charged, please contact support.)
+                {callbackMessage || 'Giao dịch chưa hoàn tất. Nếu tài khoản của bạn đã bị trừ tiền, vui lòng liên hệ Ban tổ chức để được hỗ trợ đối soát.'}
+              </p>
+            </div>
+          )}
+
+          {status === 'cancelled' && (
+            <div>
+              <div className="flex-center" style={{ marginBottom: '1.5rem' }}>
+                <XCircle size={64} style={{ color: 'var(--warning)' }} />
+              </div>
+              <h1 style={{ fontSize: '2rem', marginBottom: '1rem', color: 'var(--warning)' }}>
+                Thanh toán đã bị hủy
+              </h1>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '2.5rem', maxWidth: '500px', marginLeft: 'auto', marginRight: 'auto' }}>
+                {callbackMessage || 'Bạn đã hủy hoặc từ chối giao dịch. Vé vẫn có thể được giữ trong thời gian còn hiệu lực để bạn thử thanh toán lại.'}
               </p>
             </div>
           )}
@@ -229,6 +412,16 @@ export const PaymentCallback: React.FC = () => {
               <ArrowLeft size={16} /> Về trang chủ / Home
             </button>
             
+            {(status === 'timeout' || status === 'failed' || status === 'cancelled') && orderId && (
+              <button
+                onClick={() => navigate('/checkout/' + orderId)}
+                className="btn btn-primary"
+                style={{ minWidth: 150, gap: '0.5rem' }}
+              >
+                Thanh toán lại
+              </button>
+            )}
+
             {status === 'timeout' && (
               <button
                 onClick={() => {

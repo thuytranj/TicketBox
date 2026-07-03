@@ -40,6 +40,7 @@ export const ConcertDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [bookingSubmit, setBookingSubmit] = useState(false);
   const [error, setError] = useState('');
+  const [bookingError, setBookingError] = useState('');
 
   const refreshTicketTypes = async () => {
     if (!id) return;
@@ -84,7 +85,11 @@ export const ConcertDetail: React.FC = () => {
   }, [id]);
 
   const handleZoneClick = (zoneName: string) => {
-    const matchingType = ticketTypes.find((t) => t.name.toLowerCase() === zoneName.toLowerCase());
+    const normalizedZoneName = zoneName.toLowerCase();
+    const matchingType = ticketTypes.find((t) => {
+      const ticketName = t.name.toLowerCase();
+      return normalizedZoneName === ticketName || normalizedZoneName.startsWith(`${ticketName}-`) || normalizedZoneName.startsWith(`${ticketName}_`);
+    });
     if (matchingType && matchingType.availableQuantity > 0) {
       setSelectedTicketType(matchingType);
       setQuantity(1);
@@ -148,7 +153,7 @@ export const ConcertDetail: React.FC = () => {
     if (!selectedTicketType) return;
 
     setBookingSubmit(true);
-    setError('');
+    setBookingError('');
     try {
       const idempotencyKey = crypto.randomUUID();
       const response = await apiClient.request<{ orderId: string }>('/bookings', {
@@ -170,7 +175,7 @@ export const ConcertDetail: React.FC = () => {
       navigate(`/bookings/processing/${response.orderId}`);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Không thể tạo đơn đặt vé';
-      setError(errMsg);
+      setBookingError(errMsg);
       setBookingSubmit(false);
     }
   };
@@ -294,7 +299,7 @@ export const ConcertDetail: React.FC = () => {
           )}
         </div>
 
-        <aside className="aside-sticky">
+        <aside className="aside-sticky" data-testid="booking-panel">
           <h2 className="aside-title">
             <Ticket size={20} style={{ verticalAlign: 'middle', marginRight: 8, color: 'var(--accent)' }} />
             Chọn hạng vé
@@ -307,6 +312,7 @@ export const ConcertDetail: React.FC = () => {
                 onClick={() => {
                   setSelectedTicketType(type);
                   setQuantity(1);
+                  setBookingError('');
                 }}
                 className={`ticket-type-option ${selectedTicketType?.id === type.id ? 'selected' : ''}`}
                 disabled={type.availableQuantity === 0}
@@ -364,6 +370,11 @@ export const ConcertDetail: React.FC = () => {
               >
                 {bookingSubmit ? 'Đang giữ vé...' : 'Đặt vé'}
               </button>
+              {bookingError && (
+                <div className="alert alert-danger" role="alert" style={{ marginTop: '1rem', marginBottom: 0 }}>
+                  {bookingError}
+                </div>
+              )}
             </div>
           )}
         </aside>

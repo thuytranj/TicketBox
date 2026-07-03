@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { apiClient } from '../../api/client';
 import { useSocket } from '../socket/SocketContext';
-import { Bell, Check, MailOpen } from 'lucide-react';
+import { ArrowRight, Bell, CalendarClock, Check, MailOpen, Sparkles, TicketCheck, TriangleAlert } from 'lucide-react';
 
 export interface NotificationLog {
   id: number;
@@ -15,6 +16,46 @@ export interface NotificationLog {
   readAt: string | null;
   createdAt: string;
 }
+
+const getNotificationMeta = (notification: NotificationLog) => {
+  switch (notification.type) {
+    case 'booking_confirmed':
+      return {
+        label: 'Booking',
+        icon: <TicketCheck size={12} />,
+        actionLabel: 'View booking',
+        to: notification.referenceId ? `/payment-callback/${notification.referenceId}` : null,
+      };
+    case 'concert_reminder':
+      return {
+        label: 'Reminder',
+        icon: <CalendarClock size={12} />,
+        actionLabel: 'View concert',
+        to: notification.referenceId ? `/concerts/${notification.referenceId}` : null,
+      };
+    case 'ai_bio_completed':
+      return {
+        label: 'AI Bio',
+        icon: <Sparkles size={12} />,
+        actionLabel: 'Review bio',
+        to: notification.referenceId ? `/admin/concerts/${notification.referenceId}/bio` : null,
+      };
+    case 'ai_bio_failed':
+      return {
+        label: 'AI Bio',
+        icon: <TriangleAlert size={12} />,
+        actionLabel: 'Review bio',
+        to: notification.referenceId ? `/admin/concerts/${notification.referenceId}/bio` : null,
+      };
+    default:
+      return {
+        label: 'Update',
+        icon: <Bell size={12} />,
+        actionLabel: null,
+        to: null,
+      };
+  }
+};
 
 export const NotificationsPanel: React.FC = () => {
   const { socket } = useSocket();
@@ -52,10 +93,16 @@ export const NotificationsPanel: React.FC = () => {
       }
     };
 
+    const handleSocketConnect = () => {
+      void fetchNotifications();
+    };
+
     socket.on('notification_received', handleNewNotification);
+    socket.on('connect', handleSocketConnect);
 
     return () => {
       socket.off('notification_received', handleNewNotification);
+      socket.off('connect', handleSocketConnect);
     };
   }, [socket]);
 
@@ -181,62 +228,101 @@ export const NotificationsPanel: React.FC = () => {
                 No notifications found.
               </div>
             ) : (
-              notifications.map((n) => (
-                <div
-                  key={n.id}
-                  onClick={() => n.status === 'unread' && handleMarkAsRead(n.id)}
-                  className={`notification-item ${n.status === 'unread' ? 'unread' : ''}`}
-                >
-                  {/* Indicator Dot */}
-                  <div style={{ display: 'flex', alignItems: 'flex-start', paddingTop: '0.25rem' }}>
-                    {n.status === 'unread' ? (
-                      <div className="notification-dot" />
-                    ) : (
-                      <div style={{ width: '8px' }} />
+              notifications.map((n) => {
+                const meta = getNotificationMeta(n);
+
+                return (
+                  <div
+                    key={n.id}
+                    onClick={() => n.status === 'unread' && handleMarkAsRead(n.id)}
+                    className={`notification-item ${n.status === 'unread' ? 'unread' : ''}`}
+                  >
+                    {/* Indicator Dot */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', paddingTop: '0.25rem' }}>
+                      {n.status === 'unread' ? (
+                        <div className="notification-dot" />
+                      ) : (
+                        <div style={{ width: '8px' }} />
+                      )}
+                    </div>
+
+                    {/* Body Text */}
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          padding: '0.15rem 0.45rem',
+                          borderRadius: '999px',
+                          backgroundColor: 'var(--surface-alt)',
+                          color: 'var(--primary)',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          marginBottom: '0.45rem',
+                        }}
+                      >
+                        {meta.icon}
+                        <span>{meta.label}</span>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '0.875rem',
+                          fontWeight: n.status === 'unread' ? 600 : 500,
+                          color: 'var(--text-strong)',
+                          marginBottom: '0.25rem',
+                        }}
+                      >
+                        {n.title}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                        {n.body}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: meta.to ? '0.5rem' : 0 }}>
+                        {new Date(n.createdAt).toLocaleString()}
+                      </div>
+                      {meta.to && meta.actionLabel && (
+                        <Link
+                          to={meta.to}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            color: 'var(--primary)',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          {meta.actionLabel}
+                          <ArrowRight size={13} />
+                        </Link>
+                      )}
+                    </div>
+
+                    {/* Single mark as read button */}
+                    {n.status === 'unread' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMarkAsRead(n.id);
+                        }}
+                        aria-label="Mark as read"
+                        className="btn"
+                        style={{
+                          padding: '0.25rem',
+                          backgroundColor: 'transparent',
+                          color: 'var(--text-muted)',
+                          alignSelf: 'center',
+                        }}
+                      >
+                        <Check size={16} />
+                      </button>
                     )}
                   </div>
-
-                  {/* Body Text */}
-                  <div style={{ flex: 1 }}>
-                    <div
-                      style={{
-                        fontSize: '0.875rem',
-                        fontWeight: n.status === 'unread' ? 600 : 500,
-                        color: 'var(--text-strong)',
-                        marginBottom: '0.25rem',
-                      }}
-                    >
-                      {n.title}
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                      {n.body}
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      {new Date(n.createdAt).toLocaleString()}
-                    </div>
-                  </div>
-
-                  {/* Single mark as read button */}
-                  {n.status === 'unread' && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleMarkAsRead(n.id);
-                      }}
-                      aria-label="Mark as read"
-                      className="btn"
-                      style={{
-                        padding: '0.25rem',
-                        backgroundColor: 'transparent',
-                        color: 'var(--text-muted)',
-                        alignSelf: 'center',
-                      }}
-                    >
-                      <Check size={16} />
-                    </button>
-                  )}
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

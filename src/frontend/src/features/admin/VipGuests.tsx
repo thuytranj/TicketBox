@@ -194,7 +194,7 @@ export const VipGuests: React.FC = () => {
   return (
     <div className="container" style={{ minHeight: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
       <Link to="/admin/concerts" className="btn btn-outline" style={{ alignSelf: 'flex-start', marginBottom: '1.5rem', gap: '0.5rem' }}>
-        <ArrowLeft size={16} /> Back to Concerts
+        <ArrowLeft size={16} /> Quay lại sự kiện
       </Link>
 
       <header className="section-heading">
