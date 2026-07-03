@@ -26,19 +26,33 @@ async function main() {
   const { default: dataSource } = require('../src/data/ormconfig');
   const { default: UserSeeder } = require('../src/data/seeds/user.seed');
   const { default: ConcertSeeder } = require('../src/data/seeds/concert.seed');
+  const { default: VipGuestSeeder } = require('../src/data/seeds/vip-guest.seed');
+  const { default: TransactionSeeder } = require('../src/data/seeds/transaction.seed');
   const { User } = require('../src/auth/entities/user.entity');
   const { Concert } = require('../src/concert/entities/concert.entity');
   const { TicketType } = require('../src/concert/entities/ticket-type.entity');
+  const { VipGuest } = require('../src/concert/entities/vip-guest.entity');
+  const { Order } = require('../src/booking/entities/order.entity');
+  const { Ticket } = require('../src/booking/entities/ticket.entity');
+  const { Payment } = require('../src/payment/entities/payment.entity');
+  const { CheckinLog } = require('../src/checkin/entities/checkin-log.entity');
 
   const trackedEntities = [
     ['users', User],
     ['concerts', Concert],
     ['ticket_types', TicketType],
+    ['vip_guests', VipGuest],
+    ['orders', Order],
+    ['tickets', Ticket],
+    ['payments', Payment],
+    ['checkin_logs', CheckinLog],
   ];
 
   const seeders = [
     ['UserSeeder', new UserSeeder()],
     ['ConcertSeeder', new ConcertSeeder()],
+    ['VipGuestSeeder', new VipGuestSeeder()],
+    ['TransactionSeeder', new TransactionSeeder()],
   ];
 
   await dataSource.initialize();

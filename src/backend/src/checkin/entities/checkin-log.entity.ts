@@ -5,6 +5,7 @@ import {
   ManyToOne,
   JoinColumn,
   BeforeInsert,
+  Index,
 } from 'typeorm';
 import { generateUuidV7 } from '../../auth/utils/uuid';
 import { Ticket } from '../../booking/entities/ticket.entity';
@@ -21,9 +22,11 @@ export class CheckinLog {
   @PrimaryColumn({ type: 'uuid' })
   id: string;
 
+  @Index()
   @Column({ type: 'uuid', name: 'ticket_id', nullable: true })
   ticketId: string | null;
 
+  @Index()
   @Column({ type: 'uuid', name: 'vip_guest_id', nullable: true })
   vipGuestId: string | null;
 

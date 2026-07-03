@@ -7,20 +7,20 @@ import heroPreview from '../../assets/hero.png';
 
 interface TicketType {
   id: string;
-  name: 'GA' | 'SVIP' | 'VIP' | 'CAT1' | 'CAT2';
+  name: string;
   price: number;
   totalQuantity: number;
   availableQuantity: number;
   maxPerUser: number;
 }
 
-type TicketTypeName = TicketType['name'];
+type TicketTypeName = string;
 type ConcertStatus = 'draft' | 'active' | 'cancelled';
 
 interface FormTicketType {
   id?: string;
   clientId?: string;
-  name: TicketTypeName;
+  name: string;
   price: number;
   totalQuantity: number;
   availableQuantity: number;
@@ -124,14 +124,21 @@ export const AdminConcerts: React.FC = () => {
     setShowForm(true);
   };
 
+  const toLocalISOString = (dateInput: Date | string) => {
+    if (!dateInput) return '';
+    const date = new Date(dateInput);
+    const tzoffset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - tzoffset).toISOString().substring(0, 16);
+  };
+
   const handleOpenEdit = async (concert: Concert) => {
     setEditingConcertId(concert.id);
     setTitle(concert.title);
     setDescription(concert.description);
     setLocation(concert.location);
-    // Parse times to datetime-local compatible string
-    setStartTime(new Date(concert.startTime).toISOString().substring(0, 16));
-    setEndTime(new Date(new Date(concert.startTime).getTime() + 3 * 3600000).toISOString().substring(0, 16));
+    // Parse times to datetime-local compatible string using local timezone
+    setStartTime(toLocalISOString(concert.startTime));
+    setEndTime(toLocalISOString(concert.endTime || new Date(new Date(concert.startTime).getTime() + 3 * 3600000)));
     setStatus(concert.status);
     setTagsInput((concert.tags || []).join(', '));
     setPosterUrl(concert.posterUrl || '');
@@ -580,13 +587,14 @@ export const AdminConcerts: React.FC = () => {
                 <div className="ticket-mini-form">
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label htmlFor="ticket-type-name" className="form-label">Hạng vé</label>
-                    <select id="ticket-type-name" className="form-control" value={newTicketName} onChange={(e: any) => setNewTicketName(e.target.value)}>
-                      <option value="GA">GA</option>
-                      <option value="SVIP">SVIP</option>
-                      <option value="VIP">VIP</option>
-                      <option value="CAT1">CAT1</option>
-                      <option value="CAT2">CAT2</option>
-                    </select>
+                    <input
+                      id="ticket-type-name"
+                      type="text"
+                      className="form-control"
+                      placeholder="VD: VIP Stand, GA..."
+                      value={newTicketName}
+                      onChange={(e) => setNewTicketName(e.target.value)}
+                    />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label htmlFor="ticket-type-price" className="form-label">Giá (VND)</label>
@@ -616,18 +624,14 @@ export const AdminConcerts: React.FC = () => {
                           <div className="ticket-mini-form" style={{ flex: 1, marginBottom: 0 }}>
                             <div className="form-group" style={{ marginBottom: 0 }}>
                               <label htmlFor="edit-ticket-name" className="form-label">Hạng vé đang sửa</label>
-                              <select
+                              <input
                                 id="edit-ticket-name"
+                                type="text"
                                 className="form-control"
+                                placeholder="VD: VIP Stand, GA..."
                                 value={editTicketName}
-                                onChange={(e) => setEditTicketName(e.target.value as TicketTypeName)}
-                              >
-                                <option value="GA">GA</option>
-                                <option value="SVIP">SVIP</option>
-                                <option value="VIP">VIP</option>
-                                <option value="CAT1">CAT1</option>
-                                <option value="CAT2">CAT2</option>
-                              </select>
+                                onChange={(e) => setEditTicketName(e.target.value)}
+                              />
                             </div>
                             <div className="form-group" style={{ marginBottom: 0 }}>
                               <label htmlFor="edit-ticket-price" className="form-label">Giá hạng vé đang sửa</label>

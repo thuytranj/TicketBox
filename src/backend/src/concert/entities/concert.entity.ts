@@ -6,6 +6,7 @@ import {
   BeforeInsert,
   OneToMany,
   OneToOne,
+  Index,
 } from 'typeorm';
 import { generateUuidV7 } from '../../auth/utils/uuid';
 import { TicketType } from './ticket-type.entity';
@@ -20,6 +21,7 @@ export enum ConcertStatus {
 }
 
 @Entity('concerts')
+@Index(['status', 'startTime'])
 export class Concert {
   @PrimaryColumn({ type: 'uuid' })
   id: string;
