@@ -5,6 +5,7 @@ import {
   BeforeInsert,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { generateUuidV7 } from '../../auth/utils/uuid';
 import { Order } from './order.entity';
@@ -23,9 +24,11 @@ export class Ticket {
   @PrimaryColumn({ type: 'uuid' })
   id: string;
 
+  @Index()
   @Column({ type: 'uuid', name: 'order_id' })
   orderId: string;
 
+  @Index()
   @Column({ type: 'uuid', name: 'ticket_type_id' })
   ticketTypeId: string;
 
@@ -48,7 +51,7 @@ export class Ticket {
   checkinStatus: CheckinStatus;
 
   @Column({ type: 'timestamp', name: 'checked_in_at', nullable: true })
-  checkedInAt: Date;
+  checkedInAt: Date | null;
 
   @ManyToOne(() => Order, (order) => order.tickets, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })

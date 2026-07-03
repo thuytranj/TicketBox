@@ -179,10 +179,11 @@ export class CheckinSyncConsumer implements OnModuleInit {
         );
       } else {
         // Case 2: Already checked in — apply First Timestamp Wins
-        if (scanTime < ticket.checkedInAt) {
+        const existingCheckedInAt = ticket.checkedInAt;
+        if (!existingCheckedInAt || scanTime < existingCheckedInAt) {
           // This scan is EARLIER → override
           this.logger.warn(
-            `Ticket ${ticket.id}: offline scan (${scanTime.toISOString()}) is earlier than existing (${ticket.checkedInAt.toISOString()}). Overriding with First Timestamp Wins.`,
+            `Ticket ${ticket.id}: offline scan (${scanTime.toISOString()}) is earlier than existing (${existingCheckedInAt ? existingCheckedInAt.toISOString() : 'null'}). Overriding with First Timestamp Wins.`,
           );
 
           // Invalidate the previous log(s)
@@ -216,7 +217,7 @@ export class CheckinSyncConsumer implements OnModuleInit {
         } else {
           // This scan is LATER → mark as fraud
           this.logger.warn(
-            `Ticket ${ticket.id}: duplicate offline scan detected (${scanTime.toISOString()} >= ${ticket.checkedInAt.toISOString()}). Marking as fraud.`,
+            `Ticket ${ticket.id}: duplicate offline scan detected (${scanTime.toISOString()} >= ${existingCheckedInAt.toISOString()}). Marking as fraud.`,
           );
 
           const log = manager.create(CheckinLog, {
@@ -266,7 +267,8 @@ export class CheckinSyncConsumer implements OnModuleInit {
         );
       } else {
         // Case 2: Already checked in — apply First Timestamp Wins
-        if (scanTime < vipGuest.checkedInAt) {
+        const existingCheckedInAt = vipGuest.checkedInAt;
+        if (!existingCheckedInAt || scanTime < existingCheckedInAt) {
           this.logger.warn(
             `VIP Guest ${vipGuest.id}: offline scan (${scanTime.toISOString()}) is earlier. Overriding.`,
           );

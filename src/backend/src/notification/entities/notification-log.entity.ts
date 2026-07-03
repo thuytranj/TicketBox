@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  Index,
 } from 'typeorm';
 
 export enum NotificationType {
@@ -23,6 +24,7 @@ export enum NotificationStatus {
 }
 
 @Entity('notification_logs')
+@Index(['userId', 'channel', 'createdAt'])
 export class NotificationLog {
   @PrimaryGeneratedColumn({ type: 'bigint' })
   id: number;

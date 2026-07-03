@@ -407,6 +407,76 @@ export default class ConcertSeeder implements Seeder {
           },
         ],
       },
+      {
+        title: 'Rap Viet Finals 2025 (Past)',
+        description:
+          'Đêm chung kết lịch sử tìm ra quán quân Rap Việt mùa tiếp theo đầy kịch tính.',
+        location: 'Nhà thi đấu Phú Thọ, TP. Hồ Chí Minh',
+        posterUrl:
+          'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
+        biography:
+          'Trải nghiệm những màn trình diễn đỉnh cao từ các thí sinh và huấn luyện viên xuất sắc nhất.',
+        tags: ['Rap', 'HipHop', 'Completed'],
+        svgStageMap: sampleSvg,
+        startTime: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000), // 30 ngày trước
+        endTime: new Date(
+          now.getTime() - 30 * 24 * 60 * 60 * 1000 + 4 * 60 * 60 * 1000,
+        ), // kéo dài 4 tiếng
+        status: ConcertStatus.ACTIVE,
+        ticketTypes: [
+          {
+            name: TicketTypeName.VIP,
+            price: 2500000,
+            totalQuantity: 200,
+            maxPerUser: 4,
+            saleStartTime: new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000),
+            saleEndTime: new Date(now.getTime() - 31 * 24 * 60 * 60 * 1000),
+          },
+          {
+            name: TicketTypeName.GA,
+            price: 1000000,
+            totalQuantity: 500,
+            maxPerUser: 4,
+            saleStartTime: new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000),
+            saleEndTime: new Date(now.getTime() - 31 * 24 * 60 * 60 * 1000),
+          },
+        ],
+      },
+      {
+        title: 'Indie Sound Concert 2025 (Past)',
+        description:
+          'Đại hội âm nhạc Indie quy tụ những ca sĩ, ban nhạc Indie được yêu thích nhất.',
+        location: 'Mây Lang Thang, Đà Lạt',
+        posterUrl:
+          'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800',
+        biography:
+          'Hòa mình vào không gian âm nhạc mộc mạc và lãng mạn giữa lòng thành phố sương mù Đà Lạt.',
+        tags: ['Indie', 'Acoustic', 'Completed'],
+        svgStageMap: sampleSvg,
+        startTime: new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000), // 15 ngày trước
+        endTime: new Date(
+          now.getTime() - 15 * 24 * 60 * 60 * 1000 + 3 * 60 * 60 * 1000,
+        ), // kéo dài 3 tiếng
+        status: ConcertStatus.ACTIVE,
+        ticketTypes: [
+          {
+            name: TicketTypeName.VIP,
+            price: 1500000,
+            totalQuantity: 50,
+            maxPerUser: 4,
+            saleStartTime: new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000),
+            saleEndTime: new Date(now.getTime() - 16 * 24 * 60 * 60 * 1000),
+          },
+          {
+            name: TicketTypeName.GA,
+            price: 700000,
+            totalQuantity: 200,
+            maxPerUser: 4,
+            saleStartTime: new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000),
+            saleEndTime: new Date(now.getTime() - 16 * 24 * 60 * 60 * 1000),
+          },
+        ],
+      },
     ];
 
     for (const concertData of concertsData) {

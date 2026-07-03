@@ -40,6 +40,7 @@ export class VipGuest {
   @Column({ type: 'varchar', name: 'affiliate_company', length: 255, nullable: true })
   affiliateCompany: string;
 
+  @Index({ unique: true })
   @Column({ type: 'varchar', name: 'qr_code_hash', length: 500 })
   qrCodeHash: string;
 
@@ -59,7 +60,7 @@ export class VipGuest {
   checkinStatus: CheckinStatus;
 
   @Column({ type: 'timestamp', name: 'checked_in_at', nullable: true })
-  checkedInAt: Date;
+  checkedInAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
