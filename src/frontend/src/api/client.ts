@@ -15,6 +15,16 @@ export interface ApiError {
 }
 
 class ApiClient {
+  private readonly authEntryPaths = new Set([
+    '/auth/login',
+    '/auth/register',
+    '/auth/verify-otp',
+    '/auth/resend-otp',
+    '/auth/forgot-password',
+    '/auth/verify-reset-otp',
+    '/auth/reset-password',
+  ]);
+
   private unwrapResponse<T>(payload: T | ApiSuccessEnvelope<T>): T {
     if (
       payload &&
@@ -64,6 +74,10 @@ class ApiClient {
     const response = await fetch(url, { ...options, headers });
 
     if (response.status === 401) {
+      if (this.authEntryPaths.has(path)) {
+        throw await this.parseError(response);
+      }
+
       const refreshed = await this.handleTokenRefresh();
       if (refreshed) {
         const newTokens = this.getTokens();

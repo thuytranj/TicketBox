@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { NotificationsPanel } from './NotificationsPanel';
 import { apiClient } from '../../api/client';
 import { useSocket } from '../socket/SocketContext';
@@ -27,6 +28,12 @@ describe('NotificationsPanel', () => {
     vi.resetAllMocks();
     vi.mocked(useSocket).mockReturnValue({ socket: mockSocket as any, connected: true });
   });
+
+  const renderPanel = () => render(
+    <MemoryRouter>
+      <NotificationsPanel />
+    </MemoryRouter>
+  );
 
   const mockNotifications = [
     {
@@ -60,7 +67,7 @@ describe('NotificationsPanel', () => {
       data: mockNotifications,
     });
 
-    render(<NotificationsPanel />);
+    renderPanel();
 
     await waitFor(() => {
       expect(screen.getByText('1')).toBeInTheDocument(); // 1 unread notification
@@ -72,7 +79,7 @@ describe('NotificationsPanel', () => {
       data: mockNotifications,
     });
 
-    render(<NotificationsPanel />);
+    renderPanel();
 
     await waitFor(() => {
       expect(screen.getByText('1')).toBeInTheDocument();
@@ -98,7 +105,7 @@ describe('NotificationsPanel', () => {
       return {};
     });
 
-    render(<NotificationsPanel />);
+    renderPanel();
 
     await waitFor(() => {
       expect(screen.getByText('1')).toBeInTheDocument();
@@ -132,7 +139,7 @@ describe('NotificationsPanel', () => {
       return {};
     });
 
-    render(<NotificationsPanel />);
+    renderPanel();
 
     await waitFor(() => {
       expect(screen.getByText('1')).toBeInTheDocument();
@@ -164,7 +171,7 @@ describe('NotificationsPanel', () => {
       data: [],
     });
 
-    render(<NotificationsPanel />);
+    renderPanel();
 
     await waitFor(() => {
       expect(screen.queryByText('1')).not.toBeInTheDocument(); // No notifications initially
@@ -196,5 +203,111 @@ describe('NotificationsPanel', () => {
     // Open dropdown and assert new item is displayed
     fireEvent.click(screen.getByRole('button', { name: /Toggle notifications/i }));
     expect(screen.getByText('Bio generation failed')).toBeInTheDocument();
+  });
+
+  it('refreshes notifications from REST when the socket reconnects', async () => {
+    let connectCallback: (() => void) | null = null;
+    mockSocket.on.mockImplementation((event, cb) => {
+      if (event === 'connect') {
+        connectCallback = cb;
+      }
+    });
+
+    vi.spyOn(apiClient, 'request')
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({
+        data: [
+          {
+            id: 4,
+            userId: 'user123',
+            type: 'concert_reminder',
+            title: 'Concert Tomorrow!',
+            body: 'Bring your e-ticket.',
+            channel: 'in_app',
+            status: 'unread',
+            referenceId: 'concert_456',
+            readAt: null,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      });
+
+    renderPanel();
+
+    await waitFor(() => {
+      expect(apiClient.request).toHaveBeenCalledTimes(1);
+    });
+
+    if (connectCallback) {
+      await act(async () => {
+        await (connectCallback as any)();
+      });
+    }
+
+    await waitFor(() => {
+      expect(apiClient.request).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('1')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Toggle notifications/i }));
+    expect(screen.getByText('Concert Tomorrow!')).toBeInTheDocument();
+  });
+
+  it('shows backend notification event labels and routes action links by reference id', async () => {
+    vi.spyOn(apiClient, 'request').mockResolvedValue({
+      data: [
+        {
+          id: 10,
+          userId: 'user123',
+          type: 'booking_confirmed',
+          title: 'Booking Confirmed!',
+          body: 'Your e-ticket is ready.',
+          channel: 'in_app',
+          status: 'unread',
+          referenceId: 'order_123',
+          readAt: null,
+          createdAt: '2026-06-25T12:00:00Z',
+        },
+        {
+          id: 11,
+          userId: 'user123',
+          type: 'concert_reminder',
+          title: 'Concert Tomorrow!',
+          body: 'Bring your e-ticket.',
+          channel: 'in_app',
+          status: 'read',
+          referenceId: 'concert_456',
+          readAt: '2026-06-25T12:30:00Z',
+          createdAt: '2026-06-25T11:30:00Z',
+        },
+        {
+          id: 12,
+          userId: 'user123',
+          type: 'ai_bio_completed',
+          title: 'Biography generated',
+          body: 'Review the draft.',
+          channel: 'in_app',
+          status: 'read',
+          referenceId: 'concert_789',
+          readAt: '2026-06-25T12:30:00Z',
+          createdAt: '2026-06-25T11:00:00Z',
+        },
+      ],
+    });
+
+    renderPanel();
+
+    await waitFor(() => {
+      expect(screen.getByText('1')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Toggle notifications/i }));
+
+    expect(screen.getByText('Booking')).toBeInTheDocument();
+    expect(screen.getByText('Reminder')).toBeInTheDocument();
+    expect(screen.getByText('AI Bio')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /View booking/i })).toHaveAttribute('href', '/payment-callback/order_123');
+    expect(screen.getByRole('link', { name: /View concert/i })).toHaveAttribute('href', '/concerts/concert_456');
+    expect(screen.getByRole('link', { name: /Review bio/i })).toHaveAttribute('href', '/admin/concerts/concert_789/bio');
   });
 });

@@ -1,64 +1,176 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../../api/client';
 import type { Concert } from '../concerts/ConcertList';
-import { AlertTriangle, ArrowRight, Calendar, Clock3, MapPin, Music, Plus, Ticket, TrendingUp } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Calendar,
+  Clock3,
+  DollarSign,
+  MapPin,
+  Music,
+  Plus,
+  Ticket,
+  TrendingUp,
+  Users,
+} from 'lucide-react';
 
-interface TicketTypeInventory {
-  id: string;
-  name: string;
-  totalQuantity: number;
-  availableQuantity: number;
-  price: number;
-  maxPerUser: number;
+interface StatisticsOverview {
+  concerts: {
+    total: number;
+    active: number;
+    draft: number;
+    cancelled: number;
+  };
+  orders: {
+    total: number;
+    paid: number;
+    pending: number;
+    expired: number;
+    cancelled: number;
+  };
+  revenue: {
+    totalRevenue: number;
+    averageOrderValue: number;
+  };
+  tickets: {
+    totalIssued: number;
+    totalSold: number;
+    paidTickets?: number;
+    reservedTickets?: number;
+    availableTickets?: number;
+    fillRate: number;
+  };
+  checkins: {
+    totalCheckins: number;
+    checkinRate: number;
+  };
 }
 
-interface ConcertInventorySummary {
+interface RevenuePoint {
+  date: string;
+  revenue: number;
+  orderCount: number;
+}
+
+interface RevenueTimeSeries {
+  period: 'day' | 'week' | 'month';
+  from: string;
+  to: string;
+  data: RevenuePoint[];
+}
+
+interface ConcertStatistics {
+  concert: {
+    id: string;
+    title: string;
+    status: Concert['status'];
+    startTime: string;
+  };
+  revenue: {
+    totalRevenue: number;
+    paidOrderCount: number;
+  };
+  ticketTypes: Array<{
+    name: string;
+    price: number;
+    totalQuantity: number;
+    availableQuantity: number;
+    soldQuantity: number;
+    paidQuantity?: number;
+    reservedQuantity?: number;
+    revenue: number;
+  }>;
+  checkins: {
+    ticketCheckins: number;
+    vipGuestCheckins: number;
+    totalCheckins: number;
+  };
+}
+
+interface ConcertSalesSummary {
   concertId: string;
   title: string;
   totalTickets: number;
   availableTickets: number;
   soldTickets: number;
+  reservedTickets: number;
   fillRate: number;
+  revenue: number;
   failed: boolean;
 }
 
+const emptyOverview: StatisticsOverview = {
+  concerts: { total: 0, active: 0, draft: 0, cancelled: 0 },
+  orders: { total: 0, paid: 0, pending: 0, expired: 0, cancelled: 0 },
+  revenue: { totalRevenue: 0, averageOrderValue: 0 },
+  tickets: { totalIssued: 0, totalSold: 0, paidTickets: 0, reservedTickets: 0, availableTickets: 0, fillRate: 0 },
+  checkins: { totalCheckins: 0, checkinRate: 0 },
+};
+
+const formatVnd = (amount: number) => `${Math.round(amount).toLocaleString('vi-VN')} VND`;
+
+const formatDateLabel = (date: string) =>
+  new Date(date).toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+  });
+
+const buildSummaryFromStats = (stats: ConcertStatistics): ConcertSalesSummary => {
+  const totalTickets = stats.ticketTypes.reduce((sum, ticketType) => sum + ticketType.totalQuantity, 0);
+  const soldTickets = stats.ticketTypes.reduce(
+    (sum, ticketType) => sum + (ticketType.paidQuantity ?? ticketType.soldQuantity),
+    0
+  );
+  const reservedTickets = stats.ticketTypes.reduce((sum, ticketType) => sum + (ticketType.reservedQuantity ?? 0), 0);
+  const availableTickets = Math.max(totalTickets - soldTickets - reservedTickets, 0);
+
+  return {
+    concertId: stats.concert.id,
+    title: stats.concert.title,
+    totalTickets,
+    availableTickets,
+    soldTickets,
+    reservedTickets,
+    fillRate: totalTickets > 0 ? Math.round((soldTickets / totalTickets) * 100) : 0,
+    revenue: stats.revenue.totalRevenue,
+    failed: false,
+  };
+};
+
 export const AdminDashboard: React.FC = () => {
+  const [overview, setOverview] = useState<StatisticsOverview>(emptyOverview);
+  const [revenueSeries, setRevenueSeries] = useState<RevenueTimeSeries | null>(null);
   const [concerts, setConcerts] = useState<Concert[]>([]);
-  const [inventorySummaries, setInventorySummaries] = useState<ConcertInventorySummary[]>([]);
-  const [inventoryFailures, setInventoryFailures] = useState(0);
+  const [salesSummaries, setSalesSummaries] = useState<ConcertSalesSummary[]>([]);
+  const [statsFailures, setStatsFailures] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const fetchConcerts = async () => {
+    const fetchDashboard = async () => {
       try {
-        const response = await apiClient.request<{ concerts: Concert[] }>('/concerts');
-        const loadedConcerts = response.concerts || [];
+        const [overviewResponse, revenueResponse, concertResponse] = await Promise.all([
+          apiClient.request<StatisticsOverview>('/statistics/overview'),
+          apiClient.request<RevenueTimeSeries>('/statistics/revenue?period=day'),
+          apiClient.request<{ concerts: Concert[] }>('/concerts?page=1&limit=100'),
+        ]);
+
+        const loadedConcerts = concertResponse.concerts || [];
+        setOverview(overviewResponse);
+        setRevenueSeries(revenueResponse);
         setConcerts(loadedConcerts);
 
-        const inventoryResults = await Promise.allSettled(
-          loadedConcerts.map(async (concert) => {
-            const ticketTypes = await apiClient.request<TicketTypeInventory[]>(`/concerts/${concert.id}/ticket-types`);
-            const totalTickets = ticketTypes.reduce((sum, ticketType) => sum + ticketType.totalQuantity, 0);
-            const availableTickets = ticketTypes.reduce((sum, ticketType) => sum + ticketType.availableQuantity, 0);
-            const soldTickets = Math.max(totalTickets - availableTickets, 0);
-
-            return {
-              concertId: concert.id,
-              title: concert.title,
-              totalTickets,
-              availableTickets,
-              soldTickets,
-              fillRate: totalTickets > 0 ? Math.round((soldTickets / totalTickets) * 100) : 0,
-              failed: false,
-            };
-          })
+        const concertStatsResults = await Promise.allSettled(
+          loadedConcerts.map((concert) =>
+            apiClient.request<ConcertStatistics>(`/statistics/concerts/${concert.id}`)
+          )
         );
 
-        const summaries = inventoryResults.map((result, index) => {
+        const summaries = concertStatsResults.map((result, index) => {
           if (result.status === 'fulfilled') {
-            return result.value;
+            return buildSummaryFromStats(result.value);
           }
 
           return {
@@ -67,13 +179,15 @@ export const AdminDashboard: React.FC = () => {
             totalTickets: 0,
             availableTickets: 0,
             soldTickets: 0,
+            reservedTickets: 0,
             fillRate: 0,
+            revenue: 0,
             failed: true,
           };
         });
 
-        setInventorySummaries(summaries);
-        setInventoryFailures(summaries.filter((summary) => summary.failed).length);
+        setSalesSummaries(summaries);
+        setStatsFailures(summaries.filter((summary) => summary.failed).length);
       } catch (err: any) {
         setError(err.message || 'Failed to load dashboard data');
       } finally {
@@ -81,24 +195,22 @@ export const AdminDashboard: React.FC = () => {
       }
     };
 
-    fetchConcerts();
+    fetchDashboard();
   }, []);
 
-  const totalConcerts = concerts.length;
-  const activeConcerts = concerts.filter((c) => c.status === 'active').length;
-  const draftConcerts = concerts.filter((c) => c.status === 'draft').length;
   const recentConcerts = concerts.slice(0, 5);
-  const totalIssuedTickets = inventorySummaries.reduce((sum, summary) => sum + summary.totalTickets, 0);
-  const totalSoldTickets = inventorySummaries.reduce((sum, summary) => sum + summary.soldTickets, 0);
-  const overallFillRate = totalIssuedTickets > 0 ? Math.round((totalSoldTickets / totalIssuedTickets) * 100) : 0;
-  const salesProgress = [...inventorySummaries].sort((a, b) => b.soldTickets - a.soldTickets).slice(0, 5);
+  const salesProgress = [...salesSummaries].sort((a, b) => b.soldTickets - a.soldTickets).slice(0, 5);
+  const revenuePoints = useMemo(() => revenueSeries?.data.slice(-8) || [], [revenueSeries]);
+  const maxRevenue = revenuePoints.reduce((max, point) => Math.max(max, point.revenue), 0);
+  const paidTicketCount = overview.tickets.paidTickets ?? overview.tickets.totalSold;
+  const reservedTicketCount = overview.tickets.reservedTickets ?? 0;
 
   return (
     <div className="container">
       <header className="section-heading">
         <div>
           <h1>Dashboard</h1>
-          <p>Theo dõi nhanh tình trạng sự kiện, lượng vé đã bán/giữ và các thao tác quan trọng.</p>
+          <p>Theo dõi nhanh tình trạng sự kiện, doanh thu, lượng vé đã thanh toán và lượt check-in.</p>
         </div>
       </header>
 
@@ -116,54 +228,79 @@ export const AdminDashboard: React.FC = () => {
                 <span>Tổng sự kiện</span>
                 <Music size={20} style={{ color: 'var(--primary)' }} />
               </div>
-              <strong className="metric-value">{totalConcerts}</strong>
+              <strong className="metric-value">{overview.concerts.total}</strong>
             </div>
 
             <div className="card metric-card">
               <div className="metric-label">
-                <span>Đang bán</span>
+                <span>Sự kiện đang mở bán</span>
                 <Calendar size={20} style={{ color: 'var(--success)' }} />
               </div>
-              <strong className="metric-value">{activeConcerts}</strong>
+              <strong className="metric-value">{overview.concerts.active}</strong>
             </div>
 
-            <div className="card metric-card">
+            <Link to="/admin/concerts?status=draft" className="card metric-card" style={{ textDecoration: 'none' }}>
               <div className="metric-label">
                 <span>Bản nháp</span>
                 <Calendar size={20} style={{ color: 'var(--warning)' }} />
               </div>
-              <strong className="metric-value">{draftConcerts}</strong>
-            </div>
+              <strong className="metric-value">{overview.concerts.draft}</strong>
+            </Link>
 
             <div className="card metric-card">
               <div className="metric-label">
                 <span>Tổng vé phát hành</span>
                 <Ticket size={20} style={{ color: 'var(--primary)' }} />
               </div>
-              <strong className="metric-value">{totalIssuedTickets}</strong>
+              <strong className="metric-value">{overview.tickets.totalIssued}</strong>
             </div>
 
             <div className="card metric-card">
               <div className="metric-label">
-                <span>Đã bán/giữ</span>
+                <span>Vé đã thanh toán</span>
                 <Ticket size={20} style={{ color: 'var(--success)' }} />
               </div>
-              <strong className="metric-value">{totalSoldTickets}</strong>
+              <strong className="metric-value">{paidTicketCount}</strong>
             </div>
 
             <div className="card metric-card">
               <div className="metric-label">
-                <span>Tỷ lệ lấp đầy</span>
+                <span>Vé đang giữ</span>
+                <Ticket size={20} style={{ color: 'var(--warning)' }} />
+              </div>
+              <strong className="metric-value">{reservedTicketCount}</strong>
+            </div>
+
+            <div className="card metric-card">
+              <div className="metric-label">
+                <span>Tỷ lệ bán vé</span>
                 <TrendingUp size={20} style={{ color: 'var(--accent)' }} />
               </div>
-              <strong className="metric-value">{overallFillRate}%</strong>
+              <strong className="metric-value">{overview.tickets.fillRate}%</strong>
+            </div>
+
+            <div className="card metric-card">
+              <div className="metric-label">
+                <span>Doanh thu</span>
+                <DollarSign size={20} style={{ color: 'var(--success)' }} />
+              </div>
+              <strong className="metric-value metric-value-compact">{formatVnd(overview.revenue.totalRevenue)}</strong>
+            </div>
+
+            <div className="card metric-card">
+              <div className="metric-label">
+                <span>Check-in</span>
+                <Users size={20} style={{ color: 'var(--primary)' }} />
+              </div>
+              <strong className="metric-value">{overview.checkins.totalCheckins}</strong>
+              <span className="metric-subtext">Tỷ lệ check-in: {overview.checkins.checkinRate}%</span>
             </div>
           </div>
 
-          {inventoryFailures > 0 && (
+          {statsFailures > 0 && (
             <div className="alert alert-warning dashboard-warning">
               <AlertTriangle size={18} />
-              <span>Không tải được hạng vé của {inventoryFailures} concert.</span>
+              <span>{`Không tải được thống kê chi tiết của ${statsFailures} sự kiện.`}</span>
             </div>
           )}
 
@@ -173,7 +310,7 @@ export const AdminDashboard: React.FC = () => {
                 <h3 className="panel-title">Thao tác nhanh</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <Link to="/admin/concerts" className="btn btn-primary" style={{ justifyContent: 'space-between' }}>
-                    <span>Tạo concert</span>
+                    <span>Tạo sự kiện</span>
                     <Plus size={18} />
                   </Link>
                   <Link to="/admin/concerts" className="btn btn-outline" style={{ justifyContent: 'space-between' }}>
@@ -181,6 +318,38 @@ export const AdminDashboard: React.FC = () => {
                     <ArrowRight size={18} />
                   </Link>
                 </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-body">
+                <h3 className="panel-title">Doanh thu 30 ngày</h3>
+                {revenuePoints.length === 0 ? (
+                  <div className="soft-panel">
+                    <p style={{ color: 'var(--text-muted)', margin: 0 }}>Chưa có dữ liệu doanh thu.</p>
+                  </div>
+                ) : (
+                  <div className="dashboard-progress-list">
+                    {revenuePoints.map((point) => {
+                      const width = maxRevenue > 0 ? Math.max((point.revenue / maxRevenue) * 100, 4) : 4;
+
+                      return (
+                        <div key={`${point.date}-${point.orderCount}`} className="dashboard-progress-row">
+                          <div className="dashboard-progress-header">
+                            <strong>{formatDateLabel(point.date)}</strong>
+                            <span>{formatVnd(point.revenue)}</span>
+                          </div>
+                          <div className="progress-track" aria-hidden="true">
+                            <div className="progress-fill" style={{ width: `${width}%` }} />
+                          </div>
+                          <div className="dashboard-progress-meta">
+                            <span>{point.orderCount} đơn đã thanh toán</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -207,7 +376,7 @@ export const AdminDashboard: React.FC = () => {
                             </span>
                             <span>
                               <Clock3 size={14} />
-                              {new Date(concert.startTime).toLocaleDateString()}
+                              {new Date(concert.startTime).toLocaleDateString('vi-VN')}
                             </span>
                           </div>
                         </div>
@@ -224,7 +393,7 @@ export const AdminDashboard: React.FC = () => {
                 <h3 className="panel-title">Tiến độ bán vé</h3>
                 {salesProgress.length === 0 ? (
                   <div className="soft-panel">
-                    <p style={{ color: 'var(--text-muted)', margin: 0 }}>Chưa có dữ liệu hạng vé.</p>
+                    <p style={{ color: 'var(--text-muted)', margin: 0 }}>Chưa có dữ liệu thống kê sự kiện.</p>
                   </div>
                 ) : (
                   <div className="dashboard-progress-list">
@@ -239,9 +408,11 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                         <div className="dashboard-progress-meta">
                           <span>
-                            {summary.soldTickets} / {summary.totalTickets} vé
+                            {summary.soldTickets} / {summary.totalTickets} vé đã thanh toán
                           </span>
+                          <span>{summary.reservedTickets} vé đang giữ</span>
                           <span>Còn lại {summary.availableTickets}</span>
+                          <span>{formatVnd(summary.revenue)}</span>
                         </div>
                       </div>
                     ))}

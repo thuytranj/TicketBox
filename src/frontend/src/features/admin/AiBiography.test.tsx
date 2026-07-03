@@ -203,10 +203,10 @@ describe('AiBiography', () => {
     // Simulate completion state for next fetch
     isCompleted = true;
 
-    // Trigger socket callback
+    // Trigger socket callback with the backend enum value.
     if (socketCallback) {
       (socketCallback as any)({
-        type: 'AI_BIO_COMPLETED',
+        type: 'ai_bio_completed',
         referenceId: 'c1',
       });
     }

@@ -56,8 +56,9 @@ export const AiBiography: React.FC = () => {
 
     const handleNotification = (notification: any) => {
       // Check if this notification is for our current concert's bio status
+      const notificationType = String(notification.type || '').toLowerCase();
       if (
-        (notification.type === 'AI_BIO_COMPLETED' || notification.type === 'AI_BIO_FAILED') &&
+        (notificationType === 'ai_bio_completed' || notificationType === 'ai_bio_failed') &&
         notification.referenceId === id
       ) {
         fetchBioStatus(false);
@@ -163,7 +164,7 @@ export const AiBiography: React.FC = () => {
   return (
     <div className="container" style={{ minHeight: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
       <Link to="/admin/concerts" className="btn btn-outline" style={{ alignSelf: 'flex-start', marginBottom: '1.5rem', gap: '0.5rem' }}>
-        <ArrowLeft size={16} /> Back to Concerts
+        <ArrowLeft size={16} /> Quay lại sự kiện
       </Link>
 
       <header className="section-heading">
