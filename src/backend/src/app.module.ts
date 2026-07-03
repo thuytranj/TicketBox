@@ -17,6 +17,7 @@ import { AIModule } from './ai/ai.module';
 import { BookingModule } from './booking/booking.module';
 import { PaymentModule } from './payment/payment.module';
 import { CheckinModule } from './checkin/checkin.module';
+import { StatisticsModule } from './statistics/statistics.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { CheckinModule } from './checkin/checkin.module';
     BookingModule,
     PaymentModule,
     CheckinModule,
+    StatisticsModule,
   ],
   controllers: [AppController],
   providers: [
