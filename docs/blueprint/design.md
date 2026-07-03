@@ -74,7 +74,7 @@
 - **PostgreSQL** làm persistent storage chính.
 - **Redis** làm cache layer + atomic inventory operations + rate limiting.
 - **RabbitMQ** làm message broker cho xử lý bất đồng bộ.
-- **Mailtrap SMTP** (mock) cho gửi email trong môi trường Dev.
+- **Resend** (Email Service API) cho gửi email và **Supabase Storage** cho lưu trữ file tạm khi import VIP.
 
 ---
 
@@ -94,9 +94,10 @@ flowchart TD
 
     TicketBox -->|"Tạo giao dịch thanh toán,<br/>Nhận webhook callback"| VNPAY["VNPAY<br/>(Mock/Sandbox)"]:::external
     TicketBox -->|"Tạo giao dịch thanh toán,<br/>Nhận webhook callback"| MoMo["MoMo<br/>(Mock/Sandbox)"]:::external
-    TicketBox -->|"Gửi văn bản,<br/>Nhận tóm tắt tiểu sử"| GeminiAI["Google Gemini Pro API"]:::external
-    TicketBox -->|"Gửi email xác nhận vé,<br/>Gửi email nhắc nhở"| MailtrapSMTP["Mailtrap SMTP<br/>(Mock Email Server)"]:::external
+    TicketBox -->|"Gửi văn bản,<br/>Nhận tóm tắt tiểu sử"| GeminiAI["Google Gemini API"]:::external
+    TicketBox -->|"Gửi email qua API"| Resend["Resend<br/>(Email Service API)"]:::external
     TicketBox -->|"Upload ảnh poster concert,<br/>Nhận CDN URL"| Cloudinary["Cloudinary<br/>(Cloud Image Storage / CDN)"]:::external
+    TicketBox -->|"Tạm lưu file CSV khách mời VIP,<br/>Tải file để xử lý"| Supabase["Supabase Storage<br/>(Object Storage)"]:::external
     BanToChuc -.->|"Cung cấp tệp CSV<br/>danh sách khách mời VIP"| TicketBox
 ```
 
@@ -142,8 +143,9 @@ flowchart TD
     VNPAY["VNPAY<br/>(Payment Gateway)"]:::external
     MoMo["MoMo<br/>(Payment Gateway)"]:::external
     GeminiAPI["Google Gemini API<br/>(AI Service)"]:::external
-    SMTP["Mailtrap SMTP<br/>(Mock Email Server)"]:::external
+    Resend["Resend API<br/>(Email Service)"]:::external
     Cloudinary["Cloudinary<br/>(Cloud Image Storage / CDN)"]:::external
+    Supabase["Supabase Storage<br/>(Object Storage)"]:::external
 
     %% Kết nối từ Tác nhân tới Client
     KhanGia -->|"Xem concert, Đặt vé, Thanh toán"| WebApp
@@ -167,17 +169,20 @@ flowchart TD
 
     %% Kết nối từ Background Worker tới các dữ liệu - hàng đợi
     BackgroundWorker -->|"Đọc/Ghi dữ liệu (TypeORM)"| Postgres
-    BackgroundWorker -->|"Consume AI/Notification queues"| RabbitMQ
+    BackgroundWorker -->|"Đọc/Ghi dữ liệu, Lock, PubSub"| Redis
+    BackgroundWorker -->|"Consume AI/Notification/Payment/Check-in/VIP queues"| RabbitMQ
 
     %% Kết nối tới các Hệ thống bên ngoài từ API
     NestJSAPI -->|"Tạo giao dịch - Nhận webhook"| VNPAY
     NestJSAPI -->|"Tạo giao dịch - Nhận webhook"| MoMo
     NestJSAPI -->|"Upload ảnh poster, Nhận CDN URL"| Cloudinary
+    NestJSAPI -->|"Upload file CSV khách mời VIP"| Supabase
 
     %% Kết nối tới các Hệ thống bên ngoài từ Background Worker
     BackgroundWorker -->|"Gửi văn bản cần tóm tắt"| GeminiAPI
-    BackgroundWorker -->|"Gửi email xác nhận / nhắc nhở"| SMTP
-    SMTP -.->|"Gửi email thông báo tới"| KhanGia
+    BackgroundWorker -->|"Gửi email xác nhận / nhắc nhở"| Resend
+    BackgroundWorker -->|"Tải & Xóa file CSV khách mời"| Supabase
+    Resend -.->|"Gửi email thông báo tới"| KhanGia
 ```
 
 ---
@@ -224,14 +229,15 @@ flowchart TD
     subgraph NotificationEngine["Notification Engine"]
         NotifExchange{{"RabbitMQ<br/>notification.exchange<br/>(Topic Exchange)"}}:::notification
         InAppWorker["In-app Worker<br/>(Lưu notification_logs)"]:::notification
-        EmailWorker["Email Worker<br/>(QR ký số + Nodemailer)"]:::notification
+        EmailWorker["Email Worker<br/>(QR ký số + Resend API)"]:::notification
         ReminderCron["Concert Reminder<br/>Cron Job (mỗi 5 phút)"]:::notification
     end
 
-    subgraph DataLayer["Lớp Dữ liệu"]
+    subgraph DataLayer["Lớp Dữ liệu & Dịch vụ"]
         Redis[("Redis")]:::db
         Postgres[("PostgreSQL")]:::db
-        SMTP["Mailtrap SMTP"]:::db
+        Resend["Resend API"]:::db
+        Supabase[("Supabase Storage")]:::db
     end
 
     subgraph OfflineCheckin["Soát vé Offline"]
@@ -250,15 +256,18 @@ flowchart TD
     PaymentGateway -->|"Webhook callback"| WebhookHandler
     WebhookHandler -->|"Update booking=paid"| Postgres
     WebhookHandler -->|"Publish"| NotifExchange
+    API -->|"Tạm lưu file CSV"| Supabase
 
     NotifExchange --> InAppWorker --> Postgres
-    NotifExchange --> EmailWorker --> SMTP
+    NotifExchange --> EmailWorker --> Resend
     ReminderCron -->|"Publish"| NotifExchange
 
     ExpiryScheduler -->|"Hồi kho Redis + Cancel DB"| Redis
     ExpiryScheduler --> Postgres
 
-    Mobile -->|"GET /checkin/data"| API -->|"Tải danh sách vé"| SQLite
+    Mobile -->|"GET /checkin/data"| API
+    API -->|"Trả về danh sách vé"| Mobile
+    Mobile -->|"Lưu vào"| SQLite
     Mobile --> QRScanner --> SQLite
     QRScanner -->|"Check-in offline"| SyncQueue
     SyncQueue -->|"POST /checkin/sync (khi có mạng)"| API --> Postgres
@@ -373,32 +382,43 @@ erDiagram
         timestamp sale_start_time
         timestamp sale_end_time
     }
-    BOOKINGS {
+    VIP_GUEST_IMPORTS {
+        uuid_v7 id PK
+        uuid_v7 concert_id FK
+        varchar status
+        integer total_rows
+        integer imported_rows
+        jsonb error_logs
+        varchar file_url
+        timestamp created_at
+        timestamp updated_at
+    }
+    ORDERS {
         uuid_v7 id PK
         uuid_v7 user_id FK
         uuid_v7 concert_id FK
         varchar status
         decimal total_amount
         varchar idempotency_key UK
-        timestamp expires_at
         timestamp created_at
     }
     PAYMENTS {
         uuid_v7 id PK
-        uuid_v7 booking_id FK
-        varchar method
-        varchar gateway_txn_id UK
+        uuid_v7 order_id FK
+        varchar gateway
+        varchar transaction_id UK
         decimal amount
         varchar status
-        jsonb gateway_response
-        timestamp paid_at
+        jsonb raw_response
+        varchar pay_url
         timestamp created_at
     }
     TICKETS {
         uuid_v7 id PK
-        uuid_v7 booking_id FK
+        uuid_v7 order_id FK
         uuid_v7 ticket_type_id FK
         varchar qr_code_hash
+        varchar status
         varchar checkin_status
         timestamp checked_in_at
     }
@@ -410,6 +430,7 @@ erDiagram
         timestamp scan_time
         boolean is_offline
         varchar device_id
+        varchar status
     }
     VIP_GUESTS {
         uuid_v7 id PK
@@ -437,12 +458,14 @@ erDiagram
     }
 
     CONCERTS ||--o{ TICKET_TYPES : "has many"
-    USERS ||--o{ BOOKINGS : "places"
-    BOOKINGS ||--o{ PAYMENTS : "has many"
-    BOOKINGS ||--o{ TICKETS : "contains"
+    CONCERTS ||--o{ VIP_GUEST_IMPORTS : "has many"
+    USERS ||--o{ ORDERS : "places"
+    ORDERS ||--o{ PAYMENTS : "has many"
+    ORDERS ||--o{ TICKETS : "contains"
     TICKET_TYPES ||--o{ TICKETS : "instantiates"
     TICKETS ||--o{ CHECKIN_LOGS : "logs"
     VIP_GUESTS ||--o{ CHECKIN_LOGS : "logs"
+    USERS ||--o{ CHECKIN_LOGS : "verifies"
     CONCERTS ||--o{ VIP_GUESTS : "has many"
     USERS ||--o{ NOTIFICATION_LOGS : "receives"
     CONCERTS ||--o| CONCERT_AI_BIOS : "has AI bio draft"
@@ -530,7 +553,7 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 | :--------------------- | :--------------- | :------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------- |
 | **id**                 | `uuid`           | `PRIMARY KEY`                                                                          | Khóa chính dạng UUID v7                                                                                            |
 | **concert_id**         | `uuid`           | `FOREIGN KEY REFERENCES CONCERTS(id) ON DELETE CASCADE`                                | Khóa ngoại trỏ đến concert tương ứng                                                                               |
-| **name**               | `varchar(100)`   | `NOT NULL`, `CHECK (name IN ('GA', 'SVIP', 'VIP', 'CAT1', 'CAT2'))`                    | Tên loại vé (chỉ được là một trong các giá trị: GA, SVIP, VIP, CAT1, CAT2)                                         |
+| **name**               | `varchar(255)`   | `NOT NULL`                                                                             | Tên loại vé (ví dụ: Standard Zone A, Platinum, VIP...)                                                             |
 | **price**              | `decimal(12, 2)` | `NOT NULL`, `CHECK (price >= 0)`                                                       | Giá vé                                                                                                             |
 | **total_quantity**     | `integer`        | `NOT NULL`, `CHECK (total_quantity > 0)`                                               | Tổng số lượng vé phát hành cho loại này                                                                            |
 | **available_quantity** | `integer`        | `NOT NULL`, `CHECK (available_quantity >= 0 AND available_quantity <= total_quantity)` | Số lượng vé còn lại trong kho có thể bán                                                                           |
@@ -540,8 +563,8 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ##### Business Rules
 
-- Tên loại vé `name` phải là duy nhất trong phạm vi một buổi biểu diễn cụ thể (ví dụ: một concert không thể có hai loại vé cùng tên "VIP").
-- Tên loại vé bắt buộc phải nằm trong danh sách giới hạn các nhóm phân hạng: `GA`, `SVIP`, `VIP`, `CAT1`, `CAT2`. Quy tắc này được áp dụng cả ở mức database check constraint (`chk_ticket_types_name`) và ở lớp validation DTO (`@IsEnum(TicketTypeName)`).
+- Tên loại vé `name` phải là duy nhất trong phạm vi một buổi biểu diễn cụ thể (ví dụ: một concert không thể có hai loại vé cùng tên "VIP", được đảm bảo bởi composite unique constraint `uq_concert_ticket_type_name`).
+- Tên loại vé có thể được đặt tùy ý dưới dạng text (`varchar(255)`) thay vì bị giới hạn cứng ở mức database/DTO như trước, giúp tăng sự linh hoạt cho ban tổ chức.
 - `available_quantity` ban đầu phải bằng `total_quantity` và giảm dần khi có người đặt vé. Không bao giờ được phép nhỏ hơn 0.
 - Số vé tối đa một người được đặt (`max_per_user`) dùng để ngăn chặn đầu cơ vé.
 - Có ràng buộc kiểm tra ở mức database (`CHECK (sale_end_time IS NULL OR sale_start_time IS NULL OR sale_end_time > sale_start_time)`) để đảm bảo tính hợp lệ của thời gian bán vé.
@@ -560,7 +583,7 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ---
 
-#### 4. Bảng `BOOKINGS` (Đơn đặt vé)
+#### 4. Bảng `ORDERS` (Đơn đặt vé)
 
 ##### Đặc tả chi tiết (Table Specification)
 
@@ -571,25 +594,24 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 | **concert_id**      | `uuid`           | `FOREIGN KEY REFERENCES CONCERTS(id) ON DELETE RESTRICT`                                         | Khóa ngoại trỏ đến concert được đặt vé                                                                                                            |
 | **status**          | `varchar(50)`    | `NOT NULL`, `DEFAULT 'pending'`, `CHECK (status IN ('pending', 'paid', 'expired', 'cancelled'))` | Trạng thái của đơn hàng: chờ thanh toán (`pending`), đã thanh toán (`paid`), quá hạn hủy tự động (`expired`), bị hủy bởi người dùng (`cancelled`) |
 | **total_amount**    | `decimal(12, 2)` | `NOT NULL`, `CHECK (total_amount >= 0)`                                                          | Tổng số tiền của đơn hàng                                                                                                                         |
-| **idempotency_key** | `varchar(255)`   | `UNIQUE`, `NOT NULL`                                                                             | Chuỗi mã định danh do client gửi lên nhằm chống trùng lặp đơn hàng                                                                                |
-| **expires_at**      | `timestamp`      | `NOT NULL`                                                                                       | Thời hạn thanh toán của đơn hàng (10 phút kể từ lúc tạo)                                                                                          |
+| **idempotency_key** | `varchar(255)`   | `UNIQUE`, `NULL`                                                                                 | Chuỗi mã định danh do client gửi lên nhằm chống trùng lặp đơn hàng (có thể trống)                                                                 |
 | **created_at**      | `timestamp`      | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP`                                                          | Thời điểm tạo đơn đặt vé                                                                                                                          |
 
 ##### Business Rules
 
 - Khi khởi tạo, đơn hàng bắt buộc ở trạng thái `pending`.
-- `expires_at` mặc định được gán bằng `created_at + 10 minutes`. Khi xảy ra sự cố sập toàn bộ cổng thanh toán trực tuyến (cả hai Circuit Breaker đều `OPEN`), hệ thống sẽ chặn không cho phép tạo đơn hàng mới (`POST /bookings` trả về lỗi bảo trì luồng mua vé). Các đơn đặt hàng đang ở trạng thái `pending` trước đó vẫn giữ nguyên thời hạn thanh toán là 10 phút và không được gia hạn thêm nhằm tránh tình trạng giữ vé ma.
-- Nếu hết thời gian `expires_at` mà đơn hàng chưa sang `paid`, cron job quét sẽ chuyển trạng thái sang `expired` và thực hiện hoàn trả số vé đã giữ về lại kho Redis (compensation).
+- Đơn hàng sẽ hết hạn thanh toán sau 10 phút kể từ lúc tạo (`created_at`). Khi xảy ra sự cố sập toàn bộ cổng thanh toán trực tuyến (cả hai Circuit Breaker đều `OPEN`), hệ thống sẽ chặn không cho phép tạo đơn hàng mới (`POST /bookings` trả về lỗi bảo trì luồng mua vé). Các đơn đặt hàng đang ở trạng thái `pending` trước đó vẫn giữ nguyên thời hạn thanh toán là 10 phút.
+- Nếu hết thời gian 10 phút kể từ lúc tạo mà đơn hàng chưa sang `paid`, RabbitMQ Dead Letter Exchange (DLX) hoặc cron job quét sẽ chuyển trạng thái đơn hàng sang `expired` và thực hiện hoàn trả số vé đã giữ về lại kho Redis (compensation).
 - Ràng buộc khóa ngoại không cho phép xóa Concert (`ON DELETE RESTRICT`) hoặc User (`ON DELETE RESTRICT`) khi đã phát sinh đơn hàng.
 
 ##### Indexes
 
-| Index Name                       | Columns              | Type                   | Purpose                                                                      |
-| :------------------------------- | :------------------- | :--------------------- | :--------------------------------------------------------------------------- |
-| `pk_bookings`                    | `id`                 | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính                                                   |
-| `idx_bookings_user_id`           | `user_id`            | `B-Tree`               | Truy vấn nhanh lịch sử mua vé của người dùng                                 |
-| `idx_bookings_status_expires_at` | `status, expires_at` | `B-Tree`               | Hỗ trợ cron job quét định kỳ các đơn hàng pending đã hết hạn để xử lý hủy vé |
-| `uq_bookings_idempotency_key`    | `idempotency_key`    | `UNIQUE (B-Tree)`      | Lớp bảo vệ chống trùng lặp giao dịch đặt vé ở mức Database                   |
+| Index Name                  | Columns           | Type                   | Purpose                                                                    |
+| :-------------------------- | :---------------- | :--------------------- | :------------------------------------------------------------------------- |
+| `pk_orders`                 | `id`              | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính                                                 |
+| `idx_orders_user_id`        | `user_id`         | `B-Tree`               | Truy vấn nhanh lịch sử mua vé của người dùng                               |
+| `idx_orders_concert_id`      | `concert_id`      | `B-Tree`               | Truy vấn nhanh các đơn hàng của một concert cụ thể                         |
+| `uq_orders_idempotency_key` | `idempotency_key` | `UNIQUE (B-Tree)`      | Lớp bảo vệ chống trùng lặp giao dịch đặt vé ở mức Database                 |
 
 ---
 
@@ -597,30 +619,30 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ##### Đặc tả chi tiết (Table Specification)
 
-| Column               | Type             | Constraints                                                                                       | Description                                                                      |
-| :------------------- | :--------------- | :------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------- |
-| **id**               | `uuid`           | `PRIMARY KEY`                                                                                     | Khóa chính dạng UUID v7                                                          |
-| **booking_id**       | `uuid`           | `FOREIGN KEY REFERENCES BOOKINGS(id) ON DELETE RESTRICT`                                          | Khóa ngoại liên kết tới đơn đặt vé tương ứng                                     |
-| **method**           | `varchar(50)`    | `NOT NULL`, `CHECK (method IN ('vnpay', 'momo'))`                                                 | Cổng thanh toán sử dụng (VNPAY hoặc MoMo)                                        |
-| **gateway_txn_id**   | `varchar(255)`   | `UNIQUE`, `NOT NULL`                                                                              | Mã giao dịch duy nhất do cổng thanh toán trả về                                  |
-| **amount**           | `decimal(12, 2)` | `NOT NULL`, `CHECK (amount >= 0)`                                                                 | Số tiền thực tế giao dịch thanh toán                                             |
-| **status**           | `varchar(50)`    | `NOT NULL`, `DEFAULT 'pending'`, `CHECK (status IN ('pending', 'success', 'failed', 'refunded'))` | Trạng thái giao dịch thanh toán                                                  |
-| **gateway_response** | `jsonb`          | `NULL`                                                                                            | Dữ liệu phản hồi nguyên bản (raw response) từ cổng thanh toán lưu dưới dạng JSON |
-| **paid_at**          | `timestamp`      | `NULL`                                                                                            | Thời điểm thanh toán thành công (nếu giao dịch thành công)                       |
-| **created_at**       | `timestamp`      | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP`                                                           | Thời điểm tạo bản ghi thanh toán                                                 |
+| Column             | Type             | Constraints                                                                             | Description                                                                      |
+| :----------------- | :--------------- | :-------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------- |
+| **id**             | `uuid`           | `PRIMARY KEY`                                                                           | Khóa chính dạng UUID v7                                                          |
+| **order_id**       | `uuid`           | `FOREIGN KEY REFERENCES ORDERS(id) ON DELETE RESTRICT`                                  | Khóa ngoại liên kết tới đơn đặt vé tương ứng                                     |
+| **gateway**        | `varchar(20)`    | `NOT NULL`                                                                              | Cổng thanh toán sử dụng (vnpay hoặc momo)                                        |
+| **transaction_id** | `varchar(255)`   | `UNIQUE`, `NULL`                                                                        | Mã giao dịch duy nhất do cổng thanh toán trả về (có thể trống khi khởi tạo)      |
+| **amount**         | `decimal(12, 2)` | `NOT NULL`, `CHECK (amount >= 0)`                                                       | Số tiền thực tế giao dịch thanh toán                                             |
+| **status**         | `varchar(20)`    | `NOT NULL`, `DEFAULT 'pending'`, `CHECK (status IN ('pending', 'success', 'failed'))`   | Trạng thái giao dịch thanh toán                                                  |
+| **pay_url**        | `text`           | `NULL`                                                                                  | URL thanh toán do cổng thanh toán trả về để chuyển hướng người dùng              |
+| **raw_response**   | `jsonb`          | `NULL`                                                                                  | Dữ liệu phản hồi nguyên bản (raw response) từ cổng thanh toán lưu dưới dạng JSON |
+| **created_at**     | `timestamp`      | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP`                                                 | Thời điểm tạo bản ghi thanh toán                                                 |
 
 ##### Business Rules
 
-- Một đơn hàng (`booking_id`) có thể có nhiều bản ghi thanh toán nếu các lần thanh toán trước bị thất bại (`failed`), nhưng tối đa chỉ được có duy nhất một giao dịch ở trạng thái thành công (`success`).
-- `gateway_txn_id` hoạt động như một khóa chống trùng lặp (Idempotency Key) cho các cuộc gọi webhook từ phía cổng thanh toán. Webhook chỉ xử lý cập nhật trạng thái đơn đặt vé thành `paid` nếu giao dịch thanh toán chưa từng được ghi nhận thành công trước đó.
+- Một đơn đặt vé (`order_id`) có thể có nhiều bản ghi thanh toán nếu các lần thanh toán trước bị thất bại (`failed`), nhưng tối đa chỉ được có duy nhất một giao dịch ở trạng thái thành công (`success`).
+- `transaction_id` hoạt động như một khóa chống trùng lặp (Idempotency Key) cho các cuộc gọi webhook từ phía cổng thanh toán. Webhook chỉ xử lý cập nhật trạng thái đơn đặt vé thành `paid` nếu giao dịch thanh toán chưa từng được ghi nhận thành công trước đó.
 
 ##### Indexes
 
-| Index Name                   | Columns          | Type                   | Purpose                                                                            |
-| :--------------------------- | :--------------- | :--------------------- | :--------------------------------------------------------------------------------- |
-| `pk_payments`                | `id`             | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính                                                         |
-| `idx_payments_booking_id`    | `booking_id`     | `B-Tree`               | Truy cập lịch sử các lần thanh toán của một đơn hàng                               |
-| `uq_payments_gateway_txn_id` | `gateway_txn_id` | `UNIQUE (B-Tree)`      | Đảm bảo tính duy nhất của mã giao dịch cổng thanh toán và xử lý webhook idempotent |
+| Index Name                 | Columns          | Type                   | Purpose                                                                            |
+| :------------------------- | :--------------- | :--------------------- | :--------------------------------------------------------------------------------- |
+| `pk_payments`              | `id`             | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính                                                         |
+| `idx_payments_order_id`    | `order_id`       | `B-Tree`               | Truy cập lịch sử các lần thanh toán của một đơn hàng                               |
+| `uq_payments_txn_id`       | `transaction_id` | `UNIQUE (B-Tree)`      | Đảm bảo tính duy nhất của mã giao dịch cổng thanh toán và xử lý webhook idempotent |
 
 ---
 
@@ -631,15 +653,16 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 | Column             | Type           | Constraints                                                                                          | Description                                                         |
 | :----------------- | :------------- | :--------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------ |
 | **id**             | `uuid`         | `PRIMARY KEY`                                                                                        | Khóa chính dạng UUID v7                                             |
-| **booking_id**     | `uuid`         | `FOREIGN KEY REFERENCES BOOKINGS(id) ON DELETE RESTRICT`                                             | Khóa ngoại liên kết tới đơn hàng chứa vé này                        |
+| **order_id**       | `uuid`         | `FOREIGN KEY REFERENCES ORDERS(id) ON DELETE CASCADE`                                                | Khóa ngoại liên kết tới đơn hàng chứa vé này                        |
 | **ticket_type_id** | `uuid`         | `FOREIGN KEY REFERENCES TICKET_TYPES(id) ON DELETE RESTRICT`                                         | Khóa ngoại liên kết tới cấu hình loại vé                            |
-| **qr_code_hash**   | `varchar(255)` | `UNIQUE`, `NOT NULL`                                                                                 | Chuỗi băm SHA-256 chứa thông tin vé đã ký số (HMAC) dùng in QR Code |
+| **qr_code_hash**   | `varchar(500)` | `UNIQUE`, `NULL`                                                                                     | Chuỗi băm SHA-256 chứa thông tin vé đã ký số (HMAC) dùng in QR Code |
+| **status**         | `varchar(50)`  | `NOT NULL`, `DEFAULT 'reserved'`, `CHECK (status IN ('reserved', 'active', 'used'))`                 | Trạng thái hoạt động của vé (giữ chỗ, active, đã dùng)              |
 | **checkin_status** | `varchar(50)`  | `NOT NULL`, `DEFAULT 'not_checked_in'`, `CHECK (checkin_status IN ('not_checked_in', 'checked_in'))` | Trạng thái soát vé vào cửa (Chưa soát vé, Đã soát vé)               |
 | **checked_in_at**  | `timestamp`    | `NULL`                                                                                               | Thời điểm soát vé thành công                                        |
 
 ##### Business Rules
 
-- Vé chỉ được tự động tạo bởi Booking Worker sau khi đơn đặt vé `BOOKINGS` tương ứng được cập nhật trạng thái `paid`.
+- Vé chỉ được tự động tạo bởi Booking Worker sau khi đơn đặt vé `ORDERS` tương ứng được cập nhật trạng thái `paid`.
 - `qr_code_hash` là duy nhất trên toàn hệ thống. Đây là chuỗi băm của thông tin vé kèm theo chữ ký HMAC của server để ngăn chặn việc làm giả vé và không lộ thông tin nhạy cảm.
 - Một vé chỉ được check-in tối đa 1 lần. Khi quét thành công, `checkin_status` chuyển sang `checked_in` và ghi lại `checked_in_at`. Mọi lượt quét sau đó trên mã QR này đều sẽ bị báo lỗi trùng lặp.
 
@@ -648,7 +671,8 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 | Index Name                | Columns        | Type                   | Purpose                                                                        |
 | :------------------------ | :------------- | :--------------------- | :----------------------------------------------------------------------------- |
 | `pk_tickets`              | `id`           | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính                                                     |
-| `idx_tickets_booking_id`  | `booking_id`   | `B-Tree`               | Lấy danh sách tất cả các vé thuộc một đơn đặt vé cụ thể                        |
+| `idx_tickets_order_id`    | `order_id`     | `B-Tree`               | Lấy danh sách tất cả các vé thuộc một đơn đặt vé cụ thể                        |
+| `idx_tickets_type_id`     | `ticket_type_id` | `B-Tree`             | Truy vấn các vé theo loại vé để kiểm tra hoặc thống kê                         |
 | `uq_tickets_qr_code_hash` | `qr_code_hash` | `UNIQUE (B-Tree)`      | Phục vụ đối soát nhanh thông tin khi nhân viên soát vé quét mã QR tại cổng vào |
 
 ---
@@ -666,6 +690,7 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 | **scan_time**    | `timestamp`    | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP`                            | Thời điểm thực hiện quét mã                                             |
 | **is_offline**   | `boolean`      | `NOT NULL`, `DEFAULT FALSE`                                        | Đánh dấu lượt quét này được ghi nhận offline tại app và đồng bộ lên sau |
 | **device_id**    | `varchar(255)` | `NOT NULL`                                                         | Định danh thiết bị phần cứng (điện thoại quét) dùng soát vé             |
+| **status**       | `varchar(50)`  | `NOT NULL`, `DEFAULT 'valid'`, `CHECK (status IN ('valid', 'invalidated_fraud'))` | Trạng thái nhật ký soát vé (hợp lệ hoặc bị vô hiệu do gian lận)       |
 
 ##### Business Rules
 
@@ -776,6 +801,41 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 ---
 
+#### 11. Bảng `VIP_GUEST_IMPORTS` (Tiến trình import danh sách khách VIP)
+
+##### Đặc tả chi tiết (Table Specification)
+
+| Column | Type | Constraints | Description |
+| :--- | :--- | :--- | :--- |
+| **id** | `uuid` | `PRIMARY KEY` | Khóa chính dạng UUID v7 |
+| **concert_id** | `uuid` | `FOREIGN KEY REFERENCES CONCERTS(id) ON DELETE CASCADE` | Khóa ngoại liên kết tới concert được import khách VIP |
+| **status** | `varchar(50)` | `NOT NULL`, `DEFAULT 'pending'`, `CHECK (status IN ('pending', 'processing', 'completed', 'failed'))` | Trạng thái của tác vụ import file CSV |
+| **total_rows** | `integer` | `NOT NULL`, `DEFAULT 0` | Tổng số dòng hợp lệ đọc được từ file CSV |
+| **imported_rows** | `integer` | `NOT NULL`, `DEFAULT 0` | Số dòng khách mời VIP đã import thành công vào database |
+| **error_logs** | `jsonb` | `NULL` | Danh sách các lỗi trích xuất chi tiết theo dạng JSON |
+| **file_url** | `varchar(1000)` | `NULL` | Đường dẫn URL tải file tạm trên Supabase Storage |
+| **created_at** | `timestamp` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | Thời điểm bắt đầu tạo tác vụ import |
+| **updated_at** | `timestamp` | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP` | Thời điểm cập nhật trạng thái gần nhất |
+
+##### Business Rules
+
+- Ban tổ chức tải file CSV lên thông qua API Admin, hệ thống upload tạm lên Supabase Storage và lưu bản ghi `vip_guest_imports` với trạng thái `pending`.
+- Tác vụ import được xử lý bất đồng bộ thông qua RabbitMQ Worker:
+  - Tải file từ Supabase về, parse từng hàng để validate (họ tên, email, phone...).
+  - Insert khách mời hợp lệ vào bảng `VIP_GUESTS` và cập nhật `imported_rows`.
+  - Nếu gặp lỗi ở hàng nào (ví dụ email không đúng định dạng, trùng lặp email với khách VIP khác), ghi nhận chi tiết lỗi vào `error_logs`.
+  - Sau khi xử lý xong (hoặc thất bại), xóa tệp tạm trên Supabase Storage.
+- Xóa cascade bản ghi `vip_guest_imports` tương ứng khi xóa concert.
+
+##### Indexes
+
+| Index Name | Columns | Type | Purpose |
+| :--- | :--- | :--- | :--- |
+| `pk_vip_guest_imports` | `id` | `PRIMARY KEY (B-Tree)` | Tự động tạo cho khóa chính |
+| `idx_vip_guest_imports_concert_created` | `concert_id, created_at` | `B-Tree` | Truy vấn nhanh lịch sử import khách VIP của một concert |
+
+---
+
 ## Thiết kế kiểm soát truy cập
 
 ### Mô hình phân quyền: Role-Based Access Control (RBAC)
@@ -806,9 +866,9 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 
 | Vai trò                              | Quyền truy cập                                                       | Endpoints được phép                                                                                            |
 | ------------------------------------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **Khán giả** (`audience`)            | Xem concert, đặt vé, thanh toán, xem thông báo, xem lịch sử đơn hàng | `GET /concerts`, `POST /bookings`, `POST /payments`, `GET /notifications`, `GET /bookings/my`                  |
-| **Ban tổ chức** (`organizer`)        | Tạo/sửa/xóa concert, import CSV, upload PDF, xem thống kê            | `POST/PUT/DELETE /concerts`, `POST /concerts/:id/guests/import`, `POST /concerts/:id/artist-bio`, `GET /stats` |
-| **Nhân viên soát vé** (`gate_staff`) | Quét QR code, tải dữ liệu soát vé, đồng bộ check-in offline          | `POST /checkin/scan`, `GET /checkin/data`, `POST /checkin/sync`                                                |
+| **Khán giả** (`audience`)            | Xem concert, đặt vé, thanh toán (MOMO/VNPAY), xem thông báo, kiểm tra đơn hàng | `GET /concerts`, `GET /concerts/:id`, `POST /bookings`, `GET /bookings/:id`, `POST /payments/momo`, `POST /payments/vnpay`, `GET /payments/:orderId`, `GET /notifications` |
+| **Ban tổ chức** (`organizer`)        | Toàn quyền quản lý concert, loại vé, import khách VIP, sinh bio nghệ sĩ, xem dashboard thống kê, soát vé | `POST /concerts`, `POST /concerts/upload-poster`, `POST /concerts/:concertId/ticket-types`, `PATCH /concerts/:id`, `DELETE /concerts/:id`, `POST /concerts/:id/artist-bio*`, `POST /concerts/:id/guests/import`, `GET /concerts/:id/guests*`, `GET /statistics/*`, `GET /checkin/data`, `POST /checkin/scan`, `POST /checkin/sync` |
+| **Nhân viên soát vé** (`gate_staff`) | Quét QR code, tải dữ liệu soát vé, đồng bộ check-in offline          | `GET /checkin/data`, `POST /checkin/scan`, `POST /checkin/sync`                                                |
 
 ### Cách kiểm tra quyền tại từng điểm truy cập
 
@@ -949,6 +1009,14 @@ server {
 | `nodelay` | —            | Xử lý burst ngay, không delay/queue                                  |
 | `zone`    | `global:10m` | 10MB shared memory (~160,000 IP addresses đồng thời)                 |
 
+#### Tầng bảo vệ bổ sung: Global IP-based Throttler (@nestjs/throttler)
+
+Bên cạnh Nginx ở cổng vào, tại chính ứng dụng NestJS cũng áp dụng một bộ lọc giới hạn tần suất yêu cầu IP-based toàn cục thông qua `ThrottlerGuard` để chống spam API cơ bản:
+
+- **Cấu hình:** 60 requests/phút (60 requests per minute) cho mỗi địa chỉ IP.
+- **Phạm vi:** Mặc định áp dụng cho tất cả các API công khai hoặc không nhạy cảm (như xem thông tin concert, login/register...).
+- **Cơ chế bỏ qua (Skip):** Các endpoint nhạy cảm (như `/bookings`, `/payments/momo`, `/payments/vnpay`) đã được bảo vệ bởi lớp rate limit chuyên sâu sẽ sử dụng decorator `@SkipThrottle()` để bỏ qua bộ lọc IP này, tránh cản trở người dùng thật khi thao tác thanh toán hoặc đặt vé nhanh.
+
 #### Lớp 2 — Application Layer (Redis Sliding Window Counter)
 
 **Mục đích:** Bảo vệ nghiệp vụ chuyên sâu (Business Logic Protection). Ngăn chặn một tài khoản (User ID) lách luật bằng cách mở nhiều tab, dùng VPN đổi IP, hoặc viết script gửi đồng thời hàng loạt request đặt vé.
@@ -960,7 +1028,7 @@ server {
 | Endpoint                      | Window | Max Requests | Áp dụng theo | Lý do                                |
 | ----------------------------- | ------ | ------------ | ------------ | ------------------------------------ |
 | `POST /bookings` (đặt vé)     | 1 phút | 10           | User ID      | Chống script spam đặt chỗ hàng loạt  |
-| `POST /payments` (thanh toán) | 1 phút | 3            | User ID      | Chống gửi request thanh toán lặp lại |
+| `POST /payments/momo` / `vnpay` (thanh toán) | 1 phút | 3 | User ID | Chống gửi request thanh toán lặp lại |
 
 > **Lưu ý:** Endpoint đọc dữ liệu (`GET /concerts`) **không cần** rate limit ở Lớp 2 vì đã được bảo vệ bởi Nginx (Lớp 1) và CDN Cache.
 
@@ -970,10 +1038,12 @@ server {
 -- KEYS[1] = rate_limit:{user_id}:{endpoint}
 -- ARGV[1] = window_size (kích thước cửa sổ, milliseconds, ví dụ: 60000 = 1 phút)
 -- ARGV[2] = max_requests (số request tối đa trong window)
+-- ARGV[3] = unique_id (mã định danh duy nhất của request để tránh trùng lặp ZSET member)
 
 local key = KEYS[1]
 local window = tonumber(ARGV[1])
 local max_req = tonumber(ARGV[2])
+local unique_id = ARGV[3]
 
 -- 1. Lấy thời gian đồng nhất từ Redis Server (giây + microgiây)
 local redis_time = redis.call('time')
@@ -989,8 +1059,8 @@ if current >= max_req then
     return 0  -- VƯỢT NGƯỠNG → chặn
 end
 
--- 4. Ghi nhận request mới (score = timestamp, member = unique ID)
-redis.call('ZADD', key, now, now .. ':' .. math.random(1000000))
+-- 4. Ghi nhận request mới (score = timestamp, member = timestamp:unique_id)
+redis.call('ZADD', key, now, now .. ':' .. unique_id)
 
 -- 5. Đặt TTL tự động dọn dẹp key khi hết window
 redis.call('PEXPIRE', key, window)
@@ -1000,10 +1070,10 @@ return 1  -- CHO PHÉP
 
 **Key Pattern trên Redis:**
 
-| Key Pattern                     | Kiểu       | Mô tả                              |
-| ------------------------------- | ---------- | ---------------------------------- |
-| `rate_limit:{user_id}:bookings` | Sorted Set | Đếm số lần đặt vé trong 1 phút     |
-| `rate_limit:{user_id}:payments` | Sorted Set | Đếm số lần thanh toán trong 1 phút |
+| Key Pattern | Kiểu dữ liệu | Mô tả |
+| :--- | :--- | :--- |
+| `rate_limit:{tracker}:{endpoint}` | Sorted Set | Đếm số lượng request trượt trong cửa sổ thời gian. `tracker` mặc định là User ID (hoặc fallback IP address), `endpoint` là đường dẫn API (ví dụ: `rate_limit:u-123:/bookings` hoặc `rate_limit:u-123:/payments/momo`). |
+
 
 **Hành vi khi vượt ngưỡng:** Trả về `HTTP 429 Too Many Requests` kèm header `X-RateLimit-Source: app-user` để client phân biệt với lỗi 429 từ Nginx Gateway.
 
@@ -1065,19 +1135,20 @@ return 1  -- CHO PHÉP
 
 - **Tách biệt bảo vệ:** Hệ thống sử dụng hai Circuit Breaker độc lập (`vnpayCircuitBreaker` và `momoCircuitBreaker` sử dụng thư viện `opossum`) cho từng cổng thanh toán trực tuyến. Điều này tránh việc sự cố của cổng này ảnh hưởng đến cổng khác.
 - **Graceful Degradation (Read-Only Failover):**
-  - _Dynamic Switch:_ Khi một cổng thanh toán bị sập (Circuit Breaker chuyển sang trạng thái `OPEN`), hệ thống tự động điều hướng người dùng sang cổng thanh toán còn lại.
-  - _Read-Only Failover:_ Khi cả hai cổng thanh toán đều sập, hệ thống chặn hoàn toàn việc tạo đơn hàng mới (`POST /bookings` trả về lỗi `HTTP 503 Service Unavailable` hoặc thông báo bảo trì thanh toán) nhằm bảo vệ kho vé khỏi tình trạng bot/người dùng ảo chiếm dụng (giữ vé ma). Tuy nhiên, các API đọc thông tin sự kiện (`GET /concerts/:id` và `GET /stagemap`) vẫn mở bình thường từ Redis Cache để khán giả vẫn xem được chi tiết sự kiện và sơ đồ ghế.
+  - _Dynamic Switch:_ Khi một cổng thanh toán bị sập (Circuit Breaker chuyển sang trạng thái `OPEN`), hệ thống và giao diện hiển thị trạng thái `OPEN` để người dùng chủ động chọn cổng thanh toán còn lại.
+  - _Read-Only Failover:_ Khi cả hai cổng thanh toán đều sập, các nút thanh toán trên Frontend bị vô hiệu hóa hoàn toàn, hiển thị thông báo bảo trì. Tuy nhiên, các API đọc thông tin sự kiện (`GET /concerts/:id` và `GET /stagemap`) vẫn mở bình thường từ Redis Cache để khán giả vẫn xem được chi tiết sự kiện và sơ đồ ghế.
 
 **Cấu hình Circuit Breaker cho từng cổng (`vnpayCircuitBreaker`, `momoCircuitBreaker`):**
 
 | Tham số                    | Giá trị | Ý nghĩa                                       |
 | -------------------------- | ------- | --------------------------------------------- |
+| `timeout`                  | 8 giây  | Gateway không phản hồi trong 8s → coi là lỗi  |
 | `errorThresholdPercentage` | 50%     | Cắt mạch khi >50% request lỗi                 |
 | `resetTimeout`             | 30 giây | Thời gian chờ trước khi chuyển sang Half-Open |
-| `rollingCountTimeout`      | 10 giây | Cửa sổ thống kê lỗi                           |
+| `rollingCountTimeout`      | 30 giây | Cửa sổ thống kê lỗi                           |
 | `volumeThreshold`          | 5       | Số request tối thiểu trước khi tính tỷ lệ     |
 
-**Cấu hình Retry (bên trong mỗi Circuit Breaker):**
+**Cấu hình Retry (bên trong mỗi Gateway Client trước khi qua Circuit Breaker):**
 
 | Tham số          | Giá trị        | Ý nghĩa                                                                 |
 | ---------------- | -------------- | ----------------------------------------------------------------------- |
@@ -1098,21 +1169,19 @@ stateDiagram-v2
 
 **Cơ chế Failover & Fallback:**
 
-1. **Endpoint kiểm tra trạng thái cổng (`GET /payments/methods`):**
-   - API này kiểm tra trạng thái của cả hai Circuit Breakers.
-   - Nếu `vnpayCircuitBreaker` ở trạng thái `OPEN`, trường `available` của VNPAY sẽ trả về `false`. Frontend sẽ tự động ẩn hoặc disable tùy chọn này và gợi ý MoMo.
-   - Nếu cả hai cổng đều `OPEN`, Frontend sẽ hiển thị thông báo cổng thanh toán đang bảo trì và tạm thời khóa nút đặt vé.
+1. **Endpoint kiểm tra trạng thái cổng (`GET /payments/circuit-breaker/status`):**
+   - API này trả về trạng thái của cả hai Circuit Breakers (ví dụ: `{"momo": "CLOSED", "vnpay": "OPEN"}`).
+   - Frontend sẽ tự động kiểm tra kết quả này: nếu cổng nào ở trạng thái `OPEN`, Frontend sẽ disable tùy chọn đó, hiển thị nhãn `(Maintenance)` và gợi ý người dùng chọn phương thức còn lại.
+   - Nếu cả hai cổng đều `OPEN`, Frontend hiển thị thông báo cổng thanh toán đang bảo trì toàn diện.
 
 2. **Luồng xử lý Booking API (`POST /bookings`):**
-   - Trước khi cho phép tạo đơn hàng và giữ chỗ, hệ thống kiểm tra trạng thái của cả hai Circuit Breakers.
-   - Nếu cả hai cổng đều `OPEN` (sập toàn bộ): Trả về `HTTP 503 Service Unavailable` kèm thông báo bảo trì thanh toán, chặn tạo đơn hàng mới.
+   - API đặt vé tập trung vào xử lý giữ chỗ trong Redis và đẩy hàng đợi vào RabbitMQ, hoàn toàn độc lập với cổng thanh toán để đảm bảo tốc độ cao nhất (không kiểm tra Circuit Breaker ở bước này).
 
-3. **Luồng xử lý Checkout API (`POST /payments`):**
-   - Khi nhận yêu cầu thanh toán cho một phương thức (ví dụ: VNPAY):
-     - Nếu CB của cổng đó là `CLOSED` hoặc `HALF-OPEN`: Thực hiện gọi API của gateway bình thường.
-     - Nếu CB của cổng đó là `OPEN`: API tự động kiểm tra xem cổng còn lại (MoMo) có khả dụng hay không.
-       - _Trường hợp cổng còn lại khả dụng (Strategy 1):_ Trả về `HTTP 422 Unprocessable Entity` gợi ý người dùng đổi sang cổng khả dụng.
-       - _Trường hợp cả hai cổng đều sập (Strategy 2):_ Trả về `HTTP 503 Service Unavailable` thông báo hệ thống thanh toán đang bảo trì.
+3. **Luồng xử lý Thanh toán (`POST /payments/momo` và `POST /payments/vnpay`):**
+   - Khi nhận yêu cầu thanh toán qua cổng tương ứng (ví dụ MoMo):
+     - Hệ thống gọi qua Circuit Breaker tương ứng (`momoBreaker`).
+     - Nếu mạch `CLOSED` hoặc `HALF-OPEN`: Thực hiện gửi request khởi tạo thanh toán tới MoMo Sandbox.
+     - Nếu mạch `OPEN`: Opossum sẽ ngắt mạch ngay lập tức, kích hoạt fallback ném ra lỗi `503 Service Unavailable` gợi ý người dùng đổi sang cổng thanh toán còn lại (VNPAY) hoặc thử lại sau.
 
 #### Luồng xử lý thanh toán thông minh (Sequence Diagram)
 
@@ -1126,27 +1195,20 @@ sequenceDiagram
     participant GW as Cổng thanh toán (VNPAY/MoMo)
 
     alt Yêu cầu đặt vé mới (POST /bookings)
-        K->>API: POST /bookings (concert_id, ticket_type, qty)
-        API->>CB_VN: Kiểm tra trạng thái VNPAY CB
-        API->>CB_MO: Kiểm tra trạng thái MoMo CB
-        alt Cả 2 CB đều OPEN (Sập toàn bộ)
-            API-->>K: HTTP 503 (Cổng thanh toán bảo trì, luồng mua tạm khóa)
-        else Có ít nhất 1 cổng khả dụng
-            API->>API: Thực hiện giữ vé 10 phút, lưu Booking và trả về HTTP 201
-        end
-    else Yêu cầu thanh toán (POST /payments)
-        K->>API: POST /payments (booking_id, method="vnpay")
+        K->>API: POST /bookings (concertId, ticketTypeId, quantity)
+        API->>API: Thực hiện kiểm tra tồn kho & giữ vé trên Redis
+        API->>API: Lưu Order và đẩy job vào RabbitMQ
+        API-->>K: Trả về HTTP 202 Accepted (kèm orderId)
+    else Yêu cầu thanh toán (POST /payments/vnpay)
+        K->>API: POST /payments/vnpay (orderId)
         API->>CB_VN: Thực hiện gọi VNPAY qua Circuit Breaker
         alt Gọi VNPAY thành công (CB = CLOSED/HALF-OPEN)
             CB_VN->>GW: Gọi API tạo giao dịch
-            GW-->>K: Redirect link thanh toán (HTTP 200)
-        else Gọi VNPAY thất bại (CB = OPEN hoặc lỗi sau retry)
-            API->>CB_MO: Kiểm tra trạng thái MoMo CB
-            alt MoMo CB = CLOSED
-                API-->>K: HTTP 422 (Gợi ý đổi sang MoMo)
-            else MoMo CB = OPEN (Cả hai cổng sập)
-                API-->>K: HTTP 503 (Cổng thanh toán đang bảo trì)
-            end
+            GW-->>API: Trả về link thanh toán (payUrl)
+            API-->>K: HTTP 200 (Trả về payUrl)
+        else Gọi VNPAY thất bại (CB = OPEN hoặc lỗi)
+            CB_VN-->>API: Trả về lỗi ServiceUnavailableException (503)
+            API-->>K: HTTP 503 (Cổng VNPAY bảo trì, gợi ý chọn MoMo)
         end
     end
 ```
@@ -1174,9 +1236,11 @@ sequenceDiagram
 | Trả lại cached response      | ❌ Chỉ chặn duplicate               | ✅ Lưu response kèm key  | ✅ Lưu response      |
 | Phát hiện request đang xử lý | ❌ Không (chỉ biết khi insert fail) | ✅ SET NX → biết ngay    | ⚠️ Cần status column |
 
-#### Chốt giải pháp: Phương án B — Redis Lock + Cached Response
+#### Chốt giải pháp: Phương án B — Redis Lock + Cached Response (Cơ chế 2 lớp khóa/cache độc lập)
 
-**Lý do:** Dưới tải cao, kiểm tra trùng lặp phải **nhanh** (microseconds, không phải milliseconds). Redis `SET NX` (Set if Not Exists) cho phép kiểm tra + lock trong 1 thao tác nguyên tử. Cached response cho phép trả kết quả ngay mà không chạy lại giao dịch.
+**Lý do:** Dưới tải cao, kiểm tra trùng lặp phải **nhanh** (microseconds, không phải milliseconds). Redis `SET NX` (Set if Not Exists) cho phép kiểm tra + lock trong 1 thao tác nguyên tử. Hệ thống sử dụng cơ chế hai khóa tách biệt trên Redis để tối ưu hóa việc phân tách khóa lock ngắn hạn và bộ đệm kết quả dài hạn:
+- **Khóa Lock (`idempotency:{key}:lock`):** Giá trị mặc định là `'processing'`, có thời gian hết hạn (TTL) ngắn là 30 giây để ngăn các request gửi song song (concurrency control).
+- **Bộ đệm Response (`idempotency:{key}`):** Giá trị lưu trữ chuỗi JSON response, có TTL dài 24 giờ (86400 giây) để lưu kết quả đã thực hiện xong.
 
 **Luồng xử lý:**
 
@@ -1189,17 +1253,23 @@ flowchart TD
     classDef success fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px,color:#1b5e20;
     classDef conflict fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#b71c1c;
 
-    Req([Request với Idempotency-Key]):::req --> SetNX["Gọi Redis: SET key 'processing' NX EX 86400"]:::redis
-    SetNX -->|"Thành công (Key chưa tồn tại)"| Process["Xử lý giao dịch - nghiệp vụ"]:::process
-    Process --> SaveResp["Lưu response: SET key '{response}' EX 86400"]:::redis
-    SaveResp --> ReturnSuccess["Trả HTTP 200 (kèm kết quả mới)"]:::success
+    Req([Request với Idempotency-Key]):::req --> AcquireLock["Gọi Redis: SET idempotency:{key}:lock 'processing' NX EX 30"]:::redis
+    AcquireLock -->|"Thành công (Lock acquired)"| GetCache1["Kiểm tra Redis: GET idempotency:{key}"]:::redis
+    
+    GetCache1 -->|"Cache hit (Đã xử lý xong trước đó)"| ReturnCached1["Giải phóng lock & Trả cached response (HTTP 200)"]:::success
+    GetCache1 -->|"Cache miss"| Process["Xử lý giao dịch - nghiệp vụ"]:::process
+    Process --> SaveResp["Lưu response: SET idempotency:{key} '{response}' EX 86400"]:::redis
+    SaveResp --> ReleaseLock["Giải phóng lock: DEL idempotency:{key}:lock"]:::redis
+    ReleaseLock --> ReturnSuccess["Trả HTTP 200 (kèm kết quả mới)"]:::success
 
-    SetNX -->|"Thất bại (Key đã tồn tại)"| CheckVal{"Giá trị của Key?"}:::decision
-    CheckVal -->|"processing"| ReturnConflict["Trả HTTP 409 Conflict<br/>(Giao dịch đang được xử lý)"]:::conflict
-    CheckVal -->|"{response}"| ReturnCached["Trả cached response (HTTP 200)<br/>(Đã xử lý xong trước đó)"]:::success
+    AcquireLock -->|"Thất bại (Lock exists)"| GetCache2["Kiểm tra Redis: GET idempotency:{key}"]:::redis
+    GetCache2 -->|"Cache hit"| ReturnCached2["Trả cached response (HTTP 200)"]:::success
+    GetCache2 -->|"Cache miss (Đang xử lý)"| ReturnConflict["Trả HTTP 409 Conflict<br/>(Giao dịch đang được xử lý)"]:::conflict
 ```
 
-**TTL:** 24 giờ — đủ dài để cover retry trong session, đủ ngắn để không tốn memory Redis.
+**TTL:**
+- Khóa lock: 30 giây (tự giải phóng nếu app bị crash giữa chừng).
+- Bộ đệm response: 24 giờ (đủ dài để cover các lần retry từ client).
 
 ---
 
@@ -1324,71 +1394,101 @@ sequenceDiagram
     participant W as Worker
     participant DB as PostgreSQL
 
-    K->>API: POST /bookings (TicketTypeId, Quantity, IdempotencyKey)
-    API->>Redis: EVALSHA Lua Script (Kiểm tra tồn kho và per-user limit)
+    K->>API: POST /bookings (concertId, items, IdempotencyKey)
+    API->>Redis: EVAL Lua Script (reserve-ticket.lua)
+    Note over API, Redis: Kiểm tra tồn kho & giới hạn mua mỗi user
 
     alt Lua Script -> LỖI (Hết vé hoặc Vượt giới hạn)
         Redis-->>API: Return -1 hoặc -2
         API-->>K: HTTP 400 Bad Request
     else Lua Script -> THÀNH CÔNG (Trừ tồn kho + Tăng user count)
-        Redis-->>API: Return 1
-        API->>MQ: Publish BookingTask vào booking.queue
-        API-->>K: HTTP 202 Accepted (kèm BookingId tạm)
+        Redis-->>API: Return 0 (SUCCESS)
+        API->>MQ: Publish OrderPayload vào booking_tasks
+        API->>MQ: Publish DelayPayload vào booking_delay_queue (TTL 10 phút)
+        API-->>K: HTTP 202 Accepted (kèm orderId tạm)
     end
 
-    Note over MQ, W: Xử lý bất đồng bộ
-    MQ->>W: Consume BookingTask
-    W->>DB: BEGIN -> INSERT bookings (status=pending) + INSERT tickets -> COMMIT
+    Note over MQ, W: Xử lý ghi DB bất đồng bộ
+    MQ->>W: Consume từ booking_tasks
+    W->>DB: BEGIN -> INSERT orders (status=pending) + INSERT tickets -> COMMIT
 ```
 
 #### Redis Data Structures
 
 | Key Pattern                               | Kiểu             | Mô tả                     |
 | ----------------------------------------- | ---------------- | ------------------------- |
-| `inventory:{concert_id}:{ticket_type_id}` | String (integer) | Số vé còn lại             |
-| `user_tickets:{user_id}:{ticket_type_id}` | String (integer) | Số vé user đã mua/giữ chỗ |
+| `inventory:{concertId}:{ticketTypeId}` | String (integer) | Số vé còn lại của từng hạng vé |
+| `concert:{concertId}:user:{userId}:bought:{ticketTypeId}` | String (integer) | Số vé hạng đó user đã giữ chỗ/mua |
 
-#### Lua Script — Đặt vé nguyên tử
-
-```lua
-local inventory_key = KEYS[1]      -- inventory:{concert_id}:{ticket_type_id}
-local user_key = KEYS[2]           -- user_tickets:{user_id}:{ticket_type_id}
-local requested_qty = tonumber(ARGV[1])
-local max_per_user = tonumber(ARGV[2])
-
--- 1. Kiểm tra tồn kho
-local available = tonumber(redis.call('GET', inventory_key))
-if not available or available < requested_qty then
-    return -1  -- HẾT VÉ
-end
-
--- 2. Kiểm tra giới hạn per-user
-local purchased = tonumber(redis.call('GET', user_key) or "0")
-if (purchased + requested_qty) > max_per_user then
-    return -2  -- VƯỢT GIỚI HẠN
-end
-
--- 3. Trừ tồn kho + Tăng user count (nguyên tử)
-redis.call('DECRBY', inventory_key, requested_qty)
-redis.call('INCRBY', user_key, requested_qty)
-
-return 1  -- THÀNH CÔNG
-```
-
-#### Lua Script — Hồi kho khi đơn hàng hết hạn (Compensation)
+#### Lua Script — Đặt vé nguyên tử (`reserve-ticket.lua`)
 
 ```lua
--- Gọi khi đơn pending quá 10 phút hoặc user hủy đơn
-redis.call('INCRBY', KEYS[1], ARGV[1])  -- Trả lại tồn kho
-redis.call('DECRBY', KEYS[2], ARGV[1])  -- Giảm user count
+local stockKey    = KEYS[1]
+local userBought  = KEYS[2]
+local quantity    = tonumber(ARGV[1])
+local maxPerUser  = tonumber(ARGV[2])
+
+-- 1. Khởi tạo tồn kho từ database nếu key chưa tồn tại trên Redis (Cold Start Protection)
+local stockExists = redis.call('EXISTS', stockKey)
+local currentStock
+if stockExists == 0 then
+  currentStock = tonumber(ARGV[3])
+  redis.call('SET', stockKey, currentStock)
+else
+  currentStock = tonumber(redis.call('GET', stockKey) or '0')
+end
+
+-- 2. Kiểm tra tồn kho
+if currentStock < quantity then
+  return -1  -- INSUFFICIENT_STOCK
+end
+
+-- 3. Lấy số lượng vé user đã mua
+local currentBought = tonumber(redis.call('GET', userBought) or '0')
+
+-- 4. Kiểm tra giới hạn mua mỗi tài khoản
+if (currentBought + quantity) > maxPerUser then
+  return -2  -- EXCEEDS_USER_LIMIT
+end
+
+-- 5. Trừ tồn kho + Tăng số lượng đã mua của user (nguyên tử)
+redis.call('DECRBY', stockKey, quantity)
+redis.call('INCRBY', userBought, quantity)
+
+return 0  -- SUCCESS
 ```
 
-#### Cron Job hủy đơn hết hạn
+#### Lua Script — Hồi kho khi đơn hàng hết hạn (`release-ticket.lua`)
 
-- NestJS `@Cron('*/1 * * * *')` quét mỗi phút.
-- Query: `SELECT * FROM bookings WHERE status = 'pending' AND expires_at < NOW()`
-- Với mỗi booking hết hạn: cập nhật `status = 'expired'`, chạy Lua Script hồi kho trên Redis.
-- **Bảo vệ trong môi trường phân tán (Distributed Lock)**: Tác vụ cronjob này được bảo vệ bằng khóa phân tán Redis `lock:order-expiration` với TTL 60s, đảm bảo chỉ có tối đa một thực thể Booking Worker chạy xử lý tại một thời điểm, tránh race condition cập nhật DB trùng lặp hoặc hồi kho Redis sai.
+```lua
+local stockKey   = KEYS[1]
+local userBought = KEYS[2]
+local quantity   = tonumber(ARGV[1])
+
+-- 1. Trả lại tồn kho
+redis.call('INCRBY', stockKey, quantity)
+
+-- 2. Giảm số lượng vé đã mua của user (giới hạn tối thiểu là 0)
+local currentBought = tonumber(redis.call('GET', userBought) or '0')
+local newBought = math.max(0, currentBought - quantity)
+redis.call('SET', userBought, newBought)
+
+return 0  -- SUCCESS
+```
+
+#### Cơ chế hủy đơn đặt vé hết hạn (Order Expiration)
+
+Hệ thống sử dụng cơ chế **hai lớp bảo vệ (Dual-Mechanism)** để dọn dẹp và hủy đơn hàng quá hạn thanh toán (10 phút):
+
+1. **Cơ chế chủ đạo: RabbitMQ Dead Letter Exchange (DLX)**:
+   - Khi tạo đơn hàng thành công, một tin nhắn chứa metadata được đẩy vào `booking_delay_queue` với cấu hình TTL là 10 phút (`x-message-ttl = 600000ms`).
+   - Sau 10 phút, tin nhắn tự động bị hết hạn và đẩy qua Exchange `booking_dlx` chuyển tiếp tới queue `booking_expired_tasks`.
+   - Consumer lắng nghe queue này, kiểm tra trạng thái đơn hàng trong PostgreSQL. Nếu vẫn là `pending`, cập nhật trạng thái đơn hàng thành `expired` và thực hiện chạy Lua Script hồi kho trên Redis.
+
+2. **Cơ chế dự phòng: Distributed Cron Job**:
+   - NestJS `@Cron('*/5 * * * *')` chạy mỗi 5 phút làm nhiệm vụ backup phòng khi RabbitMQ gặp sự cố không thể định tuyến tin nhắn DLX.
+   - Tìm kiếm đơn hàng quá hạn thanh toán quá 12 phút (đã trừ đi 10 phút của DLX và thêm 2 phút đệm): `SELECT * FROM orders WHERE status = 'pending' AND createdAt < (NOW() - 12 minutes)`.
+   - **Bảo vệ trong môi trường phân tán (Distributed Lock)**: Tác vụ backup này sử dụng khóa phân tán Redis `{order-expiration}:lock` với TTL 60 giây, đảm bảo chỉ có tối đa một thực thể Booking Worker trong cụm chạy quét xử lý tại một thời điểm, tránh race condition tải DB trùng lặp.
 
 ---
 
@@ -1500,7 +1600,7 @@ flowchart TD
 | Queue                      | Bind Pattern     | Worker        | Hành động                                          |
 | -------------------------- | ---------------- | ------------- | -------------------------------------------------- |
 | `notification.inapp.queue` | `notification.#` | In-app Worker | INSERT `notification_logs` (channel=in_app)        |
-| `notification.email.queue` | `notification.#` | Email Worker  | Sinh QR PNG + gửi email Nodemailer → Mailtrap SMTP |
+| `notification.email.queue` | `notification.#` | Email Worker  | Sinh QR PNG + gửi email qua Resend API             |
 
 **Routing Keys:**
 
@@ -1518,7 +1618,7 @@ sequenceDiagram
     participant InApp as "In-app Worker"
     participant Email as "Email Worker"
     participant DB as "PostgreSQL"
-    participant SMTP as "Mailtrap SMTP"
+    participant Resend as "Resend API"
 
     Note over Webhook: Booking xác nhận thanh toán thành công
     Webhook->>Exchange: Publish (key: notification.booking.confirmed)
@@ -1529,7 +1629,7 @@ sequenceDiagram
     and Email Channel
         Exchange->>Email: Consume
         Email->>Email: Sinh QR Code PNG (HMAC-SHA256)
-        Email->>SMTP: Gửi email + QR inline (CID)
+        Email->>Resend: Gửi email + QR inline (CID)
         Email->>DB: INSERT notification_logs (channel=email, status=sent/failed)
     end
 
@@ -1546,12 +1646,12 @@ sequenceDiagram
 - **Hành động:** Lấy danh sách user có vé `paid` → publish message → cập nhật `reminder_sent = true`.
 - **Giới hạn:** Chỉ gửi đúng 1 lần. Không gửi lại khi concert đổi giờ (ngoài phạm vi đồ án).
 
-### Email (Nodemailer + Mailtrap)
+### Email (Resend Service)
 
-- **Thư viện:** Nodemailer với cấu hình SMTP qua biến môi trường (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`).
-- **Mock Server:** Mailtrap (SMTP sandbox) cho môi trường Dev — email được gửi thật nhưng không tới inbox thật, chỉ hiển thị trên dashboard Mailtrap.
-- **E-ticket Email:** Chứa thông tin concert + chi tiết vé + **QR code nhúng inline** dưới dạng ảnh PNG (CID attachment).
-- **Chuyển production:** Chỉ cần đổi biến môi trường SMTP sang SendGrid/SES — code không thay đổi.
+- **Thư viện:** SDK `resend` chính thức qua biến môi trường (`RESEND_API_KEY`).
+- **Gửi Email:** Thực hiện qua API gửi email của Resend, gửi trực tiếp tới email của khách hàng.
+- **E-ticket Email:** Chứa thông tin concert + chi tiết vé + **QR code nhúng inline** dưới dạng ảnh đính kèm (CID attachment).
+- **Chuyển production:** Sử dụng domain riêng đã cấu hình DNS trên Resend.
 
 ### Bảng `notification_logs` (BIGSERIAL PK)
 
@@ -1611,7 +1711,7 @@ sequenceDiagram
     Note over RabbitMQ, Worker: Tiến trình xử lý ngầm (Background Job)
     RabbitMQ->>Worker: Consume job "vip_guest.import"
     Worker->>DB: Cập nhật trạng thái Job (status="processing")
-    Worker->>Supabase: Tải tệp CSV từ file_url về bộ nhớ tạm
+    Worker->>Supabase: Tải nội dung CSV từ file_url về bộ nhớ (in-memory)
     Worker->>Worker: Đọc tệp CSV dạng stream (csv-parser) & Validate từng dòng
     Worker->>Worker: Lọc trùng lặp trong CSV & bỏ qua im lặng các email đã có trong DB
 
@@ -1625,7 +1725,7 @@ sequenceDiagram
     end
 
     Worker->>DB: Cập nhật trạng thái Job (status="completed"/"failed"), lưu JSON error_logs (rút gọn)
-    Worker->>Supabase: Xóa file CSV trên Supabase Storage
+    Worker->>Supabase: Xóa file CSV tạm trên Supabase Storage
 ```
 
 - **Cloud File Sharing (Supabase Storage):** Nhằm tránh lỗi `File not found` trong môi trường đa thực thể (multi-instance) khi container API nhận file khác container Worker xử lý. Tệp CSV được tải lên Supabase Storage và truyền link tải qua RabbitMQ. Worker sẽ dọn dẹp (xóa file trên Supabase Storage) sau khi hoàn tất hoặc lỗi.
@@ -1753,17 +1853,17 @@ sequenceDiagram
 
 ---
 
-### ADR-04: Notification — In-app (DB) + Email (Mock SMTP) vs Push Notification (FCM)
+### ADR-04: Notification — In-app (DB) + Email (Resend Service) vs Push Notification (FCM)
 
 | Tiêu chí             | In-app + Email                  | Push Notification (FCM)               |
 | -------------------- | ------------------------------- | ------------------------------------- |
-| Cần cấu hình hạ tầng | ✅ Chỉ Mailtrap (free)          | ❌ Firebase project + service account |
+| Cần cấu hình hạ tầng | ✅ Chỉ Resend API (free tier)   | ❌ Firebase project + service account |
 | Hoạt động trên Web   | ✅ In-app hiển thị trên web     | ⚠️ Cần Service Worker                 |
 | Yêu cầu user consent | ❌ Không                        | ✅ Cần permission popup               |
-| Dễ demo/kiểm thử     | ✅ Mailtrap dashboard           | ❌ Cần thiết bị thật/emulator         |
+| Dễ demo/kiểm thử     | ✅ Resend dashboard logs        | ❌ Cần thiết bị thật/emulator         |
 | Mở rộng sau          | ✅ Thêm FCM worker vào exchange | —                                     |
 
-**Chốt:** **In-app (DB) + Email (Nodemailer + Mailtrap)**. Bỏ qua FCM để giảm tải cấu hình hạ tầng. Kiến trúc Topic Exchange cho phép thêm FCM worker sau mà không sửa code hiện tại.
+**Chốt:** **In-app (DB) + Email (Resend API)**. Bỏ qua FCM để giảm tải cấu hình hạ tầng. Kiến trúc Topic Exchange cho phép thêm FCM worker sau mà không sửa code hiện tại.
 
 ---
 
@@ -1774,7 +1874,7 @@ sequenceDiagram
 | R1  | **Mất đồng bộ Redis ↔ PostgreSQL**           | Redis restart hoặc lỗi mạng sau Lua Script thành công nhưng trước khi message vào RabbitMQ → tồn kho bị lệch. | Reconciliation Job chạy mỗi 15 phút, đối soát bookings (pending/paid) trong PostgreSQL với inventory trên Redis. Redis bật AOF persistence.                                                                                                                                            |
 | R2  | **RabbitMQ sập → đơn hàng chậm**             | Message bị mất hoặc tắc nghẽn trong hàng đợi.                                                                 | Durable queues + persistent messages. Sử dụng Dead Letter Queue (DLQ) hứng message lỗi.                                                                                                                                                                                                |
 | R3  | **Đơn hàng "ma" chiếm tồn kho**              | Khách giữ chỗ (Redis trừ tồn kho) nhưng không thực hiện thanh toán.                                           | Đơn pending tự động hết hạn sau 10 phút. Scheduler quét mỗi phút → hủy đơn + chạy Lua Script hồi kho trên Redis.                                                                                                                                                                       |
-| R4  | **Email gửi thất bại**                       | SMTP timeout hoặc lỗi kết nối cổng Mailtrap.                                                                  | Email gửi async qua RabbitMQ worker. Failure → `notification_logs.status = failed` để retry sau. Không ảnh hưởng luồng booking/payment.                                                                                                                                                |
+| R4  | **Email gửi thất bại**                       | Resend API timeout hoặc lỗi xác thực API Key.                                                                 | Email gửi async qua RabbitMQ worker. Failure → `notification_logs.status = failed` để retry sau. Không ảnh hưởng luồng booking/payment.                                                                                                                                                |
 | R5  | **Cổng thanh toán không ổn định**            | VNPAY/MoMo timeout, trả lỗi 5xx, hoặc webhook gọi lặp nhiều lần.                                              | Circuit Breaker (opossum) tự động cắt mạch khi lỗi >50%. Idempotency Key trên Redis (TTL 24h) chống xử lý trùng.                                                                                                                                                                       |
 | R6  | **Soát vé thất bại khi mất kết nối mạng**    | Nhân viên soát vé không thể kiểm tra vé real-time tại SVĐ do nghẽn sóng.                                      | Dữ liệu soát vé được tải sẵn xuống SQLite nội bộ trên Mobile App. Nhân viên soát vé quét và kiểm tra chữ ký HMAC-SHA256 ngoại tuyến. Khi có mạng trở lại, Mobile App sẽ gửi log check-in ngoại tuyến thông qua API `/checkin/sync` để ghi nhận và đối soát trùng lặp ở database chính. |
 | R7  | **Tệp CSV VIP bị lỗi hoặc chứa dữ liệu bẩn** | File CSV lớn của đối tác có thể chứa dữ liệu sai định dạng hoặc trùng lặp, gây crash luồng import.            | Sử dụng Background Job để xử lý bất đồng bộ từng dòng (row-by-row validation). Ghi nhận log dòng lỗi riêng biệt để admin sửa đổi thủ công sau, đảm bảo các dòng hợp lệ vẫn được nhập thành công.                                                                                       |
