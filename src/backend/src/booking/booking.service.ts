@@ -13,6 +13,7 @@ import { RedisService } from '../common/redis/redis.service';
 import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { Order, OrderStatus } from './entities/order.entity';
+import { Ticket, TicketStatus } from './entities/ticket.entity';
 import { TicketType } from '../concert/entities/ticket-type.entity';
 import { generateUuidV7 } from '../auth/utils/uuid';
 
@@ -36,6 +37,8 @@ export class BookingService implements OnModuleInit {
   constructor(
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
+    @InjectRepository(Ticket)
+    private readonly ticketRepo: Repository<Ticket>,
     @InjectRepository(TicketType)
     private readonly ticketTypeRepo: Repository<TicketType>,
     private readonly redisService: RedisService,
@@ -208,6 +211,137 @@ export class BookingService implements OnModuleInit {
     }
 
     return order;
+  }
+
+  /**
+   * List all orders (tickets) purchased by a user.
+   * Supports optional status filter and pagination.
+   * Concert info is limited: excludes svgStageMap, biography, posterPublicId, etc.
+   */
+  async getMyTickets(
+    userId: string,
+    status?: OrderStatus,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    const qb = this.orderRepo
+      .createQueryBuilder('order')
+      .innerJoin('order.concert', 'concert')
+      .leftJoin('order.tickets', 'ticket')
+      .leftJoin('ticket.ticketType', 'ticketType')
+      .select([
+        'order.id',
+        'order.userId',
+        'order.concertId',
+        'order.status',
+        'order.totalAmount',
+        'order.idempotencyKey',
+        'order.createdAt',
+        // Ticket fields
+        'ticket.id',
+        'ticket.orderId',
+        'ticket.ticketTypeId',
+        'ticket.status',
+        'ticket.checkinStatus',
+        'ticket.checkedInAt',
+        'ticket.qrCodeHash',
+        // TicketType fields
+        'ticketType.id',
+        'ticketType.name',
+        'ticketType.price',
+        // Concert — chỉ lấy thông tin quan trọng
+        'concert.id',
+        'concert.title',
+        'concert.location',
+        'concert.posterUrl',
+        'concert.startTime',
+        'concert.endTime',
+        'concert.status',
+        'concert.tags',
+      ])
+      .where('order.userId = :userId', { userId })
+      .orderBy('order.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (status) {
+      qb.andWhere('order.status = :status', { status });
+    }
+
+    const [orders, total] = await qb.getManyAndCount();
+
+    return {
+      data: orders,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * [Organizer] Get all tickets for a specific concert.
+   * Supports filtering by ticket status and ticketTypeId.
+   * Buyer info is limited (no passwordHash exposed).
+   */
+  async getConcertTickets(
+    concertId: string,
+    status?: TicketStatus,
+    ticketTypeId?: string,
+    page: number = 1,
+    limit: number = 20,
+  ) {
+    const qb = this.ticketRepo
+      .createQueryBuilder('ticket')
+      .innerJoin('ticket.order', 'order', 'order.concert_id = :concertId', {
+        concertId,
+      })
+      .innerJoin('ticket.ticketType', 'ticketType')
+      .innerJoin('order.user', 'user')
+      .select([
+        'ticket.id',
+        'ticket.orderId',
+        'ticket.ticketTypeId',
+        'ticket.status',
+        'ticket.checkinStatus',
+        'ticket.checkedInAt',
+        'ticket.qrCodeHash',
+        'ticketType.id',
+        'ticketType.name',
+        'ticketType.price',
+        'order.id',
+        'order.totalAmount',
+        'order.status',
+        'order.createdAt',
+        // Buyer info — no passwordHash
+        'user.id',
+        'user.fullName',
+        'user.email',
+      ])
+      .orderBy('order.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (status) {
+      qb.andWhere('ticket.status = :status', { status });
+    }
+    if (ticketTypeId) {
+      qb.andWhere('ticket.ticket_type_id = :ticketTypeId', { ticketTypeId });
+    }
+
+    const [tickets, total] = await qb.getManyAndCount();
+
+    return {
+      data: tickets,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   /**
