@@ -39,8 +39,14 @@ jobs:
             # 3. Re-build và khởi chạy lại các docker containers
             $DOCKER_COMPOSE_CMD -f docker-compose.prod.yml up -d --build --remove-orphans
             
-            # 4. Chạy Database Migrations
+            # 4. Chờ 15 giây để Database và NestJS API khởi động hoàn tất
+            sleep 15
+            
+            # 5. Chạy Database Migrations
             $DOCKER_COMPOSE_CMD -f docker-compose.prod.yml exec -T ticketbox-api npm run migration:run
             
-            # 5. Dọn dẹp các Docker image rác (dangling images) để tiết kiệm ổ cứng VPS
+            # 6. Khởi động lại Nginx Load Balancer để xóa cache DNS và nhận diện IP mới của container API
+            $DOCKER_COMPOSE_CMD -f docker-compose.prod.yml restart nginx-lb
+            
+            # 7. Dọn dẹp các Docker image rác (dangling images) để tiết kiệm ổ cứng VPS
             docker image prune -f
