@@ -13,6 +13,7 @@ Tài liệu đặc tả chi tiết các API endpoints thuộc module Đặt vé 
 | HTTP Method | Path | Auth | Description |
 | :--- | :--- | :--- | :--- |
 | **POST** | `/bookings` | Bearer Token | Khởi tạo đơn đặt vé mới (xử lý bất đồng bộ qua Queue) |
+| **GET** | `/bookings` | Bearer Token | Lấy danh sách tất cả vé đã mua của người dùng hiện tại |
 | **GET** | `/bookings/:id` | Bearer Token | Lấy chi tiết thông tin và trạng thái đơn đặt vé (dùng để polling) |
 
 ---
@@ -98,7 +99,76 @@ Tạo mới một yêu cầu đặt vé cho concert. Do tính chất lượng tr
 
 ---
 
-### 2. Lấy chi tiết đơn đặt vé (`GET /bookings/:id`)
+### 2. Lấy danh sách vé đã mua (`GET /bookings`)
+
+Trả về toàn bộ danh sách các đơn đặt vé (kèm vé cụ thể và thông tin concert) của người dùng đang đăng nhập, sắp xếp theo thời gian đặt mới nhất trước. Hỗ trợ lọc theo trạng thái và phân trang.
+
+- **Headers:**
+  - `Authorization: Bearer <accessToken>`
+
+- **Query Parameters:**
+
+  | Param | Kiểu | Bắt buộc | Mô tả |
+  | :--- | :--- | :--- | :--- |
+  | `status` | string | Không | Lọc theo trạng thái đơn: `pending` \| `paid` \| `expired` \| `cancelled` |
+  | `page` | integer | Không | Trang hiện tại (min: 1, mặc định: 1) |
+  | `limit` | integer | Không | Số kết quả mỗi trang (min: 1, max: 50, mặc định: 10) |
+
+- **Responses:**
+  - **200 OK:**
+    ```json
+    {
+      "data": [
+        {
+          "id": "019ead55-0ef1-738d-8616-b6f877b269c8",
+          "userId": "019ead55-0ef1-738d-8616-b6f877b26999",
+          "concertId": "019ead55-0ef1-738d-8616-b6f877b26aa1",
+          "status": "paid",
+          "totalAmount": 11000000.00,
+          "idempotencyKey": "some-idempotency-key",
+          "createdAt": "2026-06-23T15:10:00.000Z",
+          "tickets": [
+            {
+              "id": "019ead55-0ef1-738d-8616-b6f877b26bb2",
+              "orderId": "019ead55-0ef1-738d-8616-b6f877b269c8",
+              "ticketTypeId": "019ead55-0ef1-738d-8616-b6f877b26cc3",
+              "qrCodeHash": "abc123...",
+              "status": "active",
+              "checkinStatus": "not_checked_in",
+              "checkedInAt": null,
+              "ticketType": {
+                "id": "019ead55-0ef1-738d-8616-b6f877b26cc3",
+                "name": "SVIP",
+                "price": 5500000
+              }
+            }
+          ],
+          "concert": {
+            "id": "019ead55-0ef1-738d-8616-b6f877b26aa1",
+            "title": "The Eras Tour - HCMC",
+            "location": "Sân vận động Quân khu 7, TP. Hồ Chí Minh",
+            "startTime": "2026-07-20T19:00:00.000Z",
+            "endTime": "2026-07-20T23:00:00.000Z",
+            "posterUrl": "https://res.cloudinary.com/your-cloud/image/upload/posters/example.jpg",
+            "status": "active",
+            "tags": ["Pop", "Live Concert"]
+          }
+        }
+      ],
+      "meta": {
+        "total": 25,
+        "page": 1,
+        "limit": 10,
+        "totalPages": 3
+      }
+    }
+    ```
+  - **400 Bad Request:** Query param không hợp lệ (ví dụ `status` không nằm trong enum).
+  - **401 Unauthorized:** Token không hợp lệ hoặc hết hạn.
+
+---
+
+### 3. Lấy chi tiết đơn đặt vé (`GET /bookings/:id`)
 
 Truy vấn thông tin chi tiết của một đơn đặt vé bằng ID đơn hàng. API này thường được client gọi lặp lại định kỳ (polling) sau khi nhận mã `202 Accepted` từ API đặt vé, cho đến khi trạng thái đơn hàng chuyển sang `pending` (đã ghi DB thành công và chờ thanh toán) hoặc bị hủy/lỗi.
 

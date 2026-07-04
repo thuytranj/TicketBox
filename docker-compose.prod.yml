@@ -61,6 +61,8 @@ services:
     networks:
       - ticketbox-network
     restart: unless-stopped
+    deploy:
+      replicas: 2
 
   # Instance 2: Chỉ xử lý hàng đợi đặt vé (booking queues)
   ticketbox-booking-worker:

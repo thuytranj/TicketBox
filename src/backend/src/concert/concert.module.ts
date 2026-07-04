@@ -13,6 +13,7 @@ import { RabbitMQModule } from '../common/rabbitmq/rabbitmq.module';
 import { SupabaseModule } from '../common/supabase/supabase.module';
 import { VipGuestConsumer } from './vip-guest.consumer';
 import { NotificationModule } from '../notification/notification.module';
+import { BookingModule } from '../booking/booking.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { NotificationModule } from '../notification/notification.module';
     RabbitMQModule,
     SupabaseModule,
     NotificationModule,
+    BookingModule,
   ],
   controllers: [ConcertController, TicketTypeController],
   providers: [ConcertService, VipGuestConsumer],

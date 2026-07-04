@@ -11,11 +11,15 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Query,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SkipThrottle } from '@nestjs/throttler';
 import { BookingService } from './booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import { GetMyTicketsDto } from './dto/get-my-tickets.dto';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor';
 import { RedisRateLimit } from '../common/decorators/redis-rate-limit.decorator';
 import { RedisRateLimitGuard } from '../common/guards/redis-rate-limit.guard';
@@ -46,6 +50,26 @@ export class BookingController {
   ) {
     const userId: string = req.user.userId;
     return this.bookingService.createBooking(dto, userId, idempotencyKey);
+  }
+
+  /**
+   * GET /api/v1/bookings
+   * List all tickets/orders purchased by the authenticated user.
+   * Supports optional ?status filter and pagination (?page, ?limit).
+   */
+  @Get()
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async getMyTickets(
+    @Query() query: GetMyTicketsDto,
+    @Request() req: any,
+  ) {
+    const userId: string = req.user.userId;
+    return this.bookingService.getMyTickets(
+      userId,
+      query.status,
+      query.page,
+      query.limit,
+    );
   }
 
   /**

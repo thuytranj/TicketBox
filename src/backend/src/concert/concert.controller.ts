@@ -16,6 +16,8 @@ import {
   BadRequestException,
   Request,
   ClassSerializerInterceptor,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { ConcertService } from './concert.service';
 import { CreateConcertDto } from './dto/create-concert.dto';
@@ -30,12 +32,15 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../auth/entities/user.entity';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
+import { BookingService } from '../booking/booking.service';
+import { GetConcertTicketsDto } from '../booking/dto/get-concert-tickets.dto';
 
 @Controller('concerts')
 export class ConcertController {
   constructor(
     private readonly concertService: ConcertService,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly bookingService: BookingService,
   ) {}
 
   @Post()
@@ -231,5 +236,27 @@ export class ConcertController {
     @Query() query: VipGuestQueryDto,
   ) {
     return this.concertService.getVipGuests(id, query);
+  }
+
+  /**
+   * GET /api/v1/concerts/:id/tickets
+   * [Organizer only] List all tickets sold for a specific concert.
+   * Supports filtering by ?status, ?ticketTypeId and pagination (?page, ?limit).
+   */
+  @Get(':id/tickets')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORGANIZER)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async getConcertTickets(
+    @Param('id') id: string,
+    @Query() query: GetConcertTicketsDto,
+  ) {
+    return this.bookingService.getConcertTickets(
+      id,
+      query.status,
+      query.ticketTypeId,
+      query.page,
+      query.limit,
+    );
   }
 }

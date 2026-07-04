@@ -30,6 +30,7 @@ Tài liệu đặc tả chi tiết các API endpoints thuộc module Quản lý 
 | **POST** | `/concerts/:id/guests/import` | Bearer Token (Organizer) | Tải lên tệp CSV chứa danh sách khách mời VIP để xử lý bất đồng bộ |
 | **GET** | `/concerts/:id/guests/imports/:jobId` | Bearer Token (Organizer) | Lấy trạng thái tiến trình và nhật ký lỗi của Job import VIP |
 | **GET** | `/concerts/:id/guests` | Bearer Token (Organizer, Admin) | Tra cứu danh sách khách mời VIP (phân trang, tìm kiếm) |
+| **GET** | `/concerts/:id/tickets` | Bearer Token (Organizer) | Lấy danh sách tất cả vé đã bán của một concert (lọc, phân trang) |
 
 #### 2. Quản lý Loại vé (Ticket Types)
 
@@ -781,3 +782,69 @@ Xóa bỏ một hạng vé khỏi concert.
   - **204 No Content:** Xóa thành công.
   - **400 Bad Request:** Không thể xóa vì đã có người mua vé thuộc hạng vé này.
   - **404 Not Found:** Loại vé không tồn tại.
+
+---
+
+## Chi tiết API Endpoints - Concerts (Organizer)
+
+### Lấy danh sách vé đã bán của concert (`GET /concerts/:id/tickets`)
+
+Cho phép **Organizer** xem toàn bộ danh sách vé đã phát hành cho một concert cụ thể. Kết quả bao gồm thông tin hạng vé, trạng thái đơn hàng, và thông tin người mua (không expose `passwordHash`). Sắp xếp theo thời gian đặt mới nhất.
+
+- **Headers:**
+  - `Authorization: Bearer <accessToken>` *(Yêu cầu role `organizer`)*
+
+- **Parameters:**
+  - `id` (string, UUID, required): ID của concert cần tra cứu danh sách vé.
+
+- **Query Parameters:**
+
+  | Param | Kiểu | Bắt buộc | Mô tả |
+  | :--- | :--- | :--- | :--- |
+  | `status` | string | Không | Lọc theo trạng thái vé: `reserved` \| `active` \| `used` |
+  | `ticketTypeId` | string (UUID) | Không | Lọc vé theo hạng vé cụ thể |
+  | `page` | integer | Không | Trang hiện tại (min: 1, mặc định: 1) |
+  | `limit` | integer | Không | Số kết quả mỗi trang (min: 1, max: 100, mặc định: 20) |
+
+- **Responses:**
+  - **200 OK:**
+    ```json
+    {
+      "data": [
+        {
+          "id": "019ead55-0ef1-738d-8616-b6f877b26bb2",
+          "orderId": "019ead55-0ef1-738d-8616-b6f877b269c8",
+          "ticketTypeId": "019ead55-0ef1-738d-8616-b6f877b26cc3",
+          "qrCodeHash": "abc123hash...",
+          "status": "active",
+          "checkinStatus": "not_checked_in",
+          "checkedInAt": null,
+          "ticketType": {
+            "id": "019ead55-0ef1-738d-8616-b6f877b26cc3",
+            "name": "SVIP",
+            "price": 5500000
+          },
+          "order": {
+            "id": "019ead55-0ef1-738d-8616-b6f877b269c8",
+            "totalAmount": 11000000.00,
+            "status": "paid",
+            "createdAt": "2026-06-23T15:10:00.000Z",
+            "user": {
+              "id": "019ead55-0ef1-738d-8616-b6f877b26999",
+              "fullName": "Nguyen Van A",
+              "email": "a@example.com"
+            }
+          }
+        }
+      ],
+      "meta": {
+        "total": 150,
+        "page": 1,
+        "limit": 20,
+        "totalPages": 8
+      }
+    }
+    ```
+  - **400 Bad Request:** Query param không hợp lệ (ví dụ `status` hoặc `ticketTypeId` sai định dạng).
+  - **401 Unauthorized:** Token không hợp lệ hoặc hết hạn.
+  - **403 Forbidden:** Người dùng không có role `organizer`.
