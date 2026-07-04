@@ -20,6 +20,10 @@ async function bootstrap() {
       `Starting TicketBox Backend in HTTP API mode (INSTANCE_ROLE: ${role})...`,
     );
     const app = await NestFactory.create(AppModule);
+    app.enableCors({
+      origin: '*', // Trong production, bạn có thể thay thế bằng domain frontend cụ thể (ví dụ: https://ticketboxz.me) để bảo mật hơn
+      credentials: true,
+    });
     app.getHttpAdapter().getInstance().set('trust proxy', true);
     app.setGlobalPrefix('api/v1');
 
