@@ -1,0 +1,130 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ticketbox-postgres
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-ticketbox}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ticketbox-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ticketbox-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ticketbox-network
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ticketbox-rabbitmq
+    ports:
+      - "5672:5672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - ticketbox-network
+    restart: unless-stopped
+
+  # Instance 1: Chỉ xử lý REST API & WebSockets
+  ticketbox-api:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+      target: production
+    expose:
+      - "3000"
+    env_file:
+      - ./src/backend/.env
+    environment:
+      - INSTANCE_ROLE=api
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_HOST=redis
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - ticketbox-network
+    restart: unless-stopped
+
+  # Instance 2: Chỉ xử lý hàng đợi đặt vé (booking queues)
+  ticketbox-booking-worker:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+      target: production
+    env_file:
+      - ./src/backend/.env
+    environment:
+      - INSTANCE_ROLE=worker:booking
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_HOST=redis
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - ticketbox-network
+    restart: unless-stopped
+
+  # Instance 3: Chỉ xử lý gửi mail, thông báo và các tác vụ chạy ngầm
+  ticketbox-background-worker:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+      target: production
+    env_file:
+      - ./src/backend/.env
+    environment:
+      - INSTANCE_ROLE=worker:background
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_HOST=redis
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    networks:
+      - ticketbox-network
+    restart: unless-stopped
+
+  # Nginx Load Balancer: Nhận request trực tiếp từ cổng 80 của VPS (Cloudflare trỏ về)
+  nginx-lb:
+    image: nginx:alpine
+    container_name: ticketbox-nginx-lb
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - ticketbox-api
+    networks:
+      - ticketbox-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+
+networks:
+  ticketbox-network:
+    driver: bridge
