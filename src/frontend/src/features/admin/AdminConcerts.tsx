@@ -7,20 +7,20 @@ import heroPreview from '../../assets/hero.png';
 
 interface TicketType {
   id: string;
-  name: string;
+  name: 'GA' | 'SVIP' | 'VIP' | 'CAT1' | 'CAT2';
   price: number;
   totalQuantity: number;
   availableQuantity: number;
   maxPerUser: number;
 }
 
-type TicketTypeName = string;
+type TicketTypeName = TicketType['name'];
 type ConcertStatus = 'draft' | 'active' | 'cancelled';
 
 interface FormTicketType {
   id?: string;
   clientId?: string;
-  name: string;
+  name: TicketTypeName;
   price: number;
   totalQuantity: number;
   availableQuantity: number;
@@ -124,21 +124,14 @@ export const AdminConcerts: React.FC = () => {
     setShowForm(true);
   };
 
-  const toLocalISOString = (dateInput: Date | string) => {
-    if (!dateInput) return '';
-    const date = new Date(dateInput);
-    const tzoffset = date.getTimezoneOffset() * 60000;
-    return new Date(date.getTime() - tzoffset).toISOString().substring(0, 16);
-  };
-
   const handleOpenEdit = async (concert: Concert) => {
     setEditingConcertId(concert.id);
     setTitle(concert.title);
     setDescription(concert.description);
     setLocation(concert.location);
-    // Parse times to datetime-local compatible string using local timezone
-    setStartTime(toLocalISOString(concert.startTime));
-    setEndTime(toLocalISOString(concert.endTime || new Date(new Date(concert.startTime).getTime() + 3 * 3600000)));
+    // Parse times to datetime-local compatible string
+    setStartTime(new Date(concert.startTime).toISOString().substring(0, 16));
+    setEndTime(new Date(new Date(concert.startTime).getTime() + 3 * 3600000).toISOString().substring(0, 16));
     setStatus(concert.status);
     setTagsInput((concert.tags || []).join(', '));
     setPosterUrl(concert.posterUrl || '');
@@ -432,7 +425,7 @@ export const AdminConcerts: React.FC = () => {
               {editingConcertId ? 'Chỉnh sửa sự kiện' : 'Tạo sự kiện mới'}
             </h2>
             
-            <form onSubmit={handleSubmitConcert} className="admin-form-grid">
+            <form id="concert-form" onSubmit={handleSubmitConcert} className="admin-form-grid">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                 <div className="form-group">
                   <label htmlFor="concert-title" className="form-label">Tên sự kiện</label>
@@ -567,15 +560,6 @@ export const AdminConcerts: React.FC = () => {
                     style={{ fontFamily: 'monospace', fontSize: '0.85rem', resize: 'vertical' }}
                   />
                 </div>
-
-                <div style={{ display: 'flex', gap: '1rem', marginTop: 'auto', justifyContent: 'flex-end' }}>
-                  <button type="button" className="btn btn-outline" onClick={() => setShowForm(false)}>
-                    Hủy
-                  </button>
-                  <button type="submit" className="btn btn-primary" disabled={uploadingPoster}>
-                    Lưu sự kiện
-                  </button>
-                </div>
               </div>
             </form>
 
@@ -587,14 +571,13 @@ export const AdminConcerts: React.FC = () => {
                 <div className="ticket-mini-form">
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label htmlFor="ticket-type-name" className="form-label">Hạng vé</label>
-                    <input
-                      id="ticket-type-name"
-                      type="text"
-                      className="form-control"
-                      placeholder="VD: VIP Stand, GA..."
-                      value={newTicketName}
-                      onChange={(e) => setNewTicketName(e.target.value)}
-                    />
+                    <select id="ticket-type-name" className="form-control" value={newTicketName} onChange={(e: any) => setNewTicketName(e.target.value)}>
+                      <option value="GA">GA</option>
+                      <option value="SVIP">SVIP</option>
+                      <option value="VIP">VIP</option>
+                      <option value="CAT1">CAT1</option>
+                      <option value="CAT2">CAT2</option>
+                    </select>
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label htmlFor="ticket-type-price" className="form-label">Giá (VND)</label>
@@ -624,14 +607,18 @@ export const AdminConcerts: React.FC = () => {
                           <div className="ticket-mini-form" style={{ flex: 1, marginBottom: 0 }}>
                             <div className="form-group" style={{ marginBottom: 0 }}>
                               <label htmlFor="edit-ticket-name" className="form-label">Hạng vé đang sửa</label>
-                              <input
+                              <select
                                 id="edit-ticket-name"
-                                type="text"
                                 className="form-control"
-                                placeholder="VD: VIP Stand, GA..."
                                 value={editTicketName}
-                                onChange={(e) => setEditTicketName(e.target.value)}
-                              />
+                                onChange={(e) => setEditTicketName(e.target.value as TicketTypeName)}
+                              >
+                                <option value="GA">GA</option>
+                                <option value="SVIP">SVIP</option>
+                                <option value="VIP">VIP</option>
+                                <option value="CAT1">CAT1</option>
+                                <option value="CAT2">CAT2</option>
+                              </select>
                             </div>
                             <div className="form-group" style={{ marginBottom: 0 }}>
                               <label htmlFor="edit-ticket-price" className="form-label">Giá hạng vé đang sửa</label>
@@ -715,6 +702,15 @@ export const AdminConcerts: React.FC = () => {
                   )}
                 </div>
               </div>
+
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '2.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-outline" onClick={() => setShowForm(false)}>
+                  Hủy
+                </button>
+                <button type="submit" form="concert-form" className="btn btn-primary" disabled={uploadingPoster}>
+                  Lưu sự kiện
+                </button>
+              </div>
           </div>
         </div>
       ) : (
@@ -789,29 +785,9 @@ export const AdminConcerts: React.FC = () => {
                     </div>
 
                     <div className="admin-card-toolbar">
-                      <span
-                        style={{
-                          fontSize: '0.8rem',
-                          fontWeight: 600,
-                          padding: '0.25rem 0.5rem',
-                          borderRadius: 'var(--radius-sm)',
-                          textTransform: 'uppercase',
-                          backgroundColor:
-                            concert.status === 'active'
-                              ? 'var(--primary-soft)'
-                              : concert.status === 'cancelled'
-                              ? '#fee2e2'
-                              : 'var(--surface-alt)',
-                          color:
-                            concert.status === 'active'
-                              ? 'var(--primary)'
-                              : concert.status === 'cancelled'
-                              ? 'var(--danger)'
-                              : 'var(--text-muted)',
-                        }}
-                      >
-                        {concert.status}
-                      </span>
+                      {concert.status === 'active' && <span className="badge-pill badge-pill-success">Đang mở bán</span>}
+                      {concert.status === 'draft' && <span className="badge-pill badge-pill-warning">Bản nháp</span>}
+                      {concert.status === 'cancelled' && <span className="badge-pill badge-pill-danger">Đã hủy</span>}
                       
                       <div style={{ display: 'flex', gap: '0.25rem' }}>
                         <button

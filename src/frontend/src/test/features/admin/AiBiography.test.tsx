@@ -2,17 +2,17 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { AiBiography } from './AiBiography';
-import { apiClient } from '../../api/client';
-import { useSocket } from '../socket/SocketContext';
+import { AiBiography } from '../../../features/admin/AiBiography';
+import { apiClient } from '../../../api/client';
+import { useSocket } from '../../../features/socket/SocketContext';
 
-vi.mock('../../api/client', () => ({
+vi.mock('../../../api/client', () => ({
   apiClient: {
     request: vi.fn(),
   },
 }));
 
-vi.mock('../socket/SocketContext', () => ({
+vi.mock('../../../features/socket/SocketContext', () => ({
   useSocket: vi.fn(),
 }));
 

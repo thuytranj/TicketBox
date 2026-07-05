@@ -1,11 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
-import { AuthProvider } from './AuthContext';
-import { useAuth } from './useAuth';
-import { apiClient } from '../../api/client';
+import { AuthProvider } from '../../../features/auth/AuthContext';
+import { useAuth } from '../../../features/auth/useAuth';
+import { apiClient } from '../../../api/client';
 
-vi.mock('../../api/client', () => ({
+vi.mock('../../../api/client', () => ({
   apiClient: {
     request: vi.fn(),
   },

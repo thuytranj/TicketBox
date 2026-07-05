@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft,
   KeyRound,
@@ -96,6 +96,7 @@ const getAuthErrorMessage = (error: unknown) => {
 
 const LoginScreen: React.FC = () => {
   const { login, user } = useAuth();
+  const location = useLocation();
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -221,8 +222,10 @@ const LoginScreen: React.FC = () => {
     setMessage('');
   };
 
+  const from = (location.state as any)?.from || (user?.role === 'organizer' ? '/admin' : '/concerts');
+
   if (user) {
-    return <Navigate to={user.role === 'organizer' ? '/admin' : '/concerts'} replace />;
+    return <Navigate to={from} replace />;
   }
 
   const isOtpMode = mode === 'verify' || mode === 'resetOtp';
