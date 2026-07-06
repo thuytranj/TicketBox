@@ -96,10 +96,6 @@ export const ConcertList: React.FC = () => {
       <div id="concerts" className="container">
         <header className="section-heading">
           <div>
-            <div className="eyebrow" style={{ color: 'var(--primary)', marginBottom: 8 }}>
-              <Sparkles size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-              Đang mở bán
-            </div>
             <h2>Sự kiện nổi bật</h2>
             <p>Tìm theo nghệ sĩ, địa điểm hoặc thể loại. Chọn show, chọn hạng vé và đi thẳng đến thanh toán.</p>
           </div>
@@ -167,6 +163,11 @@ export const ConcertList: React.FC = () => {
           {concerts.map((concert) => (
             <article key={concert.id} className="card interactive-card concert-card">
               <div className="concert-poster">
+                {concert.endTime && new Date() > new Date(concert.endTime) ? (
+                  <span className="concert-status-badge ended">Đã kết thúc</span>
+                ) : concert.status === 'cancelled' ? (
+                  <span className="concert-status-badge ended">Đã hủy</span>
+                ) : null}
                 <img
                   src={concert.posterUrl || heroPreview}
                   alt={concert.title}
@@ -187,13 +188,24 @@ export const ConcertList: React.FC = () => {
                   </p>
                   <p className="meta-item">
                     <CalendarDays size={16} />
-                    {new Date(concert.startTime).toLocaleString()}
+                    {new Date(concert.startTime).toLocaleString('vi-VN')}
+                    {concert.endTime && ` - ${new Date(concert.endTime).toLocaleString('vi-VN')}`}
                   </p>
                 </div>
                 <div className="card-footer-action">
-                  <Link to={`/concerts/${concert.id}`} className="btn btn-primary" style={{ width: '100%' }}>
-                    Chọn vé
-                  </Link>
+                  {concert.endTime && new Date() > new Date(concert.endTime) ? (
+                    <button className="btn" disabled style={{ width: '100%', cursor: 'not-allowed' }}>
+                      Đã kết thúc
+                    </button>
+                  ) : concert.status === 'cancelled' ? (
+                    <button className="btn btn-outline" disabled style={{ width: '100%', cursor: 'not-allowed', color: 'var(--danger)', borderColor: 'var(--danger)' }}>
+                      Đã hủy
+                    </button>
+                  ) : (
+                    <Link to={`/concerts/${concert.id}`} className="btn btn-primary" style={{ width: '100%' }}>
+                      Chọn vé
+                    </Link>
+                  )}
                 </div>
               </div>
             </article>

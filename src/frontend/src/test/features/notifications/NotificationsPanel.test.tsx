@@ -2,17 +2,17 @@ import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-libra
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { NotificationsPanel } from './NotificationsPanel';
-import { apiClient } from '../../api/client';
-import { useSocket } from '../socket/SocketContext';
+import { NotificationsPanel } from '../../../features/notifications/NotificationsPanel';
+import { apiClient } from '../../../api/client';
+import { useSocket } from '../../../features/socket/SocketContext';
 
-vi.mock('../../api/client', () => ({
+vi.mock('../../../api/client', () => ({
   apiClient: {
     request: vi.fn(),
   },
 }));
 
-vi.mock('../socket/SocketContext', () => ({
+vi.mock('../../../features/socket/SocketContext', () => ({
   useSocket: vi.fn(),
 }));
 

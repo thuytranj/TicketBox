@@ -2,10 +2,10 @@ import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import { PaymentCallback } from './PaymentCallback';
-import { apiClient } from '../../api/client';
+import { PaymentCallback } from '../../../features/payment/PaymentCallback';
+import { apiClient } from '../../../api/client';
 
-vi.mock('../../api/client', () => ({
+vi.mock('../../../api/client', () => ({
   apiClient: {
     request: vi.fn(),
   },

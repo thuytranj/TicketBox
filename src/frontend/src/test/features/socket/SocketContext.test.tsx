@@ -1,9 +1,9 @@
 import { render, screen, act, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
-import { SocketProvider, useSocket } from './SocketContext';
+import { SocketProvider, useSocket } from '../../../features/socket/SocketContext';
 import { io } from 'socket.io-client';
-import { useAuth } from '../auth/useAuth';
+import { useAuth } from '../../../features/auth/useAuth';
 
 vi.mock('socket.io-client', () => {
   const mockSocket = {
@@ -16,7 +16,7 @@ vi.mock('socket.io-client', () => {
   };
 });
 
-vi.mock('../auth/useAuth', () => ({
+vi.mock('../../../features/auth/useAuth', () => ({
   useAuth: vi.fn(),
 }));
 

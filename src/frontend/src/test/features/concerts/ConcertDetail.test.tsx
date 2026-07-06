@@ -2,11 +2,11 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import { ConcertDetail } from './ConcertDetail';
-import { apiClient } from '../../api/client';
-import { AuthProvider } from '../auth/AuthContext';
+import { ConcertDetail } from '../../../features/concerts/ConcertDetail';
+import { apiClient } from '../../../api/client';
+import { AuthProvider } from '../../../features/auth/AuthContext';
 
-vi.mock('../../api/client', () => ({
+vi.mock('../../../api/client', () => ({
   apiClient: {
     request: vi.fn(),
   },

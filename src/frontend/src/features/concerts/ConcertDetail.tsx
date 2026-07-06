@@ -110,7 +110,26 @@ export const ConcertDetail: React.FC = () => {
     // Find clickable elements (paths, polygons, rects, circles, groups with IDs)
     const elements = svgElement.querySelectorAll('path, polygon, rect, circle, g');
     elements.forEach((el) => {
-      const id = el.getAttribute('id');
+      let id = el.getAttribute('id');
+      
+      // Fallback: If no ID, check if sibling is a text element and extract ID from it
+      if (!id) {
+        const nextSib = el.nextElementSibling;
+        const prevSib = el.previousElementSibling;
+        let text = '';
+        if (nextSib && nextSib.tagName.toLowerCase() === 'text') {
+          text = (nextSib.textContent || '').toUpperCase();
+        } else if (prevSib && prevSib.tagName.toLowerCase() === 'text') {
+          text = (prevSib.textContent || '').toUpperCase();
+        }
+
+        if (text) {
+          if (text.includes('SVIP')) id = 'SVIP';
+          else if (text.includes('VIP')) id = 'VIP';
+          else if (text.includes('GENERAL') || text.includes('GA')) id = 'GA';
+        }
+      }
+
       if (!id) return;
 
       const matchingType = ticketTypes.find((t) => t.name.toLowerCase() === id.toLowerCase());
@@ -147,9 +166,10 @@ export const ConcertDetail: React.FC = () => {
 
   const handleBook = async () => {
     if (!user) {
-      navigate('/login');
+      navigate('/login', { state: { from: `/concerts/${id}` } });
       return;
     }
+    if (user?.role === 'organizer') return;
     if (!selectedTicketType) return;
 
     setBookingSubmit(true);
@@ -199,6 +219,9 @@ export const ConcertDetail: React.FC = () => {
   return (
     <div className="container">
       <style>{`
+        .stage-map svg text {
+          pointer-events: none;
+        }
         .stage-map svg path,
         .stage-map svg polygon,
         .stage-map svg rect,
@@ -277,7 +300,7 @@ export const ConcertDetail: React.FC = () => {
           {(concert.biography || concert.artistSummary) && (
             <section className="content-section soft-panel">
               <h2>Thông tin nghệ sĩ</h2>
-              <p style={{ whiteSpace: 'pre-wrap' }}>{concert.biography || concert.artistSummary}</p>
+              <p>{concert.biography || concert.artistSummary}</p>
             </section>
           )}
 
@@ -289,7 +312,25 @@ export const ConcertDetail: React.FC = () => {
                 dangerouslySetInnerHTML={{ __html: svgMap }}
                 onClick={(e) => {
                   const target = e.target as SVGElement;
-                  const zoneId = target.getAttribute('id') || target.parentElement?.getAttribute('id');
+                  let zoneId = target.getAttribute('id') || target.parentElement?.getAttribute('id');
+                  
+                  if (!zoneId) {
+                    const nextSib = target.nextElementSibling;
+                    const prevSib = target.previousElementSibling;
+                    let text = '';
+                    if (nextSib && nextSib.tagName.toLowerCase() === 'text') {
+                      text = (nextSib.textContent || '').toUpperCase();
+                    } else if (prevSib && prevSib.tagName.toLowerCase() === 'text') {
+                      text = (prevSib.textContent || '').toUpperCase();
+                    }
+
+                    if (text) {
+                      if (text.includes('SVIP')) zoneId = 'SVIP';
+                      else if (text.includes('VIP')) zoneId = 'VIP';
+                      else if (text.includes('GENERAL') || text.includes('GA')) zoneId = 'GA';
+                    }
+                  }
+
                   if (zoneId) {
                     handleZoneClick(zoneId);
                   }
@@ -362,18 +403,35 @@ export const ConcertDetail: React.FC = () => {
                 </div>
               </div>
 
-              <button
-                onClick={handleBook}
-                disabled={bookingSubmit || selectedTicketType.availableQuantity === 0}
-                className="btn btn-primary"
-                style={{ width: '100%', minHeight: 52 }}
-              >
-                {bookingSubmit ? 'Đang giữ vé...' : 'Đặt vé'}
-              </button>
-              {bookingError && (
-                <div className="alert alert-danger" role="alert" style={{ marginTop: '1rem', marginBottom: 0 }}>
-                  {bookingError}
+              {user?.role === 'organizer' ? (
+                <div style={{ marginTop: '1rem' }}>
+                  <div className="alert alert-warning" role="alert" style={{ marginBottom: '1rem', fontSize: '0.82rem' }}>
+                    Tài khoản Quản trị/Ban tổ chức không thể đặt mua vé. Vui lòng đăng nhập tài khoản khán giả để đặt vé.
+                  </div>
+                  <button
+                    disabled
+                    className="btn btn-primary"
+                    style={{ width: '100%', minHeight: 52, cursor: 'not-allowed', opacity: 0.6 }}
+                  >
+                    Đặt vé
+                  </button>
                 </div>
+              ) : (
+                <>
+                  <button
+                    onClick={handleBook}
+                    disabled={bookingSubmit || selectedTicketType.availableQuantity === 0}
+                    className="btn btn-primary"
+                    style={{ width: '100%', minHeight: 52 }}
+                  >
+                    {bookingSubmit ? 'Đang giữ vé...' : 'Đặt vé'}
+                  </button>
+                  {bookingError && (
+                    <div className="alert alert-danger" role="alert" style={{ marginTop: '1rem', marginBottom: 0 }}>
+                      {bookingError}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
