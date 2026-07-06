@@ -210,15 +210,31 @@ export const MyBookings: React.FC = () => {
   const getOrderStatusBadge = (status: OrderData['status']) => {
     switch (status) {
       case 'paid':
-        return <span className="badge badge-pill-success" style={{ color: 'var(--success)', fontWeight: 700 }}>Đã thanh toán</span>;
+        return (
+          <span className="badge-pill" style={{ background: 'rgba(16, 185, 129, 0.08)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)', fontWeight: 700, padding: '4px 12px', borderRadius: '99px', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Đã thanh toán
+          </span>
+        );
       case 'pending':
-        return <span className="badge badge-pill-warning" style={{ color: 'var(--warning)', fontWeight: 700 }}>Chờ thanh toán</span>;
+        return (
+          <span className="badge-pill" style={{ background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.2)', fontWeight: 700, padding: '4px 12px', borderRadius: '99px', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Chờ thanh toán
+          </span>
+        );
       case 'cancelled':
-        return <span className="badge badge-pill-danger" style={{ color: 'var(--danger)', fontWeight: 700 }}>Đã hủy</span>;
+        return (
+          <span className="badge-pill" style={{ background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', fontWeight: 700, padding: '4px 12px', borderRadius: '99px', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Đã hủy
+          </span>
+        );
       case 'expired':
-        return <span className="badge badge-pill-danger" style={{ opacity: 0.7, fontWeight: 700 }}>Đã hết hạn</span>;
+        return (
+          <span className="badge-pill" style={{ background: 'rgba(100, 116, 139, 0.08)', color: '#64748b', border: '1px solid rgba(100, 116, 139, 0.2)', fontWeight: 700, padding: '4px 12px', borderRadius: '99px', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Đã hết hạn
+          </span>
+        );
       default:
-        return <span className="badge">{status}</span>;
+        return <span className="badge-pill" style={{ borderRadius: '99px', padding: '4px 12px' }}>{status}</span>;
     }
   };
 
@@ -318,71 +334,68 @@ export const MyBookings: React.FC = () => {
             if (!concert) return null;
 
             return (
-              <div key={order.id} className="card" style={{ overflow: 'hidden' }}>
-                <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap' }}>
-                  {/* Concert Poster Section */}
-                  <div style={{ width: '120px', minWidth: '120px', height: '160px', overflow: 'hidden' }}>
-                    <img
-                      src={concert.posterUrl || heroPreview}
-                      alt={concert.title}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  </div>
+              <div key={order.id} className="booking-card">
+                {/* Concert Poster Section */}
+                <div className="booking-card-poster">
+                  <img
+                    src={concert.posterUrl || heroPreview}
+                    alt={concert.title}
+                  />
+                </div>
 
-                  {/* Main Order Details Section */}
-                  <div className="card-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '1.25rem' }}>
-                    <div>
-                      <div className="flex-between" style={{ marginBottom: '0.5rem', alignItems: 'flex-start' }}>
-                        <h3 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0 }}>{concert.title}</h3>
-                        {getOrderStatusBadge(order.status)}
-                      </div>
-
-                      <div className="meta-list" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem', fontSize: '0.85rem' }}>
-                        <span className="meta-item">
-                          <CalendarDays size={14} />
-                          {new Date(concert.startTime).toLocaleDateString('vi-VN')} {new Date(concert.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                        <span className="meta-item">
-                          <MapPin size={14} />
-                          {concert.location}
-                        </span>
-                      </div>
-
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                        Mã đơn hàng: <strong style={{ color: 'var(--text-strong)' }}>{order.id.slice(0, 8).toUpperCase()}...</strong>
-                        <span style={{ margin: '0 0.5rem' }}>|</span>
-                        Ngày đặt: <strong>{new Date(order.createdAt).toLocaleDateString('vi-VN')}</strong>
-                      </div>
+                {/* Main Order Details Section */}
+                <div className="booking-card-body">
+                  <div>
+                    <div className="flex-between" style={{ marginBottom: '0.75rem', alignItems: 'flex-start', gap: '1rem' }}>
+                      <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-strong)', margin: 0, lineHeight: 1.3 }}>{concert.title}</h3>
+                      {getOrderStatusBadge(order.status)}
                     </div>
 
-                    <div className="flex-between" style={{ marginTop: '1rem', flexWrap: 'wrap', gap: '1rem', borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
-                      <div>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Tổng thanh toán:</span>
-                        <strong style={{ display: 'block', fontSize: '1.1rem', color: 'var(--text-strong)' }}>
-                          {order.totalAmount.toLocaleString()} VND
-                        </strong>
-                      </div>
+                    <div className="meta-list" style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap', marginBottom: '1rem', fontSize: '0.82rem' }}>
+                      <span className="meta-item" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)' }}>
+                        <CalendarDays size={14} style={{ color: 'var(--primary)' }} />
+                        {new Date(concert.startTime).toLocaleDateString('vi-VN')} {new Date(concert.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <span className="meta-item" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)' }}>
+                        <MapPin size={14} style={{ color: 'var(--primary)' }} />
+                        {concert.location}
+                      </span>
+                    </div>
 
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        {order.status === 'paid' && order.tickets && order.tickets.length > 0 && (
-                          <button
-                            onClick={() => openTicketWallet(order)}
-                            className="btn btn-primary"
-                            style={{ gap: '0.5rem' }}
-                          >
-                            <QrCode size={16} /> Xem vé & mã QR
-                          </button>
-                        )}
-                        {order.status === 'pending' && (
-                          <button
-                            onClick={() => navigate(`/checkout/${order.id}`)}
-                            className="btn btn-outline"
-                            style={{ gap: '0.5rem', borderColor: 'var(--warning)', color: 'var(--warning)' }}
-                          >
-                            <CreditCard size={16} /> Thanh toán ngay
-                          </button>
-                        )}
-                      </div>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', background: 'var(--surface-alt)', padding: '6px 12px', borderRadius: '8px', display: 'inline-block' }}>
+                      Mã đơn hàng: <strong style={{ color: 'var(--text-strong)', fontFamily: 'monospace', fontSize: '0.88rem' }}>{order.id.slice(0, 8).toUpperCase()}...</strong>
+                      <span style={{ margin: '0 0.75rem', opacity: 0.5 }}>|</span>
+                      Ngày đặt: <strong>{new Date(order.createdAt).toLocaleDateString('vi-VN')}</strong>
+                    </div>
+                  </div>
+
+                  <div className="flex-between" style={{ marginTop: '1.25rem', flexWrap: 'wrap', gap: '1.25rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                    <div>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Tổng thanh toán</span>
+                      <strong style={{ display: 'block', fontSize: '1.3rem', color: 'var(--text-strong)', fontWeight: 800, marginTop: '2px' }}>
+                        {order.totalAmount.toLocaleString()} VND
+                      </strong>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                      {order.status === 'paid' && order.tickets && order.tickets.length > 0 && (
+                        <button
+                          onClick={() => openTicketWallet(order)}
+                          className="btn btn-primary"
+                          style={{ gap: '0.5rem', padding: '10px 18px', fontWeight: 700, borderRadius: '8px', fontSize: '0.88rem' }}
+                        >
+                          <QrCode size={16} /> Xem vé & mã QR
+                        </button>
+                      )}
+                      {order.status === 'pending' && (
+                        <button
+                          onClick={() => navigate(`/checkout/${order.id}`)}
+                          className="btn btn-outline"
+                          style={{ gap: '0.5rem', padding: '10px 18px', fontWeight: 700, borderRadius: '8px', fontSize: '0.88rem', borderColor: 'var(--warning)', color: 'var(--warning)', background: 'rgba(245, 158, 11, 0.03)' }}
+                        >
+                          <CreditCard size={16} /> Thanh toán ngay
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

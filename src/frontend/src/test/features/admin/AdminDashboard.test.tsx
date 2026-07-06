@@ -69,7 +69,7 @@ const concerts = [
     title: 'Chi Dep Dap Gio',
     description: '',
     posterUrl: '',
-    status: 'draft' as const,
+    status: 'cancelled' as const,
     tags: [],
     location: 'Ha Noi',
     startTime: '2026-07-01T19:30:00Z',
@@ -120,7 +120,7 @@ const concertTwoStats = {
   concert: {
     id: '2',
     title: 'Chi Dep Dap Gio',
-    status: 'draft' as const,
+    status: 'cancelled' as const,
     startTime: '2026-07-01T19:30:00Z',
   },
   revenue: {
@@ -202,7 +202,7 @@ describe('AdminDashboard', () => {
       expect(screen.getAllByText('175').length).toBeGreaterThan(0);
       expect(screen.getByText('25%')).toBeInTheDocument();
       expect(screen.getByText('245.000.000 VND')).toBeInTheDocument();
-      expect(screen.getAllByText('90').length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/90/).length).toBeGreaterThan(0);
     });
   });
 
@@ -219,7 +219,7 @@ describe('AdminDashboard', () => {
       expect(screen.getByText('Doanh thu 30 ngày')).toBeInTheDocument();
       expect(screen.getByText('150.000.000 VND')).toBeInTheDocument();
       expect(screen.getByText('45')).toBeInTheDocument();
-      expect(screen.getAllByText(/đơn đã thanh toán/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/đơn hàng/).length).toBeGreaterThan(0);
       expect(screen.getByText('Sự kiện gần đây')).toBeInTheDocument();
       expect(screen.getAllByText('Em Xinh Say Hi').length).toBeGreaterThan(0);
       expect(screen.getByText('Tiến độ bán vé')).toBeInTheDocument();

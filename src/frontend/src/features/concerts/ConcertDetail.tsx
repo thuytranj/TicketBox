@@ -169,6 +169,7 @@ export const ConcertDetail: React.FC = () => {
       navigate('/login', { state: { from: `/concerts/${id}` } });
       return;
     }
+    if (user?.role === 'organizer') return;
     if (!selectedTicketType) return;
 
     setBookingSubmit(true);
@@ -402,18 +403,35 @@ export const ConcertDetail: React.FC = () => {
                 </div>
               </div>
 
-              <button
-                onClick={handleBook}
-                disabled={bookingSubmit || selectedTicketType.availableQuantity === 0}
-                className="btn btn-primary"
-                style={{ width: '100%', minHeight: 52 }}
-              >
-                {bookingSubmit ? 'Đang giữ vé...' : 'Đặt vé'}
-              </button>
-              {bookingError && (
-                <div className="alert alert-danger" role="alert" style={{ marginTop: '1rem', marginBottom: 0 }}>
-                  {bookingError}
+              {user?.role === 'organizer' ? (
+                <div style={{ marginTop: '1rem' }}>
+                  <div className="alert alert-warning" role="alert" style={{ marginBottom: '1rem', fontSize: '0.82rem' }}>
+                    Tài khoản Quản trị/Ban tổ chức không thể đặt mua vé. Vui lòng đăng nhập tài khoản khán giả để đặt vé.
+                  </div>
+                  <button
+                    disabled
+                    className="btn btn-primary"
+                    style={{ width: '100%', minHeight: 52, cursor: 'not-allowed', opacity: 0.6 }}
+                  >
+                    Đặt vé
+                  </button>
                 </div>
+              ) : (
+                <>
+                  <button
+                    onClick={handleBook}
+                    disabled={bookingSubmit || selectedTicketType.availableQuantity === 0}
+                    className="btn btn-primary"
+                    style={{ width: '100%', minHeight: 52 }}
+                  >
+                    {bookingSubmit ? 'Đang giữ vé...' : 'Đặt vé'}
+                  </button>
+                  {bookingError && (
+                    <div className="alert alert-danger" role="alert" style={{ marginTop: '1rem', marginBottom: 0 }}>
+                      {bookingError}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

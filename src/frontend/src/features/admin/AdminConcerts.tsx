@@ -758,7 +758,7 @@ export const AdminConcerts: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div className="grid-list">
+            <div className="admin-concert-grid grid-list">
               {filteredConcerts.map((concert) => (
                 <div key={concert.id} className="card interactive-card concert-card">
                   <div className="concert-poster">

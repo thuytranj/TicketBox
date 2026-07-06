@@ -26,6 +26,7 @@ import { ConcertDetail } from './features/concerts/ConcertDetail';
 import { BookingProcess } from './features/booking/BookingProcess';
 import { CheckoutPage } from './features/payment/CheckoutPage';
 import { PaymentCallback } from './features/payment/PaymentCallback';
+import { MyBookings } from './features/booking/MyBookings';
 import { AdminLayout } from './features/admin/AdminLayout';
 import { AdminDashboard } from './features/admin/AdminDashboard';
 import { AdminConcerts } from './features/admin/AdminConcerts';
@@ -45,6 +46,9 @@ const NavigationHeader: React.FC = () => {
 
         <nav className="site-nav" aria-label="Điều hướng chính">
           <Link to="/concerts" className="nav-link">Sự kiện</Link>
+          {user && user.role !== 'organizer' && (
+            <Link to="/my-bookings" className="nav-link">Vé của tôi</Link>
+          )}
           {user?.role === 'organizer' && (
             <Link to="/admin" className="nav-link">Quản trị</Link>
           )}
@@ -244,7 +248,7 @@ const LoginScreen: React.FC = () => {
       <section className="auth-hero" aria-label="TicketBox">
         <span className="brand-mark">TB</span>
         <h1>TicketBox</h1>
-        <p>Vé sự kiện, thanh toán và quản trị trong một trải nghiệm liền mạch.</p>
+        <p>Khám phá ngàn sự kiện hot nhất và đặt vé nhanh chóng chỉ trong vài bước.</p>
         <div className="auth-highlights" aria-label="Điểm nổi bật">
           <span><Ticket size={18} /> Đặt vé nhanh</span>
           <span><ShieldCheck size={18} /> Phiên đăng nhập an toàn</span>
@@ -479,6 +483,7 @@ const AppContent: React.FC = () => (
     <Route path="/bookings/processing/:orderId" element={<ProtectedRoute><PublicLayout><BookingProcess /></PublicLayout></ProtectedRoute>} />
     <Route path="/checkout/:orderId" element={<ProtectedRoute><PublicLayout><CheckoutPage /></PublicLayout></ProtectedRoute>} />
     <Route path="/payment-callback/:orderId" element={<ProtectedRoute><PublicLayout><PaymentCallback /></PublicLayout></ProtectedRoute>} />
+    <Route path="/my-bookings" element={<ProtectedRoute><PublicLayout><MyBookings /></PublicLayout></ProtectedRoute>} />
 
     <Route path="/admin" element={<AdminRoute><AdminLayout><AdminDashboard /></AdminLayout></AdminRoute>} />
     <Route path="/admin/concerts" element={<AdminRoute><AdminLayout><AdminConcerts /></AdminLayout></AdminRoute>} />

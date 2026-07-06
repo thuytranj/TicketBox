@@ -185,8 +185,8 @@ const RevenueChart: React.FC<{ data: RevenuePoint[] }> = ({ data }) => {
   const maxOrders = Math.max(...data.map(d => d.orderCount), 5);
 
   const svgWidth = 600;
-  const svgHeight = 220;
-  const padding = { top: 20, right: 20, bottom: 40, left: 60 };
+  const svgHeight = 280;
+  const padding = { top: 20, right: 45, bottom: 40, left: 60 };
 
   const chartWidth = svgWidth - padding.left - padding.right;
   const chartHeight = svgHeight - padding.top - padding.bottom;
@@ -194,7 +194,6 @@ const RevenueChart: React.FC<{ data: RevenuePoint[] }> = ({ data }) => {
   const points = data.map((d, i) => {
     const x = padding.left + (i / (data.length - 1 || 1)) * chartWidth;
     const yRevenue = padding.top + chartHeight - (d.revenue / maxRevenue) * chartHeight;
-    // Scale order count line to occupy max 40% height of the chart to prevent overlap
     const yOrders = padding.top + chartHeight - (d.orderCount / maxOrders) * chartHeight * 0.4;
     return { x, yRevenue, yOrders, raw: d };
   });
@@ -212,13 +211,14 @@ const RevenueChart: React.FC<{ data: RevenuePoint[] }> = ({ data }) => {
   const gridLevels = 3;
   const gridLines = Array.from({ length: gridLevels + 1 }).map((_, idx) => {
     const y = padding.top + (idx / gridLevels) * chartHeight;
-    const val = maxRevenue - (idx / gridLevels) * maxRevenue;
-    return { y, val };
+    const revenueVal = maxRevenue - (idx / gridLevels) * maxRevenue;
+    const ordersVal = Math.round(maxOrders - (idx / gridLevels) * maxOrders);
+    return { y, revenueVal, ordersVal };
   });
 
   return (
-    <div style={{ position: 'relative', width: '100%', overflowX: 'auto', marginTop: '1.5rem' }}>
-      <svg width="100%" height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`} style={{ minWidth: '500px', display: 'block' }}>
+    <div style={{ position: 'relative', width: '100%', marginTop: '1.5rem' }}>
+      <svg width="100%" height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`} style={{ display: 'block' }}>
         <defs>
           <linearGradient id="revenue-area-grad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.2" />
@@ -235,10 +235,11 @@ const RevenueChart: React.FC<{ data: RevenuePoint[] }> = ({ data }) => {
               x2={svgWidth - padding.right}
               y2={line.y}
               stroke="var(--border)"
-              strokeWidth="1"
+              strokeWidth="1.2"
               strokeDasharray="4 4"
-              opacity="0.4"
+              opacity="0.85"
             />
+            {/* Left Axis: Revenue */}
             <text
               x={padding.left - 10}
               y={line.y + 4}
@@ -247,7 +248,18 @@ const RevenueChart: React.FC<{ data: RevenuePoint[] }> = ({ data }) => {
               fill="var(--text-muted)"
               fontWeight="600"
             >
-              {line.val >= 1000000 ? `${(line.val / 1000000).toFixed(0)}M` : `${line.val.toLocaleString()}`}
+              {line.revenueVal >= 1000000 ? `${(line.revenueVal / 1000000).toFixed(0)}M` : `${line.revenueVal.toLocaleString()}`}
+            </text>
+            {/* Right Axis: Order Counts */}
+            <text
+              x={svgWidth - padding.right + 10}
+              y={line.y + 4}
+              textAnchor="start"
+              fontSize="10"
+              fill="#d97706"
+              fontWeight="600"
+            >
+              {line.ordersVal} đơn
             </text>
           </g>
         ))}
@@ -330,9 +342,11 @@ const RevenueChart: React.FC<{ data: RevenuePoint[] }> = ({ data }) => {
       {hoveredPoint && (
         <div style={{
           position: 'absolute',
-          left: `${hoveredPoint.x}px`,
-          top: `${hoveredPoint.y - 75}px`,
-          transform: hoveredPoint.x < 100 ? 'translateX(0)' : (svgWidth - hoveredPoint.x < 100 ? 'translateX(-100%)' : 'translateX(-50%)'),
+          left: `${(hoveredPoint.x / svgWidth) * 100}%`,
+          top: `${(hoveredPoint.y / svgHeight) * 100}%`,
+          transform: hoveredPoint.x < 100
+            ? 'translate(0, -100%) translateY(-10px)'
+            : (svgWidth - hoveredPoint.x < 100 ? 'translate(-100%, -100%) translateY(-10px)' : 'translate(-50%, -100%) translateY(-10px)'),
           background: 'rgba(15, 23, 42, 0.96)',
           color: '#ffffff',
           padding: '8px 12px',
@@ -415,6 +429,26 @@ export const AdminDashboard: React.FC = () => {
           const chunk = uniqueConcerts.slice(i, i + concurrencyLimit);
           const chunkResults = await Promise.all(
             chunk.map(async (concert) => {
+              if (concert.status === 'draft') {
+                return {
+                  concertId: concert.id,
+                  title: concert.title,
+                  totalTickets: 0,
+                  availableTickets: 0,
+                  soldTickets: 0,
+                  reservedTickets: 0,
+                  fillRate: 0,
+                  revenue: 0,
+                  failed: false,
+                  ticketTypesCount: 0,
+                  checkinsCount: 0,
+                  checkinRate: 0,
+                  startTime: concert.startTime,
+                  status: concert.status,
+                  ticketTypes: [],
+                };
+              }
+
               try {
                 const stats = await apiClient.request<ConcertStatistics>(`/statistics/concerts/${concert.id}`);
                 return buildSummaryFromStats(stats);
@@ -549,23 +583,31 @@ export const AdminDashboard: React.FC = () => {
                       </div>
                     ) : (
                       <div className="daily-details-scrollable">
-                        <div className="dashboard-progress-list">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           {revenuePoints.map((point) => {
-                            const width = maxRevenue > 0 ? Math.max((point.revenue / maxRevenue) * 100, 4) : 4;
                             return (
-                              <div key={`${point.date}-${point.orderCount}`} className="dashboard-progress-row">
-                                <div className="dashboard-progress-header">
-                                  <strong style={{ color: 'var(--text-strong)' }}>{formatDateLabel(point.date)}</strong>
-                                  <span style={{ fontWeight: 700, color: 'var(--success)' }}>{formatVnd(point.revenue)}</span>
+                              <div
+                                key={`${point.date}-${point.orderCount}`}
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: '1.2fr 1fr 1.2fr',
+                                  alignItems: 'center',
+                                  padding: '10px 14px',
+                                  background: 'var(--surface-alt)',
+                                  borderRadius: '8px',
+                                  border: '1px solid var(--border)',
+                                  fontSize: '0.85rem'
+                                }}
+                              >
+                                <div style={{ color: 'var(--text-strong)', fontWeight: 600 }}>
+                                  {formatDateLabel(point.date)}
                                 </div>
-                                <div className="progress-track" aria-hidden="true" style={{ margin: '8px 0 10px 0' }}>
-                                  <div className="progress-fill" style={{ width: `${width}%`, background: 'linear-gradient(90deg, var(--primary) 0%, var(--primary-hover) 100%)' }} />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)' }}>
+                                  <TrendingUp size={14} style={{ color: 'var(--success)' }} />
+                                  <span><strong>{point.orderCount}</strong> đơn hàng</span>
                                 </div>
-                                <div className="dashboard-progress-meta">
-                                  <span className="badge-pill badge-pill-success" style={{ padding: '4px 10px', fontSize: '0.78rem' }}>
-                                    <TrendingUp size={12} />
-                                    <strong>{point.orderCount}</strong> đơn đã thanh toán
-                                  </span>
+                                <div style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>
+                                  {formatVnd(point.revenue)}
                                 </div>
                               </div>
                             );
@@ -625,10 +667,10 @@ export const AdminDashboard: React.FC = () => {
                     <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)' }}>Bản nháp</span>
                     <span className="badge-pill badge-pill-warning">{overview.concerts.draft}</span>
                   </Link>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderRadius: '8px', background: 'var(--surface-alt)' }}>
+                  <Link to="/admin/concerts?status=cancelled" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textDecoration: 'none', padding: '10px', borderRadius: '8px', background: 'var(--surface-alt)', transition: 'background 0.2s' }}>
                     <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)' }}>Đã hủy</span>
                     <span className="badge-pill badge-pill-danger">{overview.concerts.cancelled}</span>
-                  </div>
+                  </Link>
                 </div>
               </div>
             </div>
@@ -712,14 +754,18 @@ export const AdminDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                <div style={{ padding: '12px', background: 'var(--surface-alt)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem', fontWeight: 600 }}>Lượt check-in thành công</span>
-                    <strong style={{ color: 'var(--text-strong)', fontSize: '1.2rem', fontWeight: 800 }}>{overview.checkins.totalCheckins}</strong>
+                <div style={{ padding: '12px 14px', background: 'var(--surface-alt)', borderRadius: '10px', marginTop: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 600 }}>Đã soát vé</span>
+                    <strong style={{ color: 'var(--text-strong)', fontSize: '1.05rem', fontWeight: 800 }}>
+                      {overview.tickets.totalSold > 0
+                        ? `${overview.checkins.totalCheckins} / ${overview.tickets.totalSold} vé`
+                        : `${overview.checkins.totalCheckins} lượt`}
+                    </strong>
                   </div>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-soft)', padding: '4px 8px', borderRadius: '4px' }}>
-                    Soát vé
-                  </span>
+                  <div className="progress-track" aria-hidden="true" style={{ height: '4px', background: 'rgba(242, 63, 99, 0.08)', borderRadius: '99px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.min(100, Math.max(0, overview.checkins.checkinRate))}%`, background: 'var(--accent)', borderRadius: '99px' }} />
+                  </div>
                 </div>
               </div>
             </div>
@@ -765,7 +811,7 @@ export const AdminDashboard: React.FC = () => {
                             </span>
                             <span>
                               <Clock3 size={12} style={{ marginRight: '4px', verticalAlign: 'middle' }} />
-                              {new Date(concert.startTime).toLocaleDateString('vi-VN')}
+                              {safeFormatDate(concert.startTime)}
                             </span>
                           </div>
                         </div>
@@ -780,6 +826,39 @@ export const AdminDashboard: React.FC = () => {
             <div className="card">
               <div className="card-body">
                 <h3 className="panel-title" style={{ marginBottom: '1.2rem' }}>Tiến độ bán vé</h3>
+                
+                {/* Status Filter Pills for Sales Progress */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '1.2rem' }}>
+                  <button
+                    className={`timeframe-btn ${salesFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => setSalesFilter('all')}
+                    style={{ borderRadius: '99px', padding: '6px 14px', fontSize: '0.8rem', fontWeight: 600 }}
+                  >
+                    Tất cả ({statusCounts.all})
+                  </button>
+                  <button
+                    className={`timeframe-btn ${salesFilter === 'active' ? 'active' : ''}`}
+                    onClick={() => setSalesFilter('active')}
+                    style={{ borderRadius: '99px', padding: '6px 14px', fontSize: '0.8rem', fontWeight: 600 }}
+                  >
+                    Đang mở bán ({statusCounts.active})
+                  </button>
+                  <button
+                    className={`timeframe-btn ${salesFilter === 'draft' ? 'active' : ''}`}
+                    onClick={() => setSalesFilter('draft')}
+                    style={{ borderRadius: '99px', padding: '6px 14px', fontSize: '0.8rem', fontWeight: 600 }}
+                  >
+                    Nháp ({statusCounts.draft})
+                  </button>
+                  <button
+                    className={`timeframe-btn ${salesFilter === 'cancelled' ? 'active' : ''}`}
+                    onClick={() => setSalesFilter('cancelled')}
+                    style={{ borderRadius: '99px', padding: '6px 14px', fontSize: '0.8rem', fontWeight: 600 }}
+                  >
+                    Đã hủy ({statusCounts.cancelled})
+                  </button>
+                </div>
+
                 {salesProgress.length === 0 ? (
                   <div className="soft-panel">
                     <p style={{ color: 'var(--text-muted)', margin: 0 }}>Chưa có dữ liệu thống kê sự kiện.</p>
@@ -795,7 +874,7 @@ export const AdminDashboard: React.FC = () => {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '12px' }}>
                               <div style={{ flex: 1 }}>
                                 <strong style={{ fontSize: '0.92rem', color: 'var(--text-strong)', display: 'block', lineHeight: 1.3 }}>{summary.title}</strong>
-                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{new Date(summary.startTime).toLocaleDateString('vi-VN')}</span>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{safeFormatDate(summary.startTime)}</span>
                               </div>
                               {getStatusBadge(summary.status)}
                             </div>
@@ -826,25 +905,49 @@ export const AdminDashboard: React.FC = () => {
                           </div>
 
                           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '10px', marginTop: '4px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', marginBottom: '8px' }}>
-                              <span style={{ color: 'var(--text-muted)' }}>Check-in <strong>{summary.checkinRate}%</strong></span>
-                              <span style={{ color: 'var(--text-strong)', fontWeight: 700 }}>
-                                <strong>{summary.soldTickets} / {summary.totalTickets}</strong> vé
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', marginBottom: '8px', gap: '8px' }}>
+                              <span style={{ color: 'var(--text-muted)' }}>
+                                Đã bán: <strong style={{ color: 'var(--text-strong)' }}>{summary.soldTickets} / {summary.totalTickets}</strong>
+                              </span>
+                              <span style={{ color: 'var(--text-muted)' }}>
+                                Giữ chỗ: <strong style={{ color: summary.reservedTickets > 0 ? 'var(--warning)' : 'var(--text-strong)' }}>{summary.reservedTickets}</strong>
+                              </span>
+                              <span style={{ color: 'var(--text-muted)' }}>
+                                Soát vé: <strong>{summary.checkinRate}%</strong>
                               </span>
                             </div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', fontSize: '0.7rem' }}>
                               <span style={{ padding: '2px 6px', background: 'var(--primary-soft)', color: 'var(--primary)', borderRadius: '4px', fontWeight: 700 }}>
-                                Hạng vé: {summary.ticketTypesCount}
+                                Hạng vé: <strong>{summary.ticketTypesCount}</strong>
                               </span>
                               {summary.reservedTickets > 0 && (
                                 <span style={{ padding: '2px 6px', background: 'var(--warning-soft)', color: 'var(--warning)', borderRadius: '4px', fontWeight: 700 }}>
-                                  Giữ chỗ: {summary.reservedTickets}
+                                  Giữ chỗ: <strong>{summary.reservedTickets}</strong>
                                 </span>
                               )}
                               <span style={{ padding: '2px 6px', background: 'rgba(15, 159, 110, 0.08)', color: 'var(--success)', borderRadius: '4px', fontWeight: 700 }}>
-                                Trống: {summary.availableTickets}
+                                Trống: <strong>{summary.availableTickets}</strong>
                               </span>
                             </div>
+
+                            {/* Ticket Types breakdown dropdown */}
+                            {summary.ticketTypes && summary.ticketTypes.length > 0 && (
+                              <details style={{ marginTop: '10px', borderTop: '1px dashed var(--border)', paddingTop: '8px' }}>
+                                <summary style={{ cursor: 'pointer', fontSize: '0.74rem', color: 'var(--primary)', fontWeight: 600 }}>
+                                  Chi tiết hạng vé ({summary.ticketTypes.length})
+                                </summary>
+                                <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.72rem' }}>
+                                  {summary.ticketTypes.map((tt) => (
+                                    <div key={tt.name} style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
+                                      <span>{tt.name}</span>
+                                      <span style={{ fontWeight: 600, color: 'var(--text-strong)' }}>
+                                        {tt.soldQuantity} / {tt.totalQuantity} vé
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            )}
                           </div>
                         </div>
                       );

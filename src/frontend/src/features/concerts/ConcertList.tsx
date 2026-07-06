@@ -197,6 +197,10 @@ export const ConcertList: React.FC = () => {
                     <button className="btn" disabled style={{ width: '100%', cursor: 'not-allowed' }}>
                       Đã kết thúc
                     </button>
+                  ) : concert.status === 'cancelled' ? (
+                    <button className="btn btn-outline" disabled style={{ width: '100%', cursor: 'not-allowed', color: 'var(--danger)', borderColor: 'var(--danger)' }}>
+                      Đã hủy
+                    </button>
                   ) : (
                     <Link to={`/concerts/${concert.id}`} className="btn btn-primary" style={{ width: '100%' }}>
                       Chọn vé
