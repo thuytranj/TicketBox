@@ -5,6 +5,7 @@ import { ConcertQueryDto } from './dto/concert-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
+import { BookingService } from '../booking/booking.service';
 import { BadRequestException } from '@nestjs/common';
 
 describe('ConcertController', () => {
@@ -31,6 +32,10 @@ describe('ConcertController', () => {
     uploadFile: jest.fn(),
   };
 
+  const mockBookingService = {
+    getConcertTickets: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ConcertController],
@@ -42,6 +47,10 @@ describe('ConcertController', () => {
         {
           provide: CloudinaryService,
           useValue: mockCloudinaryService,
+        },
+        {
+          provide: BookingService,
+          useValue: mockBookingService,
         },
       ],
     })

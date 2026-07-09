@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
 import { EmailService } from './email.service';
+import { NotificationService } from './notification.service';
 import { NotificationConsumer } from './notification.consumer';
 
 describe('NotificationConsumer', () => {
@@ -15,6 +16,10 @@ describe('NotificationConsumer', () => {
   const mockEmailService = {
     sendOtpEmail: jest.fn(),
     sendResetPasswordEmail: jest.fn(),
+  };
+
+  const mockNotificationService = {
+    createNotification: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -37,6 +42,10 @@ describe('NotificationConsumer', () => {
         {
           provide: EmailService,
           useValue: mockEmailService,
+        },
+        {
+          provide: NotificationService,
+          useValue: mockNotificationService,
         },
       ],
     }).compile();

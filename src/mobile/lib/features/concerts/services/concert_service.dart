@@ -17,7 +17,6 @@ class ConcertService {
         queryParameters: {
           'page': page,
           'limit': _pageSize,
-          'status': 'active',
         },
       );
 

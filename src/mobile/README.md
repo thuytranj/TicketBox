@@ -6,31 +6,46 @@
 
 ## 🛠 Hướng dẫn thiết lập Môi trường Phát triển
 
-Để khởi chạy ứng dụng mobile và kết nối với Backend nội bộ, hãy làm theo các bước dưới đây:
+Ứng dụng mobile hiện mặc định gọi backend đã deploy tại:
 
-### 1. Khởi động Backend
-Đảm bảo bạn đã khởi động cơ sở dữ liệu PostgreSQL, Redis, RabbitMQ và máy chủ Backend:
+```text
+https://api.ticketboxz.me/api/v1
+```
+
+Bạn có thể chạy app trực tiếp mà **không cần khởi động backend local**:
+
 ```bash
-# Terminal 1: Khởi động các dịch vụ Docker
+cd src/mobile
+flutter run
+```
+
+### Override sang backend local khi cần
+
+Nếu bạn muốn test với backend local, hãy tự khởi động PostgreSQL, Redis, RabbitMQ và backend, sau đó truyền lại `API_BASE_URL` khi chạy Flutter.
+
+```bash
+# Terminal 1
 docker compose up -d postgres redis rabbitmq
 
-# Terminal 2: Chạy Migrations, Seed dữ liệu và chạy Backend ở chế độ Dev
+# Terminal 2
 cd src/backend
 npm run migration:run
-npm run db:seed
+npm run db:seed:direct
 npm run start:dev
 ```
-*Backend mặc định sẽ khởi chạy tại cổng HTTP `3000` (`http://localhost:3000`).*
 
-### 2. Thiết lập Port Forwarding cho Android (ADB Reverse)
-Nếu bạn chạy ứng dụng trên thiết bị Android thật hoặc Emulator, hãy chạy lệnh sau để thiết bị có thể phân giải được cổng `3000` của localhost máy tính:
+*Backend local mặc định chạy tại `http://localhost:3000`.*
+
+### Thiết lập Port Forwarding cho Android khi dùng backend local
+
+Nếu bạn chạy ứng dụng trên thiết bị Android thật hoặc Emulator và muốn gọi backend local, hãy chạy:
+
 ```bash
 adb devices
 adb reverse tcp:3000 tcp:3000
 ```
 
-### 3. Cấu hình Biến Môi trường (Environment Variables)
-Khi khởi chạy ứng dụng Flutter, bạn **bắt buộc** phải truyền tham số `--dart-define` để chỉ định API Endpoint:
+### Cấu hình `API_BASE_URL` khi cần override
 
 *   **Android Studio / VS Code configuration args:**
     ```bash

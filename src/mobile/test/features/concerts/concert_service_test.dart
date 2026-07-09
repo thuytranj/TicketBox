@@ -47,7 +47,7 @@ void main() {
       expect(
         dioClient.seenQueries,
         equals([
-          {'page': 1, 'limit': 100, 'status': 'active'},
+          {'page': 1, 'limit': 100},
         ]),
       );
     });
@@ -76,8 +76,8 @@ void main() {
       expect(
         dioClient.seenQueries,
         equals([
-          {'page': 1, 'limit': 100, 'status': 'active'},
-          {'page': 2, 'limit': 100, 'status': 'active'},
+          {'page': 1, 'limit': 100},
+          {'page': 2, 'limit': 100},
         ]),
       );
     });

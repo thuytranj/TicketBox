@@ -82,6 +82,10 @@ class _PreloadScreenState extends State<PreloadScreen> with SingleTickerProvider
         title: widget.concert.title,
         location: widget.concert.location,
         posterUrl: widget.concert.posterUrl,
+        description: widget.concert.description,
+        startTime: widget.concert.startTime?.toIso8601String(),
+        endTime: widget.concert.endTime?.toIso8601String(),
+        status: widget.concert.status,
       );
     } catch (_) {
       // Snapshot persistence should not block entry into the scanner.

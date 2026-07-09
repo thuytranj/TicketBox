@@ -40,3 +40,12 @@ openspec/changes/explore/
 
 openspec/cache/
 openspec/tmp/
+
+# =================================================================
+# Flutter / Android build caches (including vendor third_party plugins)
+# =================================================================
+**/.gradle/
+**/build/
+src/mobile/.dart_tool/
+src/mobile/.flutter-plugins
+src/mobile/.flutter-plugins-dependencies

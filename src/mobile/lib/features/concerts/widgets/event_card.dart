@@ -93,6 +93,9 @@ class EventCard extends StatelessWidget {
   }
 
   Widget _buildContent() {
+    final schedule = _formatSchedule(concert.startTime, concert.endTime);
+    final description = _trimmedDescription(concert.description);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -123,6 +126,40 @@ class EventCard extends StatelessWidget {
             ),
           ],
         ),
+        if (schedule != null) ...[
+          GateSpacing.vertical(GateSpacing.xs),
+          Row(
+            children: [
+              Icon(
+                Icons.schedule_outlined,
+                size: 14,
+                color: GateColors.onSurfaceSub,
+              ),
+              GateSpacing.horizontal(GateSpacing.xs),
+              Expanded(
+                child: Text(
+                  schedule,
+                  style: GateTypography.caption.copyWith(
+                    color: GateColors.onSurfaceSub,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ],
+        if (description != null) ...[
+          GateSpacing.vertical(GateSpacing.xs),
+          Text(
+            description,
+            style: GateTypography.caption.copyWith(
+              color: GateColors.onSurfaceSub,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ],
     );
   }
@@ -133,5 +170,39 @@ class EventCard extends StatelessWidget {
       color: GateColors.primary,
       size: 24,
     );
+  }
+
+  String? _trimmedDescription(String? raw) {
+    if (raw == null) return null;
+    final value = raw.trim();
+    return value.isEmpty ? null : value;
+  }
+
+  String? _formatSchedule(DateTime? startTime, DateTime? endTime) {
+    if (startTime == null) return null;
+
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+
+    final localStart = startTime.toLocal();
+    final date =
+        '${twoDigits(localStart.day)}/${twoDigits(localStart.month)}';
+    final start =
+        '${twoDigits(localStart.hour)}:${twoDigits(localStart.minute)}';
+
+    if (endTime == null) {
+      return '$date | $start';
+    }
+
+    final localEnd = endTime.toLocal();
+    final isSameDay = localStart.year == localEnd.year &&
+        localStart.month == localEnd.month &&
+        localStart.day == localEnd.day;
+
+    if (!isSameDay) {
+      return '$date | $start';
+    }
+
+    final end = '${twoDigits(localEnd.hour)}:${twoDigits(localEnd.minute)}';
+    return '$date | $start-$end';
   }
 }
