@@ -41,49 +41,99 @@ export default class TransactionSeeder implements Seeder {
 
     // 3. Seed dữ liệu giao dịch động cho từng Concert
     for (const concert of concerts) {
-      // Chỉ seed cho các concert ở trạng thái active
-      if (concert.status !== 'active') {
+      // Chỉ seed cho các concert ở trạng thái active hoặc completed
+      if (concert.status !== 'active' && concert.status !== 'completed') {
         continue;
       }
 
-      const exists = await orderRepository.findOne({
-        where: { concertId: concert.id },
-      });
+      const isPast = concert.startTime < now;
+      const hasActiveTicketSale = concert.ticketTypes.some(
+        (tt) => tt.saleStartTime <= now && tt.saleEndTime >= now
+      );
 
-      if (!exists) {
-        const isPast = concert.startTime < now;
-        let counts;
-
-        if (isPast) {
-          // Sự kiện trong quá khứ: nhiều check-in, một ít no-show (PAID nhưng chưa checkin)
-          counts = {
-            checkedInCount: Math.floor(Math.random() * 25) + 20, // 20 đến 44 đơn đã check-in
-            paidCount: Math.floor(Math.random() * 4) + 1,        // 1 đến 4 đơn paid chưa check-in
-            pendingCount: 0,                                     // Quá khứ không có pending
-            cancelledCount: Math.floor(Math.random() * 5) + 2,   // 2 đến 6 đơn hủy
-            expiredCount: Math.floor(Math.random() * 5) + 2,     // 2 đến 6 đơn hết hạn
-          };
-        } else {
-          // Sự kiện trong tương lai: chưa check-in, chỉ có paid và pending
-          counts = {
-            checkedInCount: 0,
-            paidCount: Math.floor(Math.random() * 20) + 10,      // 10 đến 29 đơn đã mua
-            pendingCount: Math.floor(Math.random() * 6) + 2,     // 2 đến 7 đơn pending
-            cancelledCount: Math.floor(Math.random() * 4) + 1,   // 1 đến 4 đơn hủy
-            expiredCount: Math.floor(Math.random() * 4) + 1,     // 1 đến 4 đơn hết hạn
-          };
+      // Chỉ seed cho concert đã qua hoặc đang mở bán vé
+      if (!isPast && !hasActiveTicketSale) {
+        console.log(`[seed] Skipping "${concert.title}" (not past and sales not active now). Cleaning up any old transactions...`);
+        const oldOrders = await orderRepository.find({ where: { concertId: concert.id } });
+        for (const order of oldOrders) {
+          const tickets = await dataSource.getRepository(Ticket).find({ where: { orderId: order.id } });
+          for (const ticket of tickets) {
+            await dataSource.getRepository(CheckinLog).delete({ ticketId: ticket.id });
+            await dataSource.getRepository(Ticket).delete({ id: ticket.id });
+          }
+          await dataSource.getRepository(Payment).delete({ orderId: order.id });
+          await orderRepository.delete({ id: order.id });
         }
-
-        console.log(`[seed] Seeding transactions for "${concert.title}" (isPast: ${isPast})...`);
-        await this.seedTransactionsForConcert(
-          dataSource,
-          concert,
-          audiences,
-          gateStaffs,
-          counts,
-          isPast
-        );
+        for (const tt of concert.ticketTypes) {
+          tt.availableQuantity = tt.totalQuantity;
+          await dataSource.getRepository(TicketType).save(tt);
+        }
+        continue;
       }
+
+      // Dọn dẹp bất kỳ order/payment/ticket/checkin cũ nào của concert này để tránh trùng lặp
+      const oldOrders = await orderRepository.find({ where: { concertId: concert.id } });
+      for (const order of oldOrders) {
+        const tickets = await dataSource.getRepository(Ticket).find({ where: { orderId: order.id } });
+        for (const ticket of tickets) {
+          await dataSource.getRepository(CheckinLog).delete({ ticketId: ticket.id });
+          await dataSource.getRepository(Ticket).delete({ id: ticket.id });
+        }
+        await dataSource.getRepository(Payment).delete({ orderId: order.id });
+        await orderRepository.delete({ id: order.id });
+      }
+
+      // Reset lại availableQuantity về totalQuantity
+      for (const tt of concert.ticketTypes) {
+        tt.availableQuantity = tt.totalQuantity;
+        await dataSource.getRepository(TicketType).save(tt);
+      }
+
+      let counts;
+
+      if (isPast) {
+        // Lấy tổng số lượng vé phát hành của concert
+        const totalCapacity = concert.ticketTypes.reduce((sum, tt) => sum + tt.totalQuantity, 0);
+        
+        // Mục tiêu tỷ lệ lấp đầy (fill rate) cao cho sự kiện quá khứ: 75% - 95%
+        const targetFillRate = 0.75 + Math.random() * 0.20;
+        const targetTicketsSold = Math.floor(totalCapacity * targetFillRate);
+        
+        // Mỗi đơn hàng trung bình mua 1.5 vé -> tính số lượng đơn hàng paid tương ứng
+        const totalPaidOrders = Math.floor(targetTicketsSold / 1.5);
+        
+        // Tỷ lệ check-in cao cho các đơn hàng đã thanh toán (85% - 95% số vé đã mua được check-in)
+        const targetCheckinRate = 0.85 + Math.random() * 0.10;
+        const checkedInCount = Math.floor(totalPaidOrders * targetCheckinRate);
+        const paidCount = Math.max(0, totalPaidOrders - checkedInCount);
+
+        counts = {
+          checkedInCount,
+          paidCount,
+          pendingCount: 0,                                     // Quá khứ không có pending
+          cancelledCount: Math.floor(Math.random() * 10) + 5,  // 5 đến 14 đơn hủy
+          expiredCount: Math.floor(Math.random() * 10) + 5,    // 5 đến 14 đơn hết hạn
+        };
+      } else {
+        // Sự kiện trong tương lai: chưa check-in, chỉ có paid và pending
+        counts = {
+          checkedInCount: 0,
+          paidCount: Math.floor(Math.random() * 20) + 10,      // 10 đến 29 đơn đã mua
+          pendingCount: Math.floor(Math.random() * 6) + 2,     // 2 đến 7 đơn pending
+          cancelledCount: Math.floor(Math.random() * 4) + 1,   // 1 đến 4 đơn hủy
+          expiredCount: Math.floor(Math.random() * 4) + 1,     // 1 đến 4 đơn hết hạn
+        };
+      }
+
+      console.log(`[seed] Seeding transactions for "${concert.title}" (isPast: ${isPast})...`);
+      await this.seedTransactionsForConcert(
+        dataSource,
+        concert,
+        audiences,
+        gateStaffs,
+        counts,
+        isPast
+      );
     }
 
     // 4. Tạo CheckinLog cho khách mời VIP đã check-in (được seed ở VipGuestSeeder)
@@ -152,8 +202,12 @@ export default class TransactionSeeder implements Seeder {
     const runSeed = async (status: OrderStatus, needCheckin: boolean, count: number) => {
       for (let i = 0; i < count; i++) {
         const audience = getNextAudience();
-        const ticketType = ticketTypes[Math.floor(Math.random() * ticketTypes.length)];
-        const qty = Math.floor(Math.random() * 2) + 1; // 1 hoặc 2 vé mỗi đơn
+        const availableTypes = ticketTypes.filter(tt => tt.availableQuantity > 0);
+        if (availableTypes.length === 0) {
+          break;
+        }
+        const ticketType = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+        const qty = Math.min(Math.floor(Math.random() * 2) + 1, ticketType.availableQuantity);
         const amount = ticketType.price * qty;
 
         // 1. Tạo Đơn Hàng (Order)
@@ -221,6 +275,10 @@ export default class TransactionSeeder implements Seeder {
             ticketsList.push(ticket);
           }
           await ticketRepository.save(ticketsList);
+
+          // Cập nhật số lượng vé còn lại trong DB để thống kê chính xác
+          ticketType.availableQuantity = Math.max(0, ticketType.availableQuantity - qty);
+          await dataSource.getRepository(TicketType).save(ticketType);
 
           // 4. Tạo Lịch sử Soát Vé (CheckinLog) nếu đã checkin
           if (needCheckin) {

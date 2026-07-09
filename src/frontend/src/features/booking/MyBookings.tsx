@@ -41,7 +41,7 @@ interface ConcertData {
   posterUrl: string;
   startTime: string;
   endTime: string;
-  status: 'draft' | 'active' | 'cancelled';
+  status: 'draft' | 'active' | 'cancelled' | 'completed';
   tags: string[];
 }
 

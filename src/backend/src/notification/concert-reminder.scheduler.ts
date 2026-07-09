@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository, Between, LessThan } from 'typeorm';
 import { Concert, ConcertStatus } from '../concert/entities/concert.entity';
 import { Order, OrderStatus } from '../booking/entities/order.entity';
 import { Ticket, TicketStatus } from '../booking/entities/ticket.entity';
@@ -178,5 +178,67 @@ export class ConcertReminderScheduler {
     this.logger.log(
       `Published ${usersWithTickets.length} reminder message(s) for concert "${concert.title}"`,
     );
+  }
+
+  /**
+   * Cron Job: Quét mỗi 15 phút tìm các concert đã kết thúc (endTime < NOW())
+   * và chuyển đổi trạng thái của chúng từ ACTIVE sang COMPLETED, đồng thời xóa cache.
+   */
+  @Cron('*/15 * * * *')
+  async handleConcertCompletion(): Promise<void> {
+    const role = process.env.INSTANCE_ROLE ?? 'all';
+    const isEnabled = ['all', 'worker', 'worker:background'].includes(role);
+
+    if (!isEnabled) {
+      return;
+    }
+
+    const lockKey = '{concert-completion}:lock';
+    const lockAcquired = await this.redisService.acquireLock(lockKey, 60000);
+    if (!lockAcquired) {
+      return;
+    }
+
+    this.logger.log('Concert completion cron triggered.');
+    try {
+      const now = new Date();
+      const endedConcerts = await this.concertRepo.find({
+        where: {
+          status: ConcertStatus.ACTIVE,
+          endTime: LessThan(now),
+        },
+      });
+
+      if (endedConcerts.length > 0) {
+        this.logger.log(`Found ${endedConcerts.length} ended active concert(s) to complete.`);
+        for (const concert of endedConcerts) {
+          await this.concertRepo.update(concert.id, { status: ConcertStatus.COMPLETED });
+          this.logger.log(`Transitioned concert "${concert.title}" (${concert.id}) to COMPLETED.`);
+
+          // Invalidate Redis caches for this concert
+          await this.redisService.del(`cache:concerts:${concert.id}`);
+          await this.redisService.del(`cache:concerts:${concert.id}:stagemap`);
+          await this.redisService.del(`cache:concerts:${concert.id}:ticket-types`);
+          
+          // Invalidate stats caches for this concert
+          await this.redisService.del(`stats:concert:${concert.id}`);
+          const statsKeys = await this.redisService.keys(`stats:concert:${concert.id}:*`);
+          if (statsKeys.length > 0) {
+            await this.redisService.del(...statsKeys);
+          }
+        }
+
+        // Clear list cache and overview stats cache
+        const listKeys = await this.redisService.keys('cache:concerts:list:default:*');
+        if (listKeys.length > 0) {
+          await this.redisService.del(...listKeys);
+        }
+        await this.redisService.del('stats:overview');
+      }
+    } catch (err) {
+      this.logger.error('Error during concert completion processing:', err.stack);
+    } finally {
+      await this.redisService.releaseLock(lockKey);
+    }
   }
 }
