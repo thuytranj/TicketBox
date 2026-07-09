@@ -15,7 +15,7 @@ interface TicketType {
 }
 
 type TicketTypeName = TicketType['name'];
-type ConcertStatus = 'draft' | 'active' | 'cancelled';
+type ConcertStatus = 'draft' | 'active' | 'cancelled' | 'completed';
 
 interface FormTicketType {
   id?: string;
@@ -36,7 +36,7 @@ export const AdminConcerts: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | ConcertStatus>(
-    initialStatus === 'active' || initialStatus === 'draft' || initialStatus === 'cancelled' ? initialStatus : 'all'
+    initialStatus === 'active' || initialStatus === 'draft' || initialStatus === 'cancelled' || initialStatus === 'completed' ? initialStatus : 'all'
   );
 
   // Form states
@@ -76,7 +76,7 @@ export const AdminConcerts: React.FC = () => {
   const fetchConcerts = async () => {
     setLoading(true);
     try {
-      const statuses: ConcertStatus[] = ['active', 'draft', 'cancelled'];
+      const statuses: ConcertStatus[] = ['active', 'draft', 'cancelled', 'completed'];
       const responses = await Promise.all(
         statuses.map((concertStatus) =>
           apiClient
@@ -499,6 +499,7 @@ export const AdminConcerts: React.FC = () => {
                     <option value="active">Đang bán</option>
                     <option value="draft">Bản nháp</option>
                     <option value="cancelled">Đã hủy</option>
+                    <option value="completed">Đã diễn ra</option>
                   </select>
                 </div>
 
@@ -736,6 +737,7 @@ export const AdminConcerts: React.FC = () => {
                 <option value="active">Đang bán</option>
                 <option value="draft">Bản nháp</option>
                 <option value="cancelled">Đã hủy</option>
+                <option value="completed">Đã diễn ra</option>
               </select>
             </div>
           </div>
@@ -788,6 +790,7 @@ export const AdminConcerts: React.FC = () => {
                       {concert.status === 'active' && <span className="badge-pill badge-pill-success">Đang mở bán</span>}
                       {concert.status === 'draft' && <span className="badge-pill badge-pill-warning">Bản nháp</span>}
                       {concert.status === 'cancelled' && <span className="badge-pill badge-pill-danger">Đã hủy</span>}
+                      {concert.status === 'completed' && <span className="badge-pill badge-pill-info">Đã diễn ra</span>}
                       
                       <div style={{ display: 'flex', gap: '0.25rem' }}>
                         <button

@@ -570,7 +570,7 @@ Lịch trình sự kiện (Timeline):
         svgStageMap: sampleSvg,
         startTime: getNiceDate(-30, 19, 30), // 30 ngày trước, 19:30
         endTime: getNiceDate(-30, 23, 30), // 30 ngày trước, 23:30
-        status: ConcertStatus.ACTIVE,
+        status: ConcertStatus.COMPLETED,
         ticketTypes: [
           {
             name: 'VIP Zone',
@@ -615,7 +615,7 @@ Thời gian diễn ra:
         svgStageMap: sampleSvg,
         startTime: getNiceDate(-15, 18, 30), // 15 ngày trước, 18:30
         endTime: getNiceDate(-15, 21, 30), // 15 ngày trước, 21:30
-        status: ConcertStatus.ACTIVE,
+        status: ConcertStatus.COMPLETED,
         ticketTypes: [
           {
             name: 'VIP Seat',
@@ -632,6 +632,182 @@ Thời gian diễn ra:
             maxPerUser: 4,
             saleStartTime: getNiceDate(-40, 9, 0),
             saleEndTime: getNiceDate(-16, 18, 0),
+          },
+        ],
+      },
+      {
+        title: 'Show Của Đen 2025 (Past)',
+        description:
+          'Live concert đánh dấu chặng đường 10 năm ca hát đầy cảm xúc của rapper Đen Vâu.',
+        location: 'Sân vận động Hàng Đẫy, Hà Nội',
+        posterUrl:
+          'https://images.unsplash.com/photo-1540039155733-5bb30b53aa14?w=800',
+        biography: `SHOW CỦA ĐEN 2025 (PAST CONCERT)
+
+Đêm nhạc hoành tráng kỷ niệm chặng đường 10 năm hoạt động nghệ thuật của Đen Vâu. Show diễn mang đến không gian âm nhạc mộc mạc kết hợp cùng dàn nhạc giao hưởng, ban nhạc sống và các nghệ sĩ khách mời đặc biệt.
+
+Nghệ sĩ & Chương trình:
+- Nghệ sĩ chính: Đen Vâu
+- Khách mời: Hà Anh Tuấn, Vũ., Lynk Lee, Kimmese.
+- Thời lượng: Hơn 3 tiếng với setlist gồm hơn 25 ca khúc làm nên tên tuổi của Đen.
+
+Lịch trình sự kiện (Timeline):
+• 17:00 - Mở cửa đón khách soát vé khu vực Fanzone và khán đài.
+• 19:30 - Ban nhạc và DJ mở màn khuấy động bầu không khí.
+• 20:00 - Đen Vâu chính thức lên sân khấu.
+• 23:00 - Đêm diễn kết thúc.`,
+        tags: ['Rap', 'Indie', 'Completed'],
+        svgStageMap: sampleSvg,
+        startTime: getNiceDate(-60, 19, 30), // 60 ngày trước, 19:30
+        endTime: getNiceDate(-60, 23, 0), // 60 ngày trước, 23:00
+        status: ConcertStatus.COMPLETED,
+        ticketTypes: [
+          {
+            name: 'VIP Standing',
+            price: 2000000,
+            totalQuantity: 300,
+            maxPerUser: 4,
+            saleStartTime: getNiceDate(-90, 9, 0),
+            saleEndTime: getNiceDate(-61, 18, 0),
+          },
+          {
+            name: 'GA Standing',
+            price: 900000,
+            totalQuantity: 800,
+            maxPerUser: 4,
+            saleStartTime: getNiceDate(-90, 9, 0),
+            saleEndTime: getNiceDate(-61, 18, 0),
+          },
+        ],
+      },
+      {
+        title: 'Live Concert Chân Trời Rực Rỡ (Past)',
+        description:
+          'Đêm nhạc đặc biệt của Hà Anh Tuấn tại không gian linh thiêng của cố đô Hoa Lư, Ninh Bình.',
+        location: 'Sân Lễ hội Đền Vua Đinh - Vua Lê, Cố đô Hoa Lư, Ninh Bình',
+        posterUrl:
+          'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=800',
+        biography: `LIVE CONCERT CHÂN TRỜI RỰC RỠ (PAST CONCERT)
+
+Hà Anh Tuấn mang câu chuyện âm nhạc đặc sắc của mình về với cố đô Hoa Lư lịch sử. Một đêm nhạc đậm chất văn hóa dân tộc kết hợp độc đáo cùng âm nhạc đương đại toàn cầu.
+
+Nghệ sĩ & Chương trình:
+- Nghệ sĩ chính: Hà Anh Tuấn
+- Khách mời huyền thoại: Kitaro
+- Thời lượng: Hơn 3 tiếng với những bản phối mới đầy hoành tráng.
+
+Lịch trình sự kiện (Timeline):
+• 16:30 - Mở cửa đón khách và hỗ trợ soát vé.
+• 18:30 - Đêm nhạc chính thức bắt đầu dưới ánh hoàng hôn cố đô.
+• 21:45 - Đêm diễn kết thúc.`,
+        tags: ['Pop', 'Acoustic', 'Completed'],
+        svgStageMap: sampleSvg,
+        startTime: getNiceDate(-90, 18, 30), // 90 ngày trước, 18:30
+        endTime: getNiceDate(-90, 22, 30), // 90 ngày trước, 22:30
+        status: ConcertStatus.COMPLETED,
+        ticketTypes: [
+          {
+            name: 'VIP Horizon',
+            price: 4000000,
+            totalQuantity: 150,
+            maxPerUser: 2,
+            saleStartTime: getNiceDate(-120, 9, 0),
+            saleEndTime: getNiceDate(-91, 18, 0),
+          },
+          {
+            name: 'Standard Sunset',
+            price: 1800000,
+            totalQuantity: 600,
+            maxPerUser: 4,
+            saleStartTime: getNiceDate(-120, 9, 0),
+            saleEndTime: getNiceDate(-91, 18, 0),
+          },
+        ],
+      },
+      {
+        title: 'My Soul 1981 - Mỹ Tâm (Past)',
+        description:
+          'Đêm nhạc acoustic ấm cúng, gần gũi của họa mi tóc nâu Mỹ Tâm bên bờ biển thơ mộng.',
+        location: 'Hồ Tràm, Bà Rịa - Vũng Tàu',
+        posterUrl:
+          'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800',
+        biography: `MY SOUL 1981 - MỸ TÂM (PAST CONCERT)
+
+Live concert acoustic riêng tư với số lượng ghế giới hạn. Mỹ Tâm cùng ban nhạc sống trình bày lại các ca khúc ballad đình đám theo phong cách nhẹ nhàng bên tiếng sóng biển Hồ Tràm.
+
+Nghệ sĩ & Chương trình:
+- Nghệ sĩ chính: Mỹ Tâm
+- Khách mời đặc biệt: Phan Mạnh Quỳnh
+- Thời lượng: 2.5 tiếng biểu diễn liên tục.
+
+Lịch trình sự kiện (Timeline):
+• 16:30 - Check-in và phục vụ tiệc nhẹ nhẹ đón hoàng hôn.
+• 17:30 - Mỹ Tâm chính thức biểu diễn.
+• 20:00 - Bế mạc chương trình.`,
+        tags: ['Pop', 'Ballad', 'Completed'],
+        svgStageMap: sampleSvg,
+        startTime: getNiceDate(-120, 17, 30), // 120 ngày trước, 17:30
+        endTime: getNiceDate(-120, 21, 30), // 120 ngày trước, 21:30
+        status: ConcertStatus.COMPLETED,
+        ticketTypes: [
+          {
+            name: 'Sea Zone',
+            price: 3000000,
+            totalQuantity: 100,
+            maxPerUser: 2,
+            saleStartTime: getNiceDate(-150, 9, 0),
+            saleEndTime: getNiceDate(-121, 18, 0),
+          },
+          {
+            name: 'Beach Zone',
+            price: 1500000,
+            totalQuantity: 300,
+            maxPerUser: 4,
+            saleStartTime: getNiceDate(-150, 9, 0),
+            saleEndTime: getNiceDate(-121, 18, 0),
+          },
+        ],
+      },
+      {
+        title: 'Monsoon Music Festival 2025 (Past)',
+        description:
+          'Lễ hội âm nhạc quốc tế Gió Mùa lớn nhất Việt Nam tại di sản Hoàng thành Thăng Long.',
+        location: 'Hoàng thành Thăng Long, Hà Nội',
+        posterUrl:
+          'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800',
+        biography: `MONSOON MUSIC FESTIVAL 2025 (PAST CONCERT)
+
+Lễ hội âm nhạc gió mùa lớn nhất miền Bắc quy tụ hàng chục ban nhạc, ca sĩ nổi tiếng trong nước và quốc tế trình diễn đa dạng thể loại từ Indie, Pop, Rock đến Electronic.
+
+Nghệ sĩ & Chương trình:
+- Line-up: Ngọt Band, Chillies, Suboi, cùng các ban nhạc từ Anh, Pháp, Hàn Quốc, Nhật Bản.
+- Thời lượng: Lễ hội kéo dài 3 ngày liên tục.
+
+Lịch trình sự kiện (Timeline):
+• 15:30 - Mở cửa đón khách tham gia các hoạt động bên lề.
+• 16:30 - Sân khấu chính bắt đầu sáng đèn.
+• 23:30 - Đóng cửa lễ hội mỗi ngày.`,
+        tags: ['Indie', 'Rock', 'Completed'],
+        svgStageMap: sampleSvg,
+        startTime: getNiceDate(-180, 16, 0), // 180 ngày trước, 16:00
+        endTime: getNiceDate(-180, 23, 30), // 180 ngày trước, 23:30
+        status: ConcertStatus.COMPLETED,
+        ticketTypes: [
+          {
+            name: '3-Day Pass VIP',
+            price: 2500000,
+            totalQuantity: 200,
+            maxPerUser: 4,
+            saleStartTime: getNiceDate(-210, 9, 0),
+            saleEndTime: getNiceDate(-181, 18, 0),
+          },
+          {
+            name: '3-Day Pass GA',
+            price: 1200000,
+            totalQuantity: 1000,
+            maxPerUser: 4,
+            saleStartTime: getNiceDate(-210, 9, 0),
+            saleEndTime: getNiceDate(-181, 18, 0),
           },
         ],
       },
