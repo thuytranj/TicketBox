@@ -12,6 +12,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   const location = useLocation();
   const { logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const isLinkActive = (path: string) => location.pathname === path;
 
@@ -67,7 +68,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
             <Link to="/" className="btn btn-outline">
               Xem trang khách
             </Link>
-            <button type="button" className="btn btn-outline" onClick={() => void logout()}>
+            <button type="button" className="btn btn-outline" onClick={() => setShowLogoutConfirm(true)}>
               <LogOut size={17} />
               Đăng xuất
             </button>
@@ -77,6 +78,68 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
 
         <div className="admin-content">{children}</div>
       </main>
+
+      {showLogoutConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backdropFilter: 'blur(8px)',
+        }}>
+          <div className="card" style={{
+            width: '380px',
+            maxWidth: '90%',
+            padding: '1.75rem',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            borderRadius: '16px',
+            border: '1px solid var(--border)',
+            background: 'var(--surface)',
+          }}>
+            <h3 style={{ fontSize: '1.25rem', marginBottom: '0.75rem', fontWeight: 700, color: 'var(--text-strong)' }}>
+              Xác nhận đăng xuất
+            </h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '1.75rem', lineHeight: '1.6' }}>
+              Bạn có chắc chắn muốn đăng xuất khỏi trang quản trị TicketBox không?
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{ borderRadius: '8px', padding: '0.6rem 1.2rem', fontWeight: 500 }}
+                onClick={() => setShowLogoutConfirm(false)}
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                style={{
+                  borderRadius: '8px',
+                  padding: '0.6rem 1.2rem',
+                  fontWeight: 500,
+                  backgroundColor: 'var(--danger)',
+                  color: '#fff',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  void logout();
+                }}
+              >
+                Đăng xuất
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

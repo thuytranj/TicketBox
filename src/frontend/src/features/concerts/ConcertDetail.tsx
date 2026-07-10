@@ -7,6 +7,30 @@ import heroPreview from '../../assets/hero.png';
 
 const INVENTORY_REFRESH_MS = 10000;
 
+const mapApiErrorToVietnamese = (msg: string): string => {
+  if (msg.includes('Not enough tickets available')) {
+    return 'Hết vé hoặc số lượng vé còn lại không đủ.';
+  }
+  if (msg.includes('Purchase limit exceeded')) {
+    const maxMatch = msg.match(/max (\d+)/);
+    const maxVal = maxMatch ? maxMatch[1] : '';
+    return `Bạn đã vượt quá giới hạn mua vé cho hạng vé này${maxVal ? ` (tối đa ${maxVal} vé/tài khoản)` : ''}.`;
+  }
+  if (msg.includes('Ticket type') && msg.includes('does not belong to concert')) {
+    return 'Hạng vé đã chọn không khớp với sự kiện này.';
+  }
+  if (msg.includes('One or more ticket types not found')) {
+    return 'Hạng vé không tồn tại hoặc đã bị hủy bỏ.';
+  }
+  if (msg.includes('Too many requests')) {
+    return 'Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.';
+  }
+  if (msg.includes('Session expired') || msg.includes('Unauthorized')) {
+    return 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
+  }
+  return msg;
+};
+
 interface TicketType {
   id: string;
   name: 'GA' | 'SVIP' | 'VIP' | 'CAT1' | 'CAT2';
@@ -14,6 +38,8 @@ interface TicketType {
   totalQuantity: number;
   availableQuantity: number;
   maxPerUser: number;
+  saleStartTime?: string;
+  saleEndTime?: string;
 }
 
 interface ConcertDetailData {
@@ -25,6 +51,7 @@ interface ConcertDetailData {
   location: string;
   posterUrl: string;
   startTime: string;
+  endTime?: string;
 }
 
 export const ConcertDetail: React.FC = () => {
@@ -193,8 +220,15 @@ export const ConcertDetail: React.FC = () => {
       });
 
       navigate(`/bookings/processing/${response.orderId}`);
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : 'Không thể tạo đơn đặt vé';
+    } catch (err: any) {
+      let errMsg = 'Không thể tạo đơn đặt vé';
+      if (err && typeof err === 'object') {
+        if ('message' in err && typeof err.message === 'string') {
+          errMsg = mapApiErrorToVietnamese(err.message);
+        }
+      } else if (err instanceof Error) {
+        errMsg = mapApiErrorToVietnamese(err.message);
+      }
       setBookingError(errMsg);
       setBookingSubmit(false);
     }
@@ -268,6 +302,9 @@ export const ConcertDetail: React.FC = () => {
         }
       `}</style>
       {error && <div className="alert alert-danger">{error}</div>}
+      {concert.endTime && new Date() > new Date(concert.endTime) && (
+        <div className="alert alert-warning" style={{ marginTop: '1rem', textAlign: 'center', fontWeight: 600 }}>Sự kiện này đã diễn ra. Bạn chỉ có thể xem thông tin và không thể đặt mua vé.</div>
+      )}
 
       <div className="split-layout">
         <div>
@@ -345,95 +382,124 @@ export const ConcertDetail: React.FC = () => {
             <Ticket size={20} style={{ verticalAlign: 'middle', marginRight: 8, color: 'var(--accent)' }} />
             Chọn hạng vé
           </h2>
+          {concert.endTime && new Date() > new Date(concert.endTime) ? (
+            <div className="alert alert-danger" role="alert" style={{ fontSize: '0.9rem', padding: '1rem', textAlign: 'center' }}>Sự kiện đã kết thúc. Không thể đặt vé.</div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
+                {ticketTypes.map((type) => {
+                  const now = new Date();
+                  const hasNotStarted = type.saleStartTime ? now < new Date(type.saleStartTime) : false;
+                  const hasEnded = type.saleEndTime ? now > new Date(type.saleEndTime) : false;
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
-            {ticketTypes.map((type) => (
-              <button
-                key={type.id}
-                onClick={() => {
-                  setSelectedTicketType(type);
-                  setQuantity(1);
-                  setBookingError('');
-                }}
-                className={`ticket-type-option ${selectedTicketType?.id === type.id ? 'selected' : ''}`}
-                disabled={type.availableQuantity === 0}
-              >
+                  return (
+                    <button
+                      key={type.id}
+                      onClick={() => {
+                        setSelectedTicketType(type);
+                        setQuantity(1);
+                        setBookingError('');
+                      }}
+                      className={`ticket-type-option ${selectedTicketType?.id === type.id ? 'selected' : ''}`}
+                      disabled={hasNotStarted || hasEnded || type.availableQuantity === 0}
+                    >
+                      <div>
+                        <strong style={{ display: 'block', color: 'var(--text-strong)' }}>{type.name}</strong>
+                        <span
+                          style={{
+                            fontSize: '0.85rem',
+                            color: hasNotStarted
+                              ? 'var(--warning)'
+                              : hasEnded
+                              ? 'var(--text-muted)'
+                              : type.availableQuantity > 0
+                              ? 'var(--success)'
+                              : 'var(--danger)',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {hasNotStarted
+                            ? `Sắp mở bán (từ: ${new Date(type.saleStartTime!).toLocaleString()})`
+                            : hasEnded
+                            ? 'Đã dừng bán'
+                            : type.availableQuantity > 0
+                            ? `Còn ${type.availableQuantity} vé`
+                            : 'Hết vé / Sold Out'}
+                        </span>
+                      </div>
+                      <span style={{ fontWeight: 800 }}>{type.price.toLocaleString()} VND</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedTicketType && (
                 <div>
-                  <strong style={{ display: 'block', color: 'var(--text-strong)' }}>{type.name}</strong>
-                  <span style={{ fontSize: '0.85rem', color: type.availableQuantity > 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 700 }}>
-                    {type.availableQuantity > 0 ? `Còn ${type.availableQuantity} vé` : 'Hết vé / Sold Out'}
-                  </span>
-                </div>
-                <span style={{ fontWeight: 800 }}>{type.price.toLocaleString()} VND</span>
-              </button>
-            ))}
-          </div>
-
-          {selectedTicketType && (
-            <div>
-              <div className="summary-row" style={{ alignItems: 'center', marginBottom: 20 }}>
-                <span style={{ color: 'var(--text)' }}>Số lượng</span>
-                <div className="quantity-control">
-                  <button
-                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                    className="btn btn-outline"
-                    aria-label="Giảm số lượng"
-                  >
-                    <Minus size={16} />
-                  </button>
-                  <span style={{ width: 24, textAlign: 'center', fontWeight: 800 }}>{quantity}</span>
-                  <button
-                    onClick={() => setQuantity((q) => Math.min(selectedTicketType.maxPerUser, selectedTicketType.availableQuantity, q + 1))}
-                    className="btn btn-outline"
-                    aria-label="Tăng số lượng"
-                  >
-                    <Plus size={16} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="summary-total" style={{ marginBottom: 22 }}>
-                <div className="summary-row">
-                  <span>Hạng vé</span>
-                  <strong style={{ color: 'var(--text-strong)' }}>{selectedTicketType.name}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Tổng tiền</span>
-                  <strong>{(selectedTicketType.price * quantity).toLocaleString()} VND</strong>
-                </div>
-              </div>
-
-              {user?.role === 'organizer' ? (
-                <div style={{ marginTop: '1rem' }}>
-                  <div className="alert alert-warning" role="alert" style={{ marginBottom: '1rem', fontSize: '0.82rem' }}>
-                    Tài khoản Quản trị/Ban tổ chức không thể đặt mua vé. Vui lòng đăng nhập tài khoản khán giả để đặt vé.
-                  </div>
-                  <button
-                    disabled
-                    className="btn btn-primary"
-                    style={{ width: '100%', minHeight: 52, cursor: 'not-allowed', opacity: 0.6 }}
-                  >
-                    Đặt vé
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <button
-                    onClick={handleBook}
-                    disabled={bookingSubmit || selectedTicketType.availableQuantity === 0}
-                    className="btn btn-primary"
-                    style={{ width: '100%', minHeight: 52 }}
-                  >
-                    {bookingSubmit ? 'Đang giữ vé...' : 'Đặt vé'}
-                  </button>
-                  {bookingError && (
-                    <div className="alert alert-danger" role="alert" style={{ marginTop: '1rem', marginBottom: 0 }}>
-                      {bookingError}
+                  <div className="summary-row" style={{ alignItems: 'center', marginBottom: 20 }}>
+                    <span style={{ color: 'var(--text)' }}>Số lượng</span>
+                    <div className="quantity-control">
+                      <button
+                        onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                        className="btn btn-outline"
+                        aria-label="Giảm số lượng"
+                      >
+                        <Minus size={16} />
+                      </button>
+                      <span style={{ width: 24, textAlign: 'center', fontWeight: 800 }}>{quantity}</span>
+                      <button
+                        onClick={() => setQuantity((q) => Math.min(selectedTicketType.maxPerUser, selectedTicketType.availableQuantity, q + 1))}
+                        className="btn btn-outline"
+                        aria-label="Tăng số lượng"
+                      >
+                        <Plus size={16} />
+                      </button>
                     </div>
+                  </div>
+
+                  <div className="summary-total" style={{ marginBottom: 22 }}>
+                    <div className="summary-row">
+                      <span>Hạng vé</span>
+                      <strong style={{ color: 'var(--text-strong)' }}>{selectedTicketType.name}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Tổng tiền</span>
+                      <strong>{(selectedTicketType.price * quantity).toLocaleString()} VND</strong>
+                    </div>
+                  </div>
+
+                  {user?.role === 'organizer' ? (
+                    <div style={{ marginTop: '1rem' }}>
+                      <div className="alert alert-warning" role="alert" style={{ marginBottom: '1rem', fontSize: '0.82rem' }}>
+                        Tài khoản Quản trị/Ban tổ chức không thể đặt mua vé. Vui lòng đăng nhập tài khoản khán giả để đặt vé.
+                      </div>
+                      <button
+                        disabled
+                        className="btn btn-primary"
+                        style={{ width: '100%', minHeight: 52, cursor: 'not-allowed', opacity: 0.6 }}
+                      >
+                        Đặt vé
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={handleBook}
+                        disabled={bookingSubmit || selectedTicketType.availableQuantity === 0}
+                        className="btn btn-primary"
+                        style={{ width: '100%', minHeight: 52 }}
+                      >
+                        {bookingSubmit ? 'Đang giữ vé...' : 'Đặt vé'}
+                      </button>
+                      {bookingError && (
+                        <div className="alert alert-danger" role="alert" style={{ marginTop: '1rem', marginBottom: 0 }}>
+                          {bookingError}
+                        </div>
+                      )}
+                    </>
                   )}
-                </>
+                </div>
               )}
-            </div>
+            </>
           )}
         </aside>
       </div>

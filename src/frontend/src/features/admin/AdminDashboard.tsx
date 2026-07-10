@@ -553,79 +553,6 @@ export const AdminDashboard: React.FC = () => {
           {/* Main Bento Grid Row 1 & 2 */}
           <div className="bento-grid">
             
-            {/* Bento 1: Revenue Hero Chart (Spans 4 columns) */}
-            <div className="card bento-card bento-hero-revenue" style={{ gridColumn: 'span 4' }}>
-              <div className="card-body">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.2rem' }}>
-                  <div>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      Doanh thu
-                    </span>
-                    <strong className="metric-value metric-value-compact" style={{ fontSize: '2rem', display: 'block', marginTop: '4px' }}>
-                      {formatVnd(overview.revenue.totalRevenue)}
-                    </strong>
-                  </div>
-                  <div className="timeframe-container">
-                    <button className={`timeframe-btn ${timeframe === '7day' ? 'active' : ''}`} onClick={() => setTimeframe('7day')}>7 ngày</button>
-                    <button className={`timeframe-btn ${timeframe === '30day' ? 'active' : ''}`} onClick={() => setTimeframe('30day')}>30 ngày</button>
-                  </div>
-                </div>
-
-                <RevenueChart data={revenuePoints} />
-
-                {/* Accessible Hidden fields for Testing */}
-                <div style={{ display: 'none' }}>
-                  <h3>Doanh thu 30 ngày</h3>
-                </div>
-
-                <details style={{ marginTop: '1.8rem', borderTop: '1px solid var(--border)', paddingTop: '1.2rem' }}>
-                  <summary style={{ cursor: 'pointer', fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 600 }}>
-                    Xem chi tiết số liệu dạng danh sách từng ngày
-                  </summary>
-                  <div style={{ marginTop: '1.2rem' }}>
-                    {revenuePoints.length === 0 ? (
-                      <div className="soft-panel">
-                        <p style={{ color: 'var(--text-muted)', margin: 0 }}>Chưa có dữ liệu doanh thu.</p>
-                      </div>
-                    ) : (
-                      <div className="daily-details-scrollable">
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {revenuePoints.map((point) => {
-                            return (
-                              <div
-                                key={`${point.date}-${point.orderCount}`}
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: '1.2fr 1fr 1.2fr',
-                                  alignItems: 'center',
-                                  padding: '10px 14px',
-                                  background: 'var(--surface-alt)',
-                                  borderRadius: '8px',
-                                  border: '1px solid var(--border)',
-                                  fontSize: '0.85rem'
-                                }}
-                              >
-                                <div style={{ color: 'var(--text-strong)', fontWeight: 600 }}>
-                                  {formatDateLabel(point.date)}
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)' }}>
-                                  <TrendingUp size={14} style={{ color: 'var(--success)' }} />
-                                  <span><strong>{point.orderCount}</strong> đơn hàng</span>
-                                </div>
-                                <div style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>
-                                  {formatVnd(point.revenue)}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </details>
-              </div>
-            </div>
-
             {/* Bento 5: Quick Actions (Spans 1 column) -> Placed in Row 1 */}
             <div className="card bento-card bento-quick-actions">
               <div className="card-body" style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
@@ -634,7 +561,7 @@ export const AdminDashboard: React.FC = () => {
                   Quản lý hoạt động biểu diễn, xuất danh sách vé và cập nhật nhanh các bản nháp sự kiện.
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <Link to="/admin/concerts" className="btn btn-primary" style={{ justifyContent: 'space-between', padding: '12px 16px', minHeight: '46px' }}>
+                  <Link to="/admin/concerts?action=create" className="btn btn-primary" style={{ justifyContent: 'space-between', padding: '12px 16px', minHeight: '46px' }}>
                     <span>Tạo sự kiện mới</span>
                     <Plus size={18} />
                   </Link>
@@ -780,6 +707,78 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
 
+            {/* Bento 1: Revenue Hero Chart (Spans 4 columns) -> Row 2 */}
+            <div className="card bento-card bento-hero-revenue" style={{ gridColumn: 'span 4' }}>
+              <div className="card-body">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.2rem' }}>
+                  <div>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Doanh thu
+                    </span>
+                    <strong className="metric-value metric-value-compact" style={{ fontSize: '2rem', display: 'block', marginTop: '4px' }}>
+                      {formatVnd(overview.revenue.totalRevenue)}
+                    </strong>
+                  </div>
+                  <div className="timeframe-container">
+                    <button className={`timeframe-btn ${timeframe === '7day' ? 'active' : ''}`} onClick={() => setTimeframe('7day')}>7 ngày</button>
+                    <button className={`timeframe-btn ${timeframe === '30day' ? 'active' : ''}`} onClick={() => setTimeframe('30day')}>30 ngày</button>
+                  </div>
+                </div>
+
+                <RevenueChart data={revenuePoints} />
+
+                {/* Accessible Hidden fields for Testing */}
+                <div style={{ display: 'none' }}>
+                  <h3>Doanh thu 30 ngày</h3>
+                </div>
+
+                <details style={{ marginTop: '1.8rem', borderTop: '1px solid var(--border)', paddingTop: '1.2rem' }}>
+                  <summary style={{ cursor: 'pointer', fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 600 }}>
+                    Xem chi tiết số liệu dạng danh sách từng ngày
+                  </summary>
+                  <div style={{ marginTop: '1.2rem' }}>
+                    {revenuePoints.length === 0 ? (
+                      <div className="soft-panel">
+                        <p style={{ color: 'var(--text-muted)', margin: 0 }}>Chưa có dữ liệu doanh thu.</p>
+                      </div>
+                    ) : (
+                      <div className="daily-details-scrollable">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {revenuePoints.map((point) => {
+                            return (
+                              <div
+                                key={`${point.date}-${point.orderCount}`}
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: '1.2fr 1fr 1.2fr',
+                                  alignItems: 'center',
+                                  padding: '10px 14px',
+                                  background: 'var(--surface-alt)',
+                                  borderRadius: '8px',
+                                  border: '1px solid var(--border)',
+                                  fontSize: '0.85rem'
+                                }}
+                              >
+                                <div style={{ color: 'var(--text-strong)', fontWeight: 600 }}>
+                                  {formatDateLabel(point.date)}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)' }}>
+                                  <TrendingUp size={14} style={{ color: 'var(--success)' }} />
+                                  <span><strong>{point.orderCount}</strong> đơn hàng</span>
+                                </div>
+                                <div style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>
+                                  {formatVnd(point.revenue)}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              </div>
+            </div>
           </div>
 
           {/* Row 3: Lists (2 columns: Recent Events & Sales Progress) */}
@@ -798,7 +797,7 @@ export const AdminDashboard: React.FC = () => {
                 <h3 className="panel-title" style={{ marginBottom: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span>Sự kiện gần đây</span>
                   <Link to="/admin/concerts" style={{ fontSize: '0.82rem', color: 'var(--primary)', textDecoration: 'none', fontWeight: 700 }}>
-                    Xem tất cả
+                    Xem tất cả →
                   </Link>
                 </h3>
                 {recentConcerts.length === 0 ? (
@@ -806,27 +805,97 @@ export const AdminDashboard: React.FC = () => {
                     <p style={{ color: 'var(--text-muted)', margin: 0 }}>Chưa có sự kiện nào.</p>
                   </div>
                 ) : (
-                  <div className="recent-event-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {recentConcerts.map((concert) => (
-                      <Link key={concert.id} to="/admin/concerts" className="recent-event-row" style={{ transition: 'all 0.2s', borderRadius: '8px', padding: '12px 16px', textDecoration: 'none' }}>
-                        <div style={{ flex: 1 }}>
-                          <div className="recent-event-main" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <strong style={{ fontSize: '0.95rem', color: 'var(--text-strong)' }}>{concert.title}</strong>
-                            {getStatusBadge(concert.status)}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {recentConcerts.map((concert) => {
+                      const startDate = concert.startTime ? new Date(concert.startTime) : null;
+                      const dateStr = startDate
+                        ? startDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                        : '—';
+                      const timeStr = startDate
+                        ? startDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                        : '';
+
+                      return (
+                        <Link
+                          key={concert.id}
+                          to="/admin/concerts"
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '12px',
+                            padding: '10px 12px', borderRadius: '10px',
+                            border: '1px solid var(--border)',
+                            background: 'var(--surface)',
+                            textDecoration: 'none',
+                            transition: 'all 0.18s ease',
+                          }}
+                          onMouseEnter={e => {
+                            (e.currentTarget as HTMLAnchorElement).style.borderColor = 'rgba(35,85,214,0.28)';
+                            (e.currentTarget as HTMLAnchorElement).style.background = 'var(--primary-soft)';
+                            (e.currentTarget as HTMLAnchorElement).style.transform = 'translateX(2px)';
+                          }}
+                          onMouseLeave={e => {
+                            (e.currentTarget as HTMLAnchorElement).style.borderColor = 'var(--border)';
+                            (e.currentTarget as HTMLAnchorElement).style.background = 'var(--surface)';
+                            (e.currentTarget as HTMLAnchorElement).style.transform = 'translateX(0)';
+                          }}
+                        >
+                          {/* Thumbnail */}
+                          <div style={{
+                            width: '44px', height: '44px', borderRadius: '8px',
+                            overflow: 'hidden', flexShrink: 0,
+                            background: 'var(--surface-alt)',
+                            border: '1px solid var(--border)',
+                          }}>
+                            {concert.posterUrl ? (
+                              <img
+                                src={concert.posterUrl}
+                                alt={concert.title}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                              />
+                            ) : (
+                              <div style={{
+                                width: '100%', height: '100%',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                background: 'var(--primary-soft)',
+                              }}>
+                                <Music size={18} style={{ color: 'var(--primary)', opacity: 0.6 }} />
+                              </div>
+                            )}
                           </div>
-                          <div className="recent-event-meta" style={{ marginTop: '6px', display: 'flex', gap: '12px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                            <span>
-                              <MapPin size={12} style={{ marginRight: '4px', verticalAlign: 'middle' }} />
-                              {concert.location}
-                            </span>
-                            <span>
-                              <Clock3 size={12} style={{ marginRight: '4px', verticalAlign: 'middle' }} />
-                              {safeFormatDate(concert.startTime)}
-                            </span>
+
+                          {/* Info */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{
+                              display: 'flex', alignItems: 'center',
+                              justifyContent: 'space-between', gap: '8px',
+                              marginBottom: '3px',
+                            }}>
+                              <strong style={{
+                                fontSize: '0.88rem', color: 'var(--text-strong)',
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              }}>
+                                {concert.title}
+                              </strong>
+                              {getStatusBadge(concert.status)}
+                            </div>
+                            <div style={{
+                              display: 'flex', alignItems: 'center', gap: '10px',
+                              fontSize: '0.75rem', color: 'var(--text-muted)',
+                            }}>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                <MapPin size={11} />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>
+                                  {concert.location || '—'}
+                                </span>
+                              </span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                <Clock3 size={11} />
+                                {dateStr}{timeStr && ` · ${timeStr}`}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      </Link>
-                    ))}
+                        </Link>
+                      );
+                    })}
                   </div>
                 )}
               </div>
