@@ -17,7 +17,7 @@ interface TicketType {
 }
 
 type TicketTypeName = TicketType['name'];
-type ConcertStatus = 'draft' | 'active' | 'cancelled';
+type ConcertStatus = 'draft' | 'active' | 'cancelled' | 'completed';
 
 interface FormTicketType {
   id?: string;
@@ -67,7 +67,7 @@ export const AdminConcerts: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | ConcertStatus>(
-    initialStatus === 'active' || initialStatus === 'draft' || initialStatus === 'cancelled' ? initialStatus : 'all'
+    initialStatus === 'active' || initialStatus === 'draft' || initialStatus === 'cancelled' || initialStatus === 'completed' ? initialStatus : 'all'
   );
 
   // Form states (Derived from searchParams to support browser back button navigation)
@@ -312,7 +312,7 @@ export const AdminConcerts: React.FC = () => {
   const fetchConcerts = async () => {
     setLoading(true);
     try {
-      const statuses: ConcertStatus[] = ['active', 'draft', 'cancelled'];
+      const statuses: ConcertStatus[] = ['active', 'draft', 'cancelled', 'completed'];
       const responses = await Promise.all(
         statuses.map((concertStatus) =>
           apiClient
@@ -1084,6 +1084,7 @@ export const AdminConcerts: React.FC = () => {
                         <option value="draft">Bản nháp</option>
                         <option value="active">Hoạt động</option>
                         <option value="cancelled">Đã hủy</option>
+                        <option value="completed">Đã diễn ra</option>
                       </select>
                     </div>
 
@@ -1699,7 +1700,7 @@ export const AdminConcerts: React.FC = () => {
             width: 'fit-content',
             border: '1px solid var(--border)',
           }}>
-            {([['all', 'Tất cả'], ['active', 'Đang bán'], ['draft', 'Bản nháp'], ['cancelled', 'Đã hủy']] as const).map(([val, label]) => (
+            {([['all', 'Tất cả'], ['active', 'Đang bán'], ['draft', 'Bản nháp'], ['cancelled', 'Đã hủy'], ['completed', 'Đã diễn ra']] as const).map(([val, label]) => (
               <button
                 key={val}
                 onClick={() => {
@@ -1781,6 +1782,7 @@ export const AdminConcerts: React.FC = () => {
 
                 const statusLabel = concert.status === 'active' ? 'Mở bán'
                   : concert.status === 'cancelled' ? 'Đã hủy'
+                  : concert.status === 'completed' ? 'Đã diễn ra'
                   : 'Bản nháp';
 
                 return (

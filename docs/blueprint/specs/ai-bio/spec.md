@@ -1,56 +1,46 @@
-# ai-bio Specification
+# Đặc tả: Tự động Trích xuất và Tóm tắt Tiểu sử Nghệ sĩ bằng AI (AI-Generated Artist Biography)
 
-## Purpose
-TBD - created by archiving change blueprint. Update Purpose after archive.
-## Requirements
-### Requirement: Tự động trích xuất và tóm tắt tiểu sử nghệ sĩ bằng AI
+## Mô tả
+Tính năng cho phép Ban tổ chức tải lên hồ sơ thông tin nghệ sĩ định dạng PDF cho một sự kiện (concert). Hệ thống sẽ tự động trích xuất nội dung văn bản thô từ PDF và gọi API Google Gemini thông qua hàng đợi để tóm tắt thành một đoạn tiểu sử nghệ sĩ ngắn gọn (dưới 300 từ). Ban tổ chức có thể xem bản nháp, chỉnh sửa, yêu cầu tạo lại bằng AI hoặc phê duyệt để công bố chính thức lên trang chi tiết sự kiện cho khán giả xem.
 
-Hệ thống SHALL cho phép Ban tổ chức tải lên tệp PDF hồ sơ nghệ sĩ của một concert qua API endpoint `POST /concerts/:id/artist-bio`. Hệ thống SHALL thực hiện trích xuất nội dung văn bản từ tệp PDF, khởi tạo dữ liệu trong bảng `concert_ai_bios` với trạng thái `processing`, đẩy task vào hàng đợi RabbitMQ `ai.generate_bio` kèm theo ID người dùng (`userId`), và phản hồi ngay lập tức với mã trạng thái `202 Accepted`. Tiếp theo, hệ thống Worker SHALL tiêu thụ task từ RabbitMQ, gọi API Google Gemini với mô hình `gemini-3.5-flash` để tóm tắt tiểu sử dưới 300 từ. Nếu thành công, hệ thống cập nhật kết quả nháp `draft_bio` và trạng thái `completed` trong bảng `concert_ai_bios`, đồng thời tạo một bản ghi thông báo thành công trong bảng `notification_logs` cho tài khoản Admin. Nếu thất bại (sau tối đa 3 lần thử lại), hệ thống cập nhật trạng thái `failed` kèm thông tin lỗi vào trường `error` trong bảng `concert_ai_bios`, đồng thời tạo một bản ghi thông báo thất bại trong bảng `notification_logs` cho tài khoản Admin.
+## Luồng chính
+1. **Tải lên PDF và Khởi tạo Tác vụ (Upload & Extract):**
+   - Ban tổ chức gọi API `POST /concerts/:id/artist-bio` kèm theo tệp PDF.
+   - Hệ thống thực hiện giải mã văn bản từ file PDF, lưu vào trường `raw_text` của bảng phụ `concert_ai_bios` với trạng thái `processing`.
+   - Hệ thống đẩy một tác vụ xử lý vào hàng đợi RabbitMQ `ai.generate_bio` kèm theo ID người dùng và ID concert, sau đó trả về ngay lập tức mã trạng thái `202 Accepted`.
+2. **Worker xử lý tóm tắt bằng AI (Background Worker):**
+   - Background Worker tiêu thụ tác vụ từ hàng đợi RabbitMQ.
+   - Worker gọi API Google Gemini sử dụng mô hình `gemini-3.5-flash` kèm theo prompt quy chuẩn để tóm tắt văn bản thô thành nội dung dưới 300 từ.
+   - Nếu thành công: Cập nhật nội dung vào `draft_bio` và trạng thái thành `completed` trong bảng `concert_ai_bios`, đồng thời tạo bản ghi thông báo thành công cho Ban tổ chức.
+3. **Tra cứu trạng thái và bản nháp (Poll & Retrieve):**
+   - Ban tổ chức gửi yêu cầu `GET /concerts/:id/artist-bio` để theo dõi tiến độ xử lý của tác vụ AI.
+   - Hệ thống trả về trạng thái (`processing`, `completed`, `failed`), nội dung bản nháp `draft_bio` hoặc thông báo lỗi `error` (nếu có).
+4. **Tạo lại bản nháp từ văn bản thô (Regenerate Bio):**
+   - Ban tổ chức có thể yêu cầu tạo lại bản nháp tiểu sử từ văn bản thô sẵn có trong DB qua endpoint `POST /concerts/:id/artist-bio/regenerate` mà không cần tải lên lại tệp PDF.
+   - Hệ thống cập nhật trạng thái thành `processing`, gửi lại tác vụ vào RabbitMQ và phản hồi `202 Accepted`.
+5. **Phê duyệt và Xuất bản (Confirm & Publish):**
+   - Ban tổ chức thực hiện phê duyệt bản nháp (hoặc gửi nội dung tiểu sử đã tự chỉnh sửa trực tiếp) qua endpoint `PUT /concerts/:id/artist-bio/confirm`.
+   - Hệ thống ghi đè nội dung chính thức vào trường `biography` của bảng `concerts`.
+   - Hệ thống thực hiện giải phóng cache liên quan của concert đó trên Redis (`cache:concerts:{id}`, `cache:concerts:list:default:*`) để khán giả thấy thông tin cập nhật tức thì.
 
-#### Scenario: Tải lên PDF và khởi tạo sinh tóm tắt thành công
+## Kịch bản lỗi
+1. **Định dạng hoặc dung lượng tệp tải lên không hợp lệ:**
+   - Nếu tệp tải lên không phải là PDF hoặc dung lượng vượt quá giới hạn cấu hình, hệ thống SHALL từ chối yêu cầu và trả về lỗi `400 Bad Request`.
+2. **Lỗi kết nối hoặc lỗi giới hạn tần suất (Rate Limit) từ Gemini API:**
+   - Trong quá trình gọi Gemini, nếu xảy ra lỗi timeout hoặc bị rate limit, Worker SHALL tự động thực hiện cơ chế thử lại (Retry) tối đa 3 lần với khoảng thời gian chờ tăng dần (exponential backoff).
+   - Nếu cả 3 lần thử lại đều thất bại, hệ thống SHALL cập nhật trạng thái bản ghi thành `failed`, ghi chi tiết lỗi vào trường `error` và gửi thông báo lỗi cho Ban tổ chức qua `notification_logs`.
+3. **Yêu cầu tạo lại bio từ sự kiện chưa có dữ liệu PDF:**
+   - Khi gọi API `/regenerate` cho concert chưa từng có file PDF (hoặc trường `raw_text` trống), hệ thống SHALL từ chối và trả về lỗi `400 Bad Request`.
+4. **Xác thực quyền hạn thất bại:**
+   - Người dùng không có quyền quản lý sự kiện (không có vai trò `organizer` hoặc `admin`) gọi các endpoint này SHALL bị hệ thống từ chối và trả về lỗi `403 Forbidden`.
 
-- **WHEN** Ban tổ chức tải lên tệp PDF press kit hợp lệ của nghệ sĩ cho một concert thông qua `POST /concerts/:id/artist-bio`
-- **THEN** Hệ thống lưu trữ trạng thái đang xử lý (`processing`), đưa task vào hàng đợi `ai.generate_bio`, và trả về mã trạng thái `202 Accepted`
+## Ràng buộc
+- **Xử lý bất đồng bộ (Asynchronous):** Tiến trình xử lý AI và gọi API ngoài MUST được chạy bất đồng bộ qua RabbitMQ để tránh gây nghẽn và timeout luồng HTTP chính của hệ thống API Gateway.
+- **Tính nhất quán cache:** Khi lưu chính thức tiểu sử nghệ sĩ vào bảng `concerts`, hệ thống MUST xóa sạch cache chi tiết của concert đó trên Redis để tránh hiển thị dữ liệu cũ cho khán giả.
+- **Giới hạn số từ:** Bản tóm tắt tiểu sử tạo ra từ AI SHALL có độ dài không vượt quá 300 từ để phù hợp với hiển thị giao diện.
 
-#### Scenario: Tải lên PDF không hợp lệ thất bại
-
-- **WHEN** Người dùng không có quyền organizer tải lên tệp tin, hoặc tệp tin tải lên không phải là định dạng PDF
-- **THEN** Hệ thống từ chối yêu cầu và trả về lỗi tương ứng (400 Bad Request hoặc 403 Forbidden)
-
-#### Scenario: Gemini API bị lỗi và Worker tự động retry thất bại
-
-- **WHEN** API Gemini bị lỗi rate limit hoặc timeout liên tục cả 3 lần gọi
-- **THEN** Hệ thống Worker lưu trạng thái lỗi `failed` và thông tin lỗi vào trường `error` của bảng `concert_ai_bios`, đồng thời tạo một bản ghi thông báo thất bại gửi cho tài khoản Admin yêu cầu trong bảng `notification_logs`
-
-### Requirement: Tạo lại bản nháp tiểu sử nghệ sĩ từ văn bản đã trích xuất
-
-Hệ thống SHALL cho phép Ban tổ chức yêu cầu tạo lại bản nháp tiểu sử bằng AI từ dữ liệu văn bản thô đã trích xuất từ trước qua API endpoint `POST /concerts/:id/artist-bio/regenerate` mà không cần upload lại file PDF.
-
-#### Scenario: Tạo lại bản nháp tiểu sử từ văn bản thô thành công
-
-- **WHEN** Ban tổ chức gửi yêu cầu `POST /concerts/:id/artist-bio/regenerate` với token xác thực hợp lệ đối với concert đã có bản ghi `raw_text`
-- **THEN** Hệ thống cập nhật trạng thái bản nháp thành `processing`, đẩy task vào hàng đợi `ai.generate_bio` kèm theo ID người dùng và trả về mã trạng thái `202 Accepted`
-
-#### Scenario: Tạo lại bản nháp tiểu sử thất bại do chưa tải lên PDF bao giờ
-
-- **WHEN** Ban tổ chức gửi yêu cầu `POST /concerts/:id/artist-bio/regenerate` đối với concert chưa từng tải lên PDF (chưa có bản ghi hoặc `raw_text` rỗng)
-- **THEN** Hệ thống từ chối yêu cầu và trả về lỗi `400 Bad Request` kèm thông báo lỗi phù hợp
-
-### Requirement: Tra cứu trạng thái sinh tiểu sử và bản nháp
-
-Hệ thống SHALL cho phép Ban tổ chức tra cứu trạng thái xử lý AI và nội dung bản nháp tiểu sử nghệ sĩ của một concert qua API endpoint `GET /concerts/:id/artist-bio`.
-
-#### Scenario: Lấy trạng thái và bản nháp tiểu sử thành công
-
-- **WHEN** Ban tổ chức gửi yêu cầu `GET /concerts/:id/artist-bio` với token xác thực hợp lệ
-- **THEN** Hệ thống truy vấn từ bảng `concert_ai_bios` và trả về thông tin trạng thái (`status`), bản nháp (`draft_bio`) và lỗi (`error` nếu có) kèm mã trạng thái `200 OK`
-
-### Requirement: Phê duyệt và công bố tiểu sử nghệ sĩ lên concert
-
-Hệ thống SHALL cho phép Ban tổ chức phê duyệt bản nháp (hoặc gửi nội dung tiểu sử đã tự chỉnh sửa) qua API endpoint `PUT /concerts/:id/artist-bio/confirm` để lưu chính thức vào bảng `concerts` làm tiểu sử hiển thị công khai. Hệ thống SHALL thực hiện xóa các khóa cache liên quan đến Concert đó trên Redis để cập nhật thông tin mới nhất.
-
-#### Scenario: Phê duyệt và lưu tiểu sử chính thức thành công
-
-- **WHEN** Ban tổ chức gửi yêu cầu `PUT /concerts/:id/artist-bio/confirm` kèm theo payload chứa nội dung tiểu sử nghệ sĩ và token xác thực hợp lệ
-- **THEN** Hệ thống cập nhật nội dung vào trường `biography` của concert trong bảng `concerts`, đồng thời thực hiện xóa các cache Redis của concert đó (khóa `cache:concerts:{id}`, `cache:concerts:list:default:*`) và phản hồi với mã trạng thái `200 OK`
-
+## Tiêu chí chấp nhận
+- Tải lên PDF hợp lệ trả về mã HTTP `202 Accepted` kèm ID sự kiện.
+- Endpoint `/regenerate` hoạt động chính xác bằng cách đọc `raw_text` trong DB mà không cần người dùng chọn tệp tải lại.
+- Dữ liệu hiển thị ở API tra cứu trạng thái chuyển trạng thái từ `processing` sang `completed` đúng lúc Worker xử lý xong.
+- Sau khi phê duyệt thành công, trường `biography` trong bảng `concerts` được điền đúng dữ liệu, và cache của concert tương ứng trên Redis bị vô hiệu hóa hoàn toàn.

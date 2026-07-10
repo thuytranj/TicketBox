@@ -1,62 +1,52 @@
-# api-rate-limiting Specification
+# Đặc tả: Giới hạn Tần suất API (API Rate Limiting & Abuse Prevention)
 
-## Purpose
-TBD - created by archiving change implement-two-tiered-rate-limiting. Update Purpose after archive.
-## Requirements
-### Requirement: Giới hạn tần suất IP toàn cầu tại Nginx Gateway
-Nginx API Gateway PHẢI giới hạn các yêu cầu gửi đến dựa trên địa chỉ IP của client để ngăn ngừa tấn công DDoS và spam request.
-- Hạn mức PHẢI là 50 yêu cầu trên mỗi giây cho mỗi địa chỉ IP.
-- Vùng đệm burst tối đa 30 yêu cầu PHẢI được chấp thuận.
-- Việc từ chối các yêu cầu vượt ngưỡng giới hạn PHẢI được thực hiện ngay lập tức (nodelay).
-- Các yêu cầu vượt quá giới hạn PHẢI bị từ chối với Mã trạng thái HTTP `429 Too Many Requests`.
-- Phản hồi PHẢI chứa header `X-RateLimit-Source: gateway`.
-- Thân phản hồi PHẢI là một JSON payload dạng: `{"statusCode":429,"message":"Too many requests. Please slow down."}`.
+## Mô tả
+Hệ thống triển khai cơ chế giới hạn tần suất (Rate Limiting) nhiều lớp và phòng chống lạm dụng nhằm bảo vệ máy chủ khỏi tấn công từ chối dịch vụ (DDoS), ngăn chặn đầu cơ vé (ticket scalping), ngăn spam giao dịch và bảo vệ CPU máy chủ khỏi các cuộc tấn công vét cạn tài nguyên qua xác thực JWT giả mạo.
 
-#### Scenario: Tốc độ yêu cầu trong ngưỡng giới hạn tại gateway
-- **WHEN** client gửi 40 yêu cầu trong vòng 1 giây từ một địa chỉ IP duy nhất
-- **THEN** Nginx chuyển tiếp (proxy-pass) thành công toàn bộ 40 yêu cầu này sang máy chủ ứng dụng NestJS
+Hệ thống được bảo vệ qua 3 lớp chính:
+1. **Lớp Gateway (Nginx API Gateway IP Rate Limit):** Giới hạn toàn cục theo IP để chặn spam thô.
+2. **Lớp Ứng dụng theo Người dùng (NestJS User-level Rate Limit):** Giới hạn hành vi đặt vé (`POST /bookings`) và thanh toán (`POST /payments/*`) của từng người dùng.
+3. **Lớp Phòng vệ CPU (Failed Authentication IP Block):** Tự động phát hiện và khóa tạm thời các IP liên tục gửi token xác thực sai để tránh làm cạn kiệt tài nguyên xử lý mã hóa của CPU.
 
-#### Scenario: Tốc độ yêu cầu vượt ngưỡng giới hạn và vùng đệm burst tại gateway
-- **WHEN** client gửi 90 yêu cầu trong vòng 1 giây từ một địa chỉ IP duy nhất
-- **THEN** Nginx từ chối các yêu cầu vượt quá hạn mức 50 req/s + 30 burst bằng mã lỗi HTTP 429, trả về header `X-RateLimit-Source: gateway` và trả về payload lỗi định dạng JSON
+## Luồng chính
+1. **Kiểm tra tại Nginx Gateway:**
+   - Yêu cầu đi vào hệ thống qua Nginx. Nginx kiểm tra số lượng yêu cầu của IP hiện tại trong bộ nhớ dùng chung.
+   - Nếu trong hạn mức (dưới 50 req/s + 30 burst): Nginx chuyển tiếp (proxy_pass) yêu cầu đến ứng dụng NestJS.
+   - Nếu vượt hạn mức: Nginx từ chối trực tiếp và trả về lỗi `429 Too Many Requests`.
+2. **Kiểm tra Khóa IP do Xác thực thất bại:**
+   - Khi yêu cầu đến NestJS, trước khi tiến hành giải mã chữ ký số JWT, Guard/Middleware kiểm tra địa chỉ IP client trên Redis (`auth_blocked:<ip>`).
+   - Nếu IP đang bị khóa: Hệ thống từ chối ngay lập tức bằng mã lỗi `429` (Bỏ qua bước xác thực JWT).
+   - Nếu IP không bị khóa: Tiến hành xác thực JWT như bình thường.
+3. **Ghi nhận Lỗi Xác thực (nếu có):**
+   - Nếu xác thực JWT thất bại (token giả, sai chữ ký, hết hạn): Hệ thống tăng bộ đếm lỗi trên Redis (`auth_fail_count:<ip>`, TTL 60 giây).
+   - Nếu bộ đếm đạt $\ge 5$ lần: Thiết lập khóa IP trên Redis (`auth_blocked:<ip>`, TTL 15 phút).
+4. **Kiểm tra Giới hạn theo Người dùng (User-level Rate Limit):**
+   - Khi người dùng gửi yêu cầu tới các API nhạy cảm (Đặt vé, Thanh toán), hệ thống xác định User ID đã qua xác thực.
+   - Hệ thống đối chiếu số lượng yêu cầu của User ID trong vòng 1 phút qua Redis (`ratelimit:user:<userId>`).
+   - Nếu trong hạn mức (Đặt vé $\le 10$ req/phút; Thanh toán $\le 3$ req/phút): Xử lý yêu cầu.
+   - Nếu vượt hạn mức: Trả về mã lỗi `429`.
 
-### Requirement: Rate Limiting theo User ID cho Booking (Đặt vé)
-Ứng dụng NestJS PHẢI giới hạn tần suất tạo đơn đặt vé của mỗi người dùng sử dụng bộ lưu trữ Redis chia sẻ để ngăn chặn hành vi đầu cơ vé và spam giao dịch.
-- Hạn mức PHẢI là 10 yêu cầu trong vòng 1 phút cho mỗi User ID đã xác thực.
-- Bộ giới hạn tần suất PHẢI sử dụng Redis làm tầng lưu trữ tập trung.
-- Khi vượt quá giới hạn, yêu cầu PHẢI bị từ chối với Mã trạng thái HTTP `429 Too Many Requests`.
-- Phản hồi PHẢI chứa header `X-RateLimit-Source: app-user`.
+## Kịch bản lỗi
+1. **Yêu cầu vượt hạn mức toàn cục tại Gateway:**
+   - **WHEN:** Client gửi hơn 80 yêu cầu/giây từ một IP đến Nginx.
+   - **THEN:** Nginx chặn các yêu cầu vượt ngưỡng, trả về HTTP status `429 Too Many Requests`, header `X-RateLimit-Source: gateway` và JSON payload định dạng quy chuẩn.
+2. **Người dùng spam đặt vé hoặc thanh toán:**
+   - **WHEN:** Một tài khoản gửi 11 yêu cầu `POST /bookings` hoặc 4 yêu cầu `POST /payments/momo` trong vòng 1 phút.
+   - **THEN:** Ứng dụng NestJS từ chối các yêu cầu vượt ngưỡng, trả về HTTP status `429`, header `X-RateLimit-Source: app-user` và không thực hiện tạo giao dịch mới.
+3. **Tấn công vét cạn CPU bằng token giả:**
+   - **WHEN:** Một IP gửi liên tiếp 5 yêu cầu mang token giả trong 10 giây.
+   - **THEN:** Hệ thống ghi nhận 5 lần thất bại, khóa IP này trong 15 phút. Toàn bộ các yêu cầu thứ 6 trở đi từ IP này trong thời gian khóa sẽ bị chặn ngay lập tức với HTTP status `429` và header `X-RateLimit-Source: failed-auth-ip` mà không chạy giải mã chữ ký JWT.
+4. **Hệ thống Redis gặp sự cố (Timeout/Mất kết nối):**
+   - **THEN:** Các bộ giới hạn tần suất cấp ứng dụng SHALL tự động chuyển sang chế độ fail-open hoặc sử dụng bộ nhớ đệm trong máy (in-memory) tạm thời để tránh gây gián đoạn dịch vụ của người dùng thường.
 
-#### Scenario: Các yêu cầu đặt vé của người dùng nằm trong hạn mức
-- **WHEN** một người dùng đã xác thực gửi 8 yêu cầu `POST /bookings` trong vòng 1 phút
-- **THEN** hệ thống xử lý các yêu cầu đặt vé này và tiến hành giữ chỗ vé bất đồng bộ thành công
+## Ràng buộc
+- **Giới hạn Nginx Gateway:** Hạn mức MUST là 50 yêu cầu/giây trên mỗi IP, vùng đệm burst tối đa 30 yêu cầu (sử dụng cấu hình `nodelay`).
+- **Giới hạn Đặt vé (Booking):** Hạn mức SHALL là 10 yêu cầu/phút trên mỗi User ID.
+- **Giới hạn Thanh toán (Payment):** Hạn mức SHALL là 3 yêu cầu/phút trên mỗi User ID cho các API `/payments/*`.
+- **Tránh vắt kiệt CPU:** Bộ lọc khóa IP xác thực thất bại MUST thực hiện kiểm tra trước khi ứng dụng thực hiện bất kỳ phép toán giải mã chữ ký mật mã JWT nào.
 
-#### Scenario: Các yêu cầu đặt vé của người dùng vượt quá hạn mức
-- **WHEN** một người dùng đã xác thực gửi 11 yêu cầu `POST /bookings` trong vòng 1 phút
-- **THEN** yêu cầu thứ 11 sẽ bị từ chối với mã lỗi HTTP 429, trả về header `X-RateLimit-Source: app-user` và đơn đặt vé không được khởi tạo
-
-### Requirement: Rate Limiting theo User ID cho Payment (Thanh toán)
-Ứng dụng NestJS PHẢI giới hạn tần suất khởi tạo thanh toán của mỗi người dùng sử dụng bộ lưu trữ Redis chia sẻ để tránh hành vi gửi lặp yêu cầu thanh toán.
-- Hạn mức PHẢI là 3 yêu cầu trong vòng 1 phút cho mỗi User ID đã xác thực đối với các endpoint thanh toán (`POST /payments/momo` và `POST /payments/vnpay`).
-- Bộ giới hạn tần suất PHẢI sử dụng Redis làm tầng lưu trữ tập trung.
-- Khi vượt quá giới hạn, yêu cầu PHẢI bị từ chối với Mã trạng thái HTTP `429 Too Many Requests`.
-- Phản hồi PHẢI chứa header `X-RateLimit-Source: app-user`.
-
-#### Scenario: Các yêu cầu thanh toán của người dùng vượt quá hạn mức
-- **WHEN** một người dùng đã xác thực gửi 4 yêu cầu `POST /payments/momo` trong vòng 1 phút
-- **THEN** yêu cầu thứ 4 sẽ bị từ chối với mã lỗi HTTP 429 và trả về header `X-RateLimit-Source: app-user`
-
-### Requirement: Phòng chống vắt kiệt CPU khi xác thực thất bại liên tục (Failed Authentication IP Block)
-Ứng dụng NestJS PHẢI chặn truy cập theo địa chỉ IP của client nếu IP đó liên tục gửi các yêu cầu xác thực không hợp lệ (token giả, token sai chữ ký, hết hạn) để bảo vệ tài nguyên CPU của máy chủ khỏi các tác vụ giải mã chữ ký mật mã.
-- Hệ thống PHẢI đếm số lần xác thực thất bại của mỗi địa chỉ IP (sử dụng Redis key `auth_fail_count:<ip>`).
-- Nếu số lần thất bại đạt >= 5 lần trong vòng 60 giây, hệ thống PHẢI khóa IP đó tạm thời trong 15 phút (900 giây, sử dụng Redis key `auth_blocked:<ip>`).
-- Mọi yêu cầu tiếp theo từ một IP đang bị khóa đi vào các endpoint yêu cầu xác thực PHẢI bị chặn ngay lập tức mà không chạy giải mã/xác thực mật mã JWT.
-- Khi bị chặn, yêu cầu PHẢI bị từ chối với Mã trạng thái HTTP `429 Too Many Requests`.
-- Phản hồi PHẢI chứa header `X-RateLimit-Source: failed-auth-ip`.
-
-#### Scenario: Khóa địa chỉ IP của kẻ tấn công gửi token giả liên tiếp
-- **WHEN** client gửi 5 yêu cầu liên tiếp mang token giả (`Authorization: Bearer fake_token_xyz`) từ địa chỉ IP `1.2.3.4` trong vòng 10 giây
-- **THEN** hệ thống từ chối cả 5 yêu cầu này với mã lỗi HTTP 401 do xác thực thất bại, đồng thời ghi nhận khóa IP `1.2.3.4` trong 15 phút sau yêu cầu thứ 5
-- **AND WHEN** client gửi yêu cầu thứ 6 từ IP `1.2.3.4` ngay sau đó
-- **THEN** hệ thống từ chối yêu cầu thứ 6 này bằng mã lỗi HTTP 429 và trả về header `X-RateLimit-Source: failed-auth-ip` mà không chạy xác thực JWT signature.
-
+## Tiêu chí chấp nhận
+- Người dùng hoạt động bình thường không gặp lỗi 429 khi gửi yêu cầu trong hạn mức.
+- API phản hồi mã lỗi `429 Too Many Requests` đi kèm header `X-RateLimit-Source` tương ứng chỉ rõ nguồn chặn (`gateway`, `app-user`, hoặc `failed-auth-ip`).
+- Trạng thái khóa IP do xác thực thất bại tự động giải phóng sau đúng 15 phút (900 giây).
+- Dữ liệu lượt đếm và trạng thái rate limit được lưu trữ tập trung trên Redis dùng chung để hỗ trợ scale đa phiên bản (multi-instance) ứng dụng.

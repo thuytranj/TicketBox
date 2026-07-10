@@ -13,7 +13,7 @@ export interface Concert {
   startTime: string;
   endTime?: string;
   tags: string[];
-  status: 'draft' | 'active' | 'cancelled';
+  status: 'draft' | 'active' | 'cancelled' | 'completed';
   biography?: string;
 }
 

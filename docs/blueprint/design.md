@@ -525,7 +525,7 @@ Dưới đây là đặc tả chi tiết của từng bảng trong cơ sở dữ
 | **svg_stage_map**    | `text`          | `NULL`                                                                              | Bản đồ sơ đồ ghế ngồi/sân khấu dạng chuỗi SVG để hiển thị trên client và cache ở Redis |
 | **start_time**       | `timestamp`     | `NOT NULL`                                                                          | Thời gian bắt đầu buổi diễn                                                            |
 | **end_time**         | `timestamp`     | `NOT NULL`                                                                          | Thời gian kết thúc dự kiến                                                             |
-| **status**           | `varchar(50)`   | `NOT NULL`, `DEFAULT 'draft'`, `CHECK (status IN ('draft', 'active', 'cancelled'))` | Trạng thái buổi diễn: nháp (`draft`), đang mở bán (`active`), bị hủy (`cancelled`)     |
+| **status**           | `varchar(50)`   | `NOT NULL`, `DEFAULT 'draft'`, `CHECK (status IN ('draft', 'active', 'cancelled', 'completed'))` | Trạng thái buổi diễn: nháp (`draft`), đang mở bán (`active`), bị hủy (`cancelled`), đã diễn ra (`completed`) |
 | **reminder_sent**    | `boolean`       | `NOT NULL`, `DEFAULT FALSE`                                                         | Đánh dấu đã gửi email nhắc nhở trước sự kiện hay chưa                                  |
 | **created_at**       | `timestamp`     | `NOT NULL`, `DEFAULT CURRENT_TIMESTAMP`                                             | Thời điểm tạo bản ghi concert                                                          |
 

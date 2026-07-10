@@ -116,11 +116,12 @@ export class StatisticsService {
       const totalSold = parseInt(ticketResult.totalSold, 10);
       const fillRate = totalIssued > 0 ? Math.round((totalSold / totalIssued) * 10000) / 100 : 0;
 
-      // Checkin count
+      // Checkin count (tickets only)
       const checkinResult = await this.checkinLogRepo
         .createQueryBuilder('cl')
         .select('COUNT(cl.id)', 'totalCheckins')
         .where('cl.status = :status', { status: CheckinLogStatus.VALID })
+        .andWhere('cl.ticketId IS NOT NULL')
         .getRawOne();
 
       const totalCheckins = parseInt(checkinResult.totalCheckins, 10);
@@ -132,6 +133,7 @@ export class StatisticsService {
           active: concertMap['active'] || 0,
           draft: concertMap['draft'] || 0,
           cancelled: concertMap['cancelled'] || 0,
+          completed: concertMap['completed'] || 0,
         },
         orders: {
           total: totalOrders,

@@ -20,6 +20,7 @@ interface StatisticsOverview {
     active: number;
     draft: number;
     cancelled: number;
+    completed: number;
   };
   orders: {
     total: number;
@@ -110,7 +111,7 @@ interface ConcertSalesSummary {
 }
 
 const emptyOverview: StatisticsOverview = {
-  concerts: { total: 0, active: 0, draft: 0, cancelled: 0 },
+  concerts: { total: 0, active: 0, draft: 0, cancelled: 0, completed: 0 },
   orders: { total: 0, paid: 0, pending: 0, expired: 0, cancelled: 0 },
   revenue: { totalRevenue: 0, averageOrderValue: 0 },
   tickets: { totalIssued: 0, totalSold: 0, paidTickets: 0, reservedTickets: 0, availableTickets: 0, fillRate: 0 },
@@ -165,6 +166,8 @@ const getStatusBadge = (status: string) => {
       return <span className="badge-pill badge-pill-warning">Bản nháp</span>;
     case 'cancelled':
       return <span className="badge-pill badge-pill-danger">Đã hủy</span>;
+    case 'completed':
+      return <span className="badge-pill badge-pill-info">Đã diễn ra</span>;
     default:
       return <span className="badge-pill badge-pill-info">{status}</span>;
   }
@@ -398,23 +401,25 @@ export const AdminDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [timeframe, setTimeframe] = useState<'7day' | '30day'>('7day');
-  const [salesFilter, setSalesFilter] = useState<'all' | 'active' | 'draft' | 'cancelled'>('all');
+  const [salesFilter, setSalesFilter] = useState<'all' | 'active' | 'draft' | 'cancelled' | 'completed'>('all');
 
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
-        const [overviewResponse, revenueResponse, activeRes, draftRes, cancelledRes] = await Promise.all([
+        const [overviewResponse, revenueResponse, activeRes, draftRes, cancelledRes, completedRes] = await Promise.all([
           apiClient.request<StatisticsOverview>('/statistics/overview'),
           apiClient.request<RevenueTimeSeries>('/statistics/revenue?period=day'),
           apiClient.request<{ concerts: Concert[] }>('/concerts?status=active&page=1&limit=100'),
           apiClient.request<{ concerts: Concert[] }>('/concerts?status=draft&page=1&limit=100'),
           apiClient.request<{ concerts: Concert[] }>('/concerts?status=cancelled&page=1&limit=100'),
+          apiClient.request<{ concerts: Concert[] }>('/concerts?status=completed&page=1&limit=100'),
         ]);
 
         const rawConcerts = [
           ...(activeRes.concerts || []),
           ...(draftRes.concerts || []),
           ...(cancelledRes.concerts || []),
+          ...(completedRes.concerts || []),
         ];
         const uniqueConcerts = Array.from(new Map(rawConcerts.map(c => [c.id, c])).values());
 
@@ -496,6 +501,7 @@ export const AdminDashboard: React.FC = () => {
       active: salesSummaries.filter((s) => s.status === 'active').length,
       draft: salesSummaries.filter((s) => s.status === 'draft').length,
       cancelled: salesSummaries.filter((s) => s.status === 'cancelled').length,
+      completed: salesSummaries.filter((s) => s.status === 'completed').length,
     };
   }, [salesSummaries]);
 
@@ -589,6 +595,10 @@ export const AdminDashboard: React.FC = () => {
                   <Link to="/admin/concerts?status=active" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textDecoration: 'none', padding: '10px', borderRadius: '8px', background: 'var(--surface-alt)', transition: 'background 0.2s' }}>
                     <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)' }}>Sự kiện đang mở bán</span>
                     <span className="badge-pill badge-pill-success">{overview.concerts.active}</span>
+                  </Link>
+                  <Link to="/admin/concerts?status=completed" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textDecoration: 'none', padding: '10px', borderRadius: '8px', background: 'var(--surface-alt)', transition: 'background 0.2s' }}>
+                    <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)' }}>Đã diễn ra</span>
+                    <span className="badge-pill badge-pill-info">{overview.concerts.completed}</span>
                   </Link>
                   <Link to="/admin/concerts?status=draft" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textDecoration: 'none', padding: '10px', borderRadius: '8px', background: 'var(--surface-alt)', transition: 'background 0.2s' }}>
                     <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)' }}>Bản nháp</span>
@@ -925,6 +935,13 @@ export const AdminDashboard: React.FC = () => {
                     style={{ borderRadius: '99px', padding: '6px 14px', fontSize: '0.8rem', fontWeight: 600 }}
                   >
                     Đã hủy ({statusCounts.cancelled})
+                  </button>
+                  <button
+                    className={`timeframe-btn ${salesFilter === 'completed' ? 'active' : ''}`}
+                    onClick={() => setSalesFilter('completed')}
+                    style={{ borderRadius: '99px', padding: '6px 14px', fontSize: '0.8rem', fontWeight: 600 }}
+                  >
+                    Đã diễn ra ({statusCounts.completed})
                   </button>
                 </div>
 
