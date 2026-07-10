@@ -31,7 +31,7 @@ export const BookingProcess: React.FC = () => {
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       }
     } catch (err: any) {
-      setError(err.message || 'Error checking booking status');
+      setError(err.message || 'Không thể kiểm tra trạng thái đặt vé');
       setStatus('failed');
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     }
@@ -49,9 +49,9 @@ export const BookingProcess: React.FC = () => {
   return (
     <div className="card state-card">
       <div className="card-body">
-        <h2 style={{ color: 'var(--text-strong)', marginBottom: 12 }}>Processing Your Booking</h2>
+        <h2 style={{ color: 'var(--text-strong)', marginBottom: 12 }}>Đang xử lý đặt vé</h2>
         <p style={{ color: 'var(--text-muted)', marginBottom: 24 }}>
-          We are holding your selected tickets before checkout opens.
+          Hệ thống đang giữ vé bạn đã chọn trước khi chuyển sang thanh toán.
         </p>
         
         {status === 'processing' && (
@@ -59,26 +59,26 @@ export const BookingProcess: React.FC = () => {
             <div className="flex-center" style={{ marginBottom: 20 }}>
               <div className="spinner" />
             </div>
-            <p style={{ color: 'var(--text-muted)' }}>Holding your tickets. Please wait a moment...</p>
+            <p style={{ color: 'var(--text-muted)' }}>Đang giữ vé cho bạn. Vui lòng chờ một chút...</p>
           </div>
         )}
 
         {status === 'expired' && (
           <div style={{ padding: '8px 0' }}>
-            <p style={{ color: 'var(--danger)', fontWeight: 600, fontSize: '1.2rem', marginBottom: '1.5rem' }}>Booking Expired or Cancelled</p>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>We were unable to secure your seats in time or the booking has expired.</p>
+            <p style={{ color: 'var(--danger)', fontWeight: 600, fontSize: '1.2rem', marginBottom: '1.5rem' }}>Đặt vé đã hết hạn hoặc bị hủy</p>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Không thể giữ ghế cho bạn kịp thời hoặc phiên đặt vé đã hết hạn.</p>
             <button onClick={() => navigate('/')} className="btn btn-primary" style={{ minWidth: '180px' }}>
-              Return to Events
+              Quay lại trang sự kiện
             </button>
           </div>
         )}
 
         {status === 'failed' && (
           <div style={{ padding: '8px 0' }}>
-            <p style={{ color: 'var(--danger)', fontWeight: 600, fontSize: '1.2rem', marginBottom: '1.5rem' }}>Failed to Secure Tickets</p>
+            <p style={{ color: 'var(--danger)', fontWeight: 600, fontSize: '1.2rem', marginBottom: '1.5rem' }}>Không thể đặt vé</p>
             <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>{error}</p>
             <button onClick={() => navigate('/')} className="btn btn-primary" style={{ minWidth: '180px' }}>
-              Back to Home
+              Về trang chủ
             </button>
           </div>
         )}

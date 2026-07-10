@@ -101,4 +101,41 @@ describe('ConcertList', () => {
     const heroImage = screen.getByAltText(/ticketbox event preview/i) as HTMLImageElement;
     expect(heroImage.src).not.toContain('unsplash.com');
   });
+
+  it('renders a Link with text "Đã kết thúc (Xem chi tiết)" pointing to /concerts/c1 when concert is in the past', async () => {
+    vi.spyOn(apiClient, 'request').mockResolvedValue({
+      concerts: [
+        {
+          id: 'c1',
+          title: 'Ended Concert',
+          description: 'A concert in the past',
+          location: 'Old Venue',
+          posterUrl: '',
+          startTime: '2026-06-30T19:30:00Z',
+          endTime: '2026-06-30T22:30:00Z',
+          tags: ['old'],
+          status: 'active',
+        },
+      ],
+      meta: {
+        totalItems: 1,
+        itemCount: 1,
+        itemsPerPage: 9,
+        totalPages: 1,
+        currentPage: 1,
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <ConcertList />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: /Đã kết thúc \(Xem chi tiết\)/i });
+      expect(link).toBeInTheDocument();
+      expect(link.getAttribute('href')).toBe('/concerts/c1');
+    });
+  });
 });

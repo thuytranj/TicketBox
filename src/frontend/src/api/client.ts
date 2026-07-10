@@ -25,6 +25,8 @@ class ApiClient {
     '/auth/reset-password',
   ]);
 
+  private isRefreshing: Promise<boolean> | null = null;
+
   private unwrapResponse<T>(payload: T | ApiSuccessEnvelope<T>): T {
     if (
       payload &&
@@ -55,10 +57,38 @@ class ApiClient {
     localStorage.removeItem('refreshToken');
   }
 
+  private isTokenExpired(token: string): boolean {
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        return false; // Cho phép mock/dummy token trong unit test đi qua
+      }
+      const payload = JSON.parse(atob(parts[1]));
+      const exp = payload.exp * 1000;
+      // Trừ đi 10 giây dự phòng (buffer) để bù trừ độ lệch giây giữa client và server
+      return Date.now() > exp - 10000;
+    } catch {
+      return false; // Nếu parse lỗi cũng cho đi qua để server trả về 401 tự nhiên
+    }
+  }
+
   async request<T>(
     path: string,
     options: RequestInit = {}
   ): Promise<T> {
+    // 1. Kiểm tra và tự động làm mới token trước khi gửi request thực tế (tránh gửi token hết hạn lên backend gây block IP)
+    if (!this.authEntryPaths.has(path) && path !== '/auth/refresh') {
+      const { accessToken } = this.getTokens();
+      if (accessToken && this.isTokenExpired(accessToken)) {
+        const refreshed = await this.handleTokenRefresh();
+        if (!refreshed) {
+          this.clearTokens();
+          window.dispatchEvent(new Event('auth-logout'));
+          throw { statusCode: 401, message: 'Session expired' };
+        }
+      }
+    }
+
     const url = `${API_BASE_URL}${path}`;
     const { accessToken } = this.getTokens();
 
@@ -111,29 +141,42 @@ class ApiClient {
     return this.unwrapResponse<T>(await response.json());
   }
 
-  private async handleTokenRefresh(): Promise<boolean> {
-    const { refreshToken } = this.getTokens();
-    if (!refreshToken) return false;
+  public async handleTokenRefresh(): Promise<boolean> {
+    if (this.isRefreshing) {
+      return this.isRefreshing;
+    }
+
+    this.isRefreshing = (async () => {
+      const { refreshToken } = this.getTokens();
+      if (!refreshToken) return false;
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+
+        if (!response.ok) return false;
+
+        const data = this.unwrapResponse<{ accessToken: string; refreshToken: string }>(
+          await response.json(),
+        );
+        if (data.accessToken && data.refreshToken) {
+          this.setTokens(data.accessToken, data.refreshToken);
+          window.dispatchEvent(new Event('auth-token-refreshed'));
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      }
+    })();
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
-
-      if (!response.ok) return false;
-
-      const data = this.unwrapResponse<{ accessToken: string; refreshToken: string }>(
-        await response.json(),
-      );
-      if (data.accessToken && data.refreshToken) {
-        this.setTokens(data.accessToken, data.refreshToken);
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
+      return await this.isRefreshing;
+    } finally {
+      this.isRefreshing = null;
     }
   }
 

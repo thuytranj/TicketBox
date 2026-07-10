@@ -30,51 +30,116 @@ import { MyBookings } from './features/booking/MyBookings';
 import { AdminLayout } from './features/admin/AdminLayout';
 import { AdminDashboard } from './features/admin/AdminDashboard';
 import { AdminConcerts } from './features/admin/AdminConcerts';
-import { AiBiography } from './features/admin/AiBiography';
-import { VipGuests } from './features/admin/VipGuests';
+import { NotificationsPanel } from './features/notifications/NotificationsPanel';
 
 const NavigationHeader: React.FC = () => {
   const { user, logout } = useAuth();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   return (
-    <header className="site-header">
-      <div className="site-header-inner">
-        <Link to="/" className="brand-link">
-          <span className="brand-mark">TB</span>
-          <span>TicketBox</span>
-        </Link>
+    <>
+      <header className="site-header">
+        <div className="site-header-inner">
+          <Link to="/" className="brand-link">
+            <span className="brand-mark">TB</span>
+            <span>TicketBox</span>
+          </Link>
 
-        <nav className="site-nav" aria-label="Điều hướng chính">
-          <Link to="/concerts" className="nav-link">Sự kiện</Link>
-          {user && user.role !== 'organizer' && (
-            <Link to="/my-bookings" className="nav-link">Vé của tôi</Link>
-          )}
-          {user?.role === 'organizer' && (
-            <Link to="/admin" className="nav-link">Quản trị</Link>
-          )}
-        </nav>
+          <nav className="site-nav" aria-label="Điều hướng chính">
+            <Link to="/concerts" className="nav-link">Sự kiện</Link>
+            {user && user.role !== 'organizer' && (
+              <Link to="/my-bookings" className="nav-link">Vé của tôi</Link>
+            )}
+            {user?.role === 'organizer' && (
+              <Link to="/admin" className="nav-link">Quản trị</Link>
+            )}
+          </nav>
 
-        <div className="site-actions">
-          {user ? (
-            <>
-              <span className="user-chip">
-                <UserRound size={18} />
-                <strong>{user.fullName || user.email}</strong>
-              </span>
-              <button onClick={() => void logout()} className="btn btn-outline">
-                <LogOut size={18} />
+          <div className="site-actions">
+            {user ? (
+              <>
+                <NotificationsPanel />
+                <span className="user-chip">
+                  <UserRound size={18} />
+                  <strong>{user.fullName || user.email}</strong>
+                </span>
+                <button onClick={() => setShowLogoutConfirm(true)} className="btn btn-outline">
+                  <LogOut size={18} />
+                  Đăng xuất
+                </button>
+              </>
+            ) : (
+              <Link to="/login" className="btn btn-primary">
+                <Ticket size={18} />
+                Đăng nhập
+              </Link>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {showLogoutConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backdropFilter: 'blur(8px)',
+        }}>
+          <div className="card" style={{
+            width: '380px',
+            maxWidth: '90%',
+            padding: '1.75rem',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            borderRadius: '16px',
+            border: '1px solid var(--border)',
+            background: 'var(--surface)',
+          }}>
+            <h3 style={{ fontSize: '1.25rem', marginBottom: '0.75rem', fontWeight: 700, color: 'var(--text-strong)' }}>
+              Xác nhận đăng xuất
+            </h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '1.75rem', lineHeight: '1.6' }}>
+              Bạn có chắc chắn muốn đăng xuất khỏi hệ thống TicketBox không?
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                style={{ borderRadius: '8px', padding: '0.6rem 1.2rem', fontWeight: 500 }}
+                onClick={() => setShowLogoutConfirm(false)}
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                style={{
+                  borderRadius: '8px',
+                  padding: '0.6rem 1.2rem',
+                  fontWeight: 500,
+                  backgroundColor: 'var(--danger)',
+                  color: '#fff',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  void logout();
+                }}
+              >
                 Đăng xuất
               </button>
-            </>
-          ) : (
-            <Link to="/login" className="btn btn-primary">
-              <Ticket size={18} />
-              Đăng nhập
-            </Link>
-          )}
+            </div>
+          </div>
         </div>
-      </div>
-    </header>
+      )}
+    </>
   );
 };
 
@@ -487,8 +552,6 @@ const AppContent: React.FC = () => (
 
     <Route path="/admin" element={<AdminRoute><AdminLayout><AdminDashboard /></AdminLayout></AdminRoute>} />
     <Route path="/admin/concerts" element={<AdminRoute><AdminLayout><AdminConcerts /></AdminLayout></AdminRoute>} />
-    <Route path="/admin/concerts/:id/guests" element={<AdminRoute><AdminLayout><VipGuests /></AdminLayout></AdminRoute>} />
-    <Route path="/admin/concerts/:id/bio" element={<AdminRoute><AdminLayout><AiBiography /></AdminLayout></AdminRoute>} />
 
     <Route path="/unauthorized" element={<PublicLayout><UnauthorizedPage /></PublicLayout>} />
     <Route path="*" element={<Navigate to="/" replace />} />
