@@ -106,10 +106,9 @@ Là nhân sự vận hành tại cổng sự kiện. Họ sử dụng **Mobile A
 ### Ngoài phạm vi đồ án
 
 - **Tích hợp cổng thanh toán thật**: VNPAY và MoMo sẽ được triển khai dưới dạng **giả lập (mock/sandbox)**, không kết nối API production thật. Mục tiêu là chứng minh kiến trúc xử lý thanh toán (Circuit Breaker, Idempotency, Webhook callback) hoạt động đúng, chứ không phải kết nối ngân hàng thật.
-- **Hạ tầng production thực tế (AWS/K8s/CI-CD)**: Không triển khai lên cloud. Toàn bộ hệ thống chạy trong môi trường **Docker Compose local** phục vụ demo và kiểm thử.
-- **Web Frontend & Mobile App hoàn chỉnh**: Đồ án tập trung vào **Backend API + kiến trúc hệ thống**. Giao diện web (Next.js) và mobile app (Flutter) chỉ xây dựng ở mức tối thiểu đủ để demo luồng chính, không đầu tư vào UI/UX hoàn thiện.
+- **Web Frontend & Mobile App hoàn chỉnh**: Đồ án tập trung vào **Backend API + kiến trúc hệ thống**. Giao diện web (React) và mobile app (Flutter) chỉ xây dựng ở mức tối thiểu đủ để demo luồng chính, không đầu tư vào UI/UX hoàn thiện.
 - **Hệ thống giám sát & logging production**: Không triển khai Prometheus, Grafana, ELK Stack hay các công cụ APM.
-- **Push Notification thật (FCM/APNs)**: Không tích hợp Firebase Cloud Messaging hay Apple Push Notification Service. Thông báo chỉ gồm in-app (lưu DB) và email (Mailtrap mock SMTP).
+- **Push Notification thật (FCM/APNs)**: Không tích hợp Firebase Cloud Messaging hay Apple Push Notification Service. Thông báo chỉ gồm in-app (lưu DB) và email.
 - **Hệ thống hoàn tiền tự động (Refund)**: Quy trình hoàn tiền nếu có sẽ xử lý thủ công ngoài hệ thống.
 
 ## Rủi ro và ràng buộc
