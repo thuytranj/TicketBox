@@ -1,12 +1,21 @@
 import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { check } from 'k6';
 
 export const options = {
-  stages: [
-    { duration: '10s', target: 200 },  // Quick ramp-up to 200 VUs to generate high request rate
-    { duration: '20s', target: 200 },  // Maintain VUs
-    { duration: '10s', target: 0 },    // Ramp-down
-  ],
+  scenarios: {
+    real_spike: {
+      executor: 'ramping-arrival-rate',
+      startRate: 50,              // Khởi đầu với 50 requests/s
+      timeUnit: '1s',
+      preAllocatedVUs: 100,       // Cấp phát trước 100 VUs để tránh trễ khởi tạo
+      maxVUs: 1000,               // Giới hạn tối đa 1000 VUs để bảo vệ tài nguyên máy test
+      stages: [
+        { duration: '5s', target: 3000 },  // Trong 5 giây, giật thẳng lên 3.000 requests/s (Cơn bão F5)
+        { duration: '15s', target: 3000 }, // Giữ tải đỉnh 3.000 req/s trong 15 giây để thử độ bền
+        { duration: '5s', target: 50 },    // Hạ nhiệt nhanh về 50 req/s trong 5 giây
+      ],
+    },
+  },
 };
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
@@ -24,7 +33,5 @@ export default function () {
     'status is 429 (Rate Limited)': (r) => r.status === 429,
     'rate limit header is gateway': (r) => r.headers['X-Ratelimit-Source'] === 'gateway',
   });
-
-  // Small sleep to control request rate per VU, but 200 VUs will easily exceed 50 req/s
-  sleep(0.1); 
 }
+

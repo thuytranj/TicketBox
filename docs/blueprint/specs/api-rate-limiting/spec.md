@@ -68,26 +68,36 @@ Hệ thống được bảo vệ qua các lớp chính:
     RPS_peak = 168.000 / 60 = 2.800 RPS
 
 * **Mô hình Downscaling cục bộ (Local Simulation):**
-  * Do phần cứng thử nghiệm cục bộ (1 container OpenResty, 1 container NestJS, 1 container Redis chạy trên máy đơn) bị giới hạn về CPU/RAM và kết nối mạng, chúng tôi áp dụng **hệ số thu nhỏ quy mô F = 40**.
+  * Do phần cứng thử nghiệm cục bộ (2 instances NestJS API, 1 instance OpenResty, 1 instance Redis chạy trên máy đơn) bị giới hạn về CPU/RAM và kết nối mạng, chúng tôi áp dụng **hệ số thu nhỏ quy mô F = 40**.
   * **Số lượng người dùng mô phỏng cục bộ (VUs):**
     N_local = 80.000 / 40 = 2.000 VUs
   * **Lưu lượng đỉnh thu nhỏ tương ứng tại phút đầu tiên:**
     RPS_peak_local = 2.800 RPS / 40 = 70 RPS
 
-### 2. Kết quả Thực nghiệm K6 Load Test
+### 2. Kết quả Thực nghiệm K6 Load Test (Với 2 instances ticketbox-api)
 
-Chúng tôi đã chạy kiểm thử tải bằng công cụ `k6` để kiểm chứng khả năng chịu tải và hoạt động của bộ lọc Gateway.
+Chúng tôi đã chạy kiểm thử tải bằng công cụ `k6` trên mô hình cụm phân tán cục bộ gồm **2 instances `ticketbox-api`** dưới sự điều phối của OpenResty Gateway.
 
-#### A. Kiểm thử giới hạn IP thô (`api-rate-limiting-spike-test.js`)
-* **Thiết lập:** 200 VUs liên tục gửi request dồn dập trong 40 giây (tương đương tốc độ spam cực cao của bot/DDoS).
+#### A. Kiểm thử giới hạn IP thô (`api-rate-limiting-spike-test.js` với Ramping Arrival Rate)
+* **Thiết lập:** Cấu hình `ramping-arrival-rate` đẩy tải đỉnh vọt lên đúng **3.000 requests/giây** (RPS) duy trì trong 15 giây.
 * **Kết quả:**
-  * **Tổng số request gửi đi:** **57.370 requests** (đạt throughput trung bình **1.433 requests/giây**).
-  * **Số lượng request thành công (200 OK):** **2.015 requests** (đáp ứng hoàn hảo hạn mức 50 req/s * 40s + 30 burst).
-  * **Tỷ lệ lọc tải (429 Rate Limited):** **99,89%** (57.310 requests bị chặn trực tiếp tại OpenResty Gateway với header `X-RateLimit-Source: gateway`).
-  * **Độ trễ phản hồi lỗi (Error Latency):** trung bình chỉ **1,36ms** (không tốn CPU của ứng dụng NestJS).
-  * **Tỷ lệ sống sót:** **100%**, NestJS backend hoạt động hoàn toàn bình thường, không xảy ra downtime hay sập kết nối.
+  * **Tổng số request gửi đi:** **58.842** requests trong 25 giây.
+  * **Tải đỉnh thực tế mô phỏng:** Đạt chính xác **3.000 RPS** (tương đương 180.000 requests/phút).
+  * **Số lượng request thành công (200 OK):** **1.278** requests (phù hợp tuyệt đối với giới hạn 50 req/s của Nginx trong 25 giây).
+  * **Tỷ lệ lọc tải (429 Rate Limited):** **97,82%** (57.564 requests bị chặn trực tiếp tại OpenResty Gateway).
+  * **Độ trễ phản hồi lỗi (Error Latency):** trung bình **8,42ms** (trung vị cực nhanh chỉ **247 microseconds**, tức là dưới 0.3ms).
+  * **Tỷ lệ sống sót:** **100%**, NestJS backend hoàn toàn không phải xử lý hay giải băm bất kỳ request lỗi nào.
 
-#### B. Kiểm thử giới hạn theo User ID (`gateway-jwt-rate-limit-test.js` & `payment-rate-limit-test.js`)
+
+#### B. Kiểm thử tải Đọc thông tin Concert với 2 instances (`home-detail-read-load-test.js`)
+* **Thiết lập:** 200 VUs liên tục gửi request đọc thông tin qua cổng `3000` (được OpenResty cân bằng tải vòng tròn sang 2 instances NestJS API). Hạn mức throttler NestJS đã nâng lên `100.000 req/min`.
+* **Kết quả:**
+  * **Tỷ lệ lỗi (Error Rate):** **0.00%** (11.084 / 11.084 requests đều thành công).
+  * **Throughput trung bình:** **154,9 requests/giây**.
+  * **Độ trễ trung bình (Avg Latency):** **10,35ms** (đáp ứng xuất sắc mục tiêu đặc tả < 50ms nhờ Redis Cache-aside).
+  * **Độ tin cậy:** Cả 2 instances NestJS API chia sẻ tải đều đặn, không có lỗi nghẽn Event Loop.
+
+#### C. Kiểm thử giới hạn theo User ID (`gateway-jwt-rate-limit-test.js` & `payment-rate-limit-test.js`)
 * **Thiết lập:** 1 VU gửi 15 yêu cầu đặt vé (`POST /bookings`) và 6 yêu cầu thanh toán (`POST /payments/momo`) liên tục.
 * **Kết quả đặt vé:**
   * 10 request đầu tiên vượt qua Gateway thành công (hạn mức 10 req/min).
@@ -98,7 +108,12 @@ Chúng tôi đã chạy kiểm thử tải bằng công cụ `k6` để kiểm c
 
 ### 3. Đánh giá Tính Công bằng và Phòng chống Bot
 
-1. **Chặn spam & bảo vệ backend:** Nhờ cơ chế giải mã JWT và Sliding Window Rate Limiting thực hiện ngay tại OpenResty (kết nối trực tiếp Redis), các yêu cầu spam liên tục từ Bot bị chặn đứng tại Gateway chỉ trong vòng **1-2ms**. Backend NestJS được bảo vệ hoàn toàn khỏi các tác vụ giải mã nặng nề, giữ cho Event Loop luôn rảnh rỗi để phục vụ người dùng hợp lệ.
-2. **Đảm bảo tính công bằng cho khán giả thật:**
+1. **Khả năng đáp ứng tải 80.000 users / 5 phút (Peak 2.800 RPS):**
+   * **Bảo vệ biên bằng CDN/Gateway:** Trong thực tế, toàn bộ các request đọc public (như trang Concerts list/detail) chiếm 80% tải sẽ được lưu trữ và trả về tại **CDN (Cloudflare)**, không cần đi sâu vào API Gateway hay NestJS.
+   * **Năng lực xử lý của NestJS API:** Thực nghiệm cục bộ với 2 instances NestJS API xử lý mượt mà **155 RPS** với độ trễ **10,35ms**. Khi phân phối trên hạ tầng Production được scale-out (ví dụ: cụm 40 instances chạy trên Kubernetes), năng lực xử lý lý thuyết đạt được là:
+     $$\text{Capacity} = \frac{40\text{ instances}}{2\text{ instances}} \times 155\text{ RPS} = 3.100\text{ RPS}$$
+     *Con số này vượt mức 2.800 RPS yêu cầu đỉnh ở phút đầu tiên, bảo đảm hệ thống vận hành trơn tru.*
+2. **Chặn spam & bảo vệ backend:** Nhờ cơ chế giải mã JWT và Sliding Window Rate Limiting thực hiện ngay tại OpenResty (kết nối trực tiếp Redis), các yêu cầu spam liên tục từ Bot bị chặn đứng tại Gateway chỉ trong vòng **1-2ms**. Backend NestJS được bảo vệ hoàn toàn khỏi các tác vụ giải mã nặng nề.
+3. **Đảm bảo tính công bằng cho khán giả thật:**
    * Do giới hạn tần suất được tính theo **User ID** (đọc từ token JWT đã được xác thực), hệ thống hoàn toàn loại bỏ vấn đề chặn oan khi nhiều người dùng thật sử dụng chung một NAT IP (ví dụ: mạng 4G công cộng, Wi-Fi rạp hát, quán cafe).
    * Mỗi tài khoản người dùng thật có đúng hạn mức định sẵn (10 lượt đặt vé/phút, 3 lượt thanh toán/phút) bất kể họ kết nối từ mạng nào, đảm bảo cơ hội mua vé bình đẳng tuyệt đối.

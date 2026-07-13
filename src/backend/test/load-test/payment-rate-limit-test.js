@@ -36,12 +36,16 @@ export default function () {
 
   const res = http.post(url, payload, params);
 
+  // In ra log để dễ dàng quan sát kết quả của từng request trên Terminal
+  console.log(`[Request ${__ITER + 1}/6] Status Code: ${res.status} | RateLimit-Source: ${res.headers['X-Ratelimit-Source'] || 'none'}`);
+
   // The first 3 requests should hit the backend (getting 400/409/etc).
   // The 4th request onwards should get HTTP 429 and X-RateLimit-Source = gateway-user.
   check(res, {
     'status is 400, 409, or 429': (r) => [400, 409, 429].includes(r.status),
     'rate limited request is 429 with correct header': (r) => r.status !== 429 || (r.status === 429 && r.headers['X-Ratelimit-Source'] === 'gateway-user'),
   });
+
 
   // Short sleep to run sequentially
   sleep(0.1);

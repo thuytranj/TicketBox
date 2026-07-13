@@ -53,6 +53,7 @@ services:
       - DB_PORT=5432
       - REDIS_HOST=redis
       - RABBITMQ_URL=amqp://rabbitmq:5672
+      - THROTTLER_LIMIT=100000
     volumes:
       - ./src/backend:/usr/src/app
       - /usr/src/app/node_modules

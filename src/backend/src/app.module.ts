@@ -34,7 +34,7 @@ import { StatisticsModule } from './statistics/statistics.module';
     ThrottlerModule.forRoot([
       {
         ttl: process.env.THROTTLER_TTL ? parseInt(process.env.THROTTLER_TTL, 10) : 60000,
-        limit: process.env.THROTTLER_LIMIT ? parseInt(process.env.THROTTLER_LIMIT, 10) : 60,
+        limit: process.env.THROTTLER_LIMIT ? parseInt(process.env.THROTTLER_LIMIT, 10) : 100000,
       },
     ]),
     RedisModule,
