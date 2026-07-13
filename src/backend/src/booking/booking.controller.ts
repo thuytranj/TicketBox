@@ -21,8 +21,6 @@ import { BookingService } from './booking.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { GetMyTicketsDto } from './dto/get-my-tickets.dto';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor';
-import { RedisRateLimit } from '../common/decorators/redis-rate-limit.decorator';
-import { RedisRateLimitGuard } from '../common/guards/redis-rate-limit.guard';
 
 @Controller('bookings')
 @UseGuards(JwtAuthGuard)
@@ -40,8 +38,6 @@ export class BookingController {
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @SkipThrottle()
-  @UseGuards(RedisRateLimitGuard)
-  @RedisRateLimit({ limit: 10, ttlMs: 60000 })
   @UseInterceptors(IdempotencyInterceptor)
   async createBooking(
     @Body() dto: CreateBookingDto,

@@ -404,6 +404,7 @@ export const AdminDashboard: React.FC = () => {
   const [salesFilter, setSalesFilter] = useState<'all' | 'active' | 'draft' | 'cancelled' | 'completed'>('all');
 
   useEffect(() => {
+    let active = true;
     const fetchDashboard = async () => {
       try {
         const [overviewResponse, revenueResponse, activeRes, draftRes, cancelledRes, completedRes] = await Promise.all([
@@ -414,6 +415,8 @@ export const AdminDashboard: React.FC = () => {
           apiClient.request<{ concerts: Concert[] }>('/concerts?status=cancelled&page=1&limit=100'),
           apiClient.request<{ concerts: Concert[] }>('/concerts?status=completed&page=1&limit=100'),
         ]);
+
+        if (!active) return;
 
         const rawConcerts = [
           ...(activeRes.concerts || []),
@@ -431,6 +434,7 @@ export const AdminDashboard: React.FC = () => {
         const concurrencyLimit = 3;
 
         for (let i = 0; i < uniqueConcerts.length; i += concurrencyLimit) {
+          if (!active) return;
           const chunk = uniqueConcerts.slice(i, i + concurrencyLimit);
           const chunkResults = await Promise.all(
             chunk.map(async (concert) => {
@@ -478,19 +482,32 @@ export const AdminDashboard: React.FC = () => {
               }
             })
           );
+          if (!active) return;
           summaries.push(...chunkResults);
+          
+          if (i + concurrencyLimit < uniqueConcerts.length) {
+            await new Promise((resolve) => setTimeout(resolve, 150));
+          }
         }
 
+        if (!active) return;
         setSalesSummaries(summaries);
         setStatsFailures(summaries.filter((summary) => summary.failed).length);
       } catch (err: any) {
+        if (!active) return;
         setError(err.message || 'Failed to load dashboard data');
       } finally {
-        setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     };
 
     fetchDashboard();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const recentConcerts = concerts.slice(0, 5);
