@@ -124,7 +124,7 @@ flowchart TD
         MobileApp["Mobile Check-in App<br/>(Flutter)"]:::client
 
         %% Gateway
-        Nginx["Nginx<br/>(Reverse Proxy / Load Balancer)"]:::gateway
+        OpenResty["OpenResty<br/>(API Gateway / Reverse Proxy / Load Balancer)"]:::gateway
 
         %% API Instances
         NestJSAPI["NestJS API Instance<br/>(HTTP Server)"]:::app
@@ -153,13 +153,14 @@ flowchart TD
     NhanVienSoatVe -->|"Quét mã QR để soát vé"| MobileApp
 
     %% Kết nối từ Client tới Gateway/Backend
-    WebApp -->|"Gửi API requests (HTTPS)"| Nginx
-    MobileApp -->|"Gửi API requests - Đồng bộ (HTTPS)"| Nginx
-    Nginx -->|"Chuyển tiếp requests (Round-Robin)"| NestJSAPI
+    WebApp -->|"Gửi API requests (HTTPS)"| OpenResty
+    MobileApp -->|"Gửi API requests - Đồng bộ (HTTPS)"| OpenResty
+    OpenResty -->|"Chuyển tiếp requests (Round-Robin)"| NestJSAPI
+    OpenResty -->|"Xác thực JWT & Kiểm tra Rate Limit (Lua)"| Redis
 
     %% Kết nối từ API Instance tới các Container dữ liệu - hàng đợi
     NestJSAPI -->|"Đọc/Ghi dữ liệu (TypeORM)"| Postgres
-    NestJSAPI -->|"Đọc/Ghi Cache, Lua Script, Rate Limit"| Redis
+    NestJSAPI -->|"Đọc/Ghi Cache, Lock, Idempotency"| Redis
     NestJSAPI -->|"Publish message tasks"| RabbitMQ
 
     %% Kết nối từ Booking Worker tới các dữ liệu - hàng đợi
@@ -189,11 +190,12 @@ flowchart TD
 
 ### High-Level Architecture Diagram
 
-Sơ đồ dưới đây mô tả luồng dữ liệu chính của hệ thống, bao gồm booking, payment, notification, AI sinh bio, import CSV khách mời VIP, và luồng soát vé offline:
+Sơ đồ dưới đây mô tả luồng dữ liệu chính của hệ thống, bao gồm booking, payment, notification, AI sinh bio, import CSV khách mời VIP, và luồng soát vé offline dưới sự điều phối của OpenResty Gateway:
 
 ```mermaid
 flowchart TD
     classDef client fill:#e8eaf6,stroke:#1a237e,stroke-width:2px,color:#1a237e;
+    classDef gateway fill:#eceff1,stroke:#37474f,stroke-width:2px,color:#37474f;
     classDef api fill:#e0f7fa,stroke:#006064,stroke-width:2px,color:#006064;
     classDef booking fill:#e0f2f1,stroke:#004d40,stroke-width:2px,color:#004d40;
     classDef payment fill:#fffde7,stroke:#fbc02d,stroke-width:2px,color:#7f6000;
@@ -208,9 +210,13 @@ flowchart TD
         Mobile["Mobile Check-in App"]:::client
     end
 
+    subgraph GatewayLayer["Lớp Gateway (OpenResty)"]
+        OpenResty["OpenResty API Gateway"]:::gateway
+        RateLimit["Rate Limiter (Lua + Redis)<br/>- 10 req/min (bookings)<br/>- 3 req/min (payments)<br/>- 50 req/s IP global"]:::gateway
+    end
+
     subgraph APILayer["Lớp API (NestJS)"]
         API["REST API Controllers"]:::api
-        RateLimit["Rate Limiter<br/>(Token Bucket / Redis)"]:::api
         IdempotencyGuard["Idempotency Guard<br/>(Redis Lock)"]:::api
     end
 
@@ -259,8 +265,12 @@ flowchart TD
         SyncQueue["Offline Sync Queue"]:::offline
     end
 
-    Web -->|"POST /bookings"| API
-    API --> RateLimit --> IdempotencyGuard --> LuaScript
+    Web -->|"POST /bookings hoặc POST /payments"| OpenResty
+    OpenResty --> RateLimit
+    RateLimit -->|"Allowed"| API
+    RateLimit -.->|"Redis check"| Redis
+    
+    API --> IdempotencyGuard --> LuaScript
     LuaScript -->|"Thành công"| BookingQueue
     LuaScript -->|"Thất bại: hết vé / vượt limit"| API
     BookingQueue --> BookingWorker --> Postgres
@@ -287,12 +297,13 @@ flowchart TD
     ExpiryScheduler -->|"Hồi kho Redis + Cancel DB"| Redis
     ExpiryScheduler --> Postgres
 
-    Mobile -->|"GET /checkin/data"| API
+    Mobile -->|"GET /checkin/data"| OpenResty
+    OpenResty -->|"Chuyển tiếp"| API
     API -->|"Trả về danh sách vé"| Mobile
     Mobile -->|"Lưu vào"| SQLite
     Mobile --> QRScanner --> SQLite
     QRScanner -->|"Check-in offline"| SyncQueue
-    SyncQueue -->|"POST /checkin/sync (khi có mạng)"| API --> Postgres
+    SyncQueue -->|"POST /checkin/sync (khi có mạng)"| OpenResty --> API --> Postgres
 ```
 
 ---
@@ -1003,26 +1014,26 @@ Lớp Backend API là chốt chặn quan trọng nhất, đảm bảo dữ liệ
 | #   | Phương án                                                | Mô tả                                                                                                                                                                                                                                                             |
 | --- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A   | **Single-Layer Rate Limiting (chỉ tại Application)**     | Toàn bộ logic rate limiting (theo IP và User ID) được xử lý tại tầng ứng dụng NestJS bằng Token Bucket trên Redis. Mọi request đều đi qua Nginx (chỉ proxy), vào NestJS, parse JWT, rồi mới kiểm tra giới hạn.                                                    |
-| B   | **Two-Tiered Rate Limiting (API Gateway + Application)** | Chia rate limiting thành 2 lớp phòng thủ: Lớp 1 tại API Gateway (Nginx) chặn theo IP bằng Token Bucket in-memory để phòng thủ diện rộng (DDoS, Bot). Lớp 2 tại NestJS chặn theo User ID bằng Sliding Window Log trên Redis để bảo vệ nghiệp vụ (chống đầu cơ vé). |
+| B   | **Two-Tiered Rate Limiting (API Gateway + Application)** | Chia rate limiting thành 2 lớp phòng thủ: Lớp 1 tại API Gateway (OpenResty) chặn theo IP bằng Token Bucket in-memory để phòng thủ diện rộng (DDoS, Bot). Lớp 2 tại API Gateway chặn theo User ID bằng Sliding Window Log trên Redis (chống đầu cơ vé).             |
 | C   | **Thay Nginx bằng Kong API Gateway**                     | Sử dụng Kong (API Gateway chuyên dụng) thay thế Nginx, tận dụng plugin rate-limiting có sẵn hỗ trợ nhiều tiêu chí (IP, Consumer, Header). Kong cần thêm PostgreSQL/Cassandra riêng để lưu cấu hình hoặc chạy DB-less mode.                                        |
 
 #### Đánh giá
 
-| Tiêu chí                             | Single-Layer (NestJS only)                                                                              | Two-Tiered (Nginx + NestJS)                                                                              | Kong API Gateway                                                           |
+| Tiêu chí                             | Single-Layer (NestJS only)                                                                              | Two-Tiered (OpenResty + NestJS)                                                                          | Kong API Gateway                                                           |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | Bảo vệ hạ tầng trước DDoS            | ❌ Yếu — request vẫn phải vào NestJS, parse header, kết nối Redis mới bị chặn. Nguy cơ nghẽn Event Loop | ✅ Mạnh — Nginx chặn ngay tại rìa hệ thống (Edge), xử lý bằng C native, không tiêu tốn tài nguyên NestJS | ✅ Mạnh — Kong xử lý tại Gateway, tương tự Nginx                           |
-| Chống gian lận đặt vé (theo User ID) | ⚠️ Có nhưng lẫn lộn cùng lớp với IP check                                                               | ✅ Tách biệt rõ ràng — Lớp 2 khóa cứng theo User ID trên Redis, bất kể user đổi IP (VPN/Proxy)           | ✅ Có plugin hỗ trợ, nhưng cần cấu hình JWT plugin kèm theo                |
-| Độ phức tạp hạ tầng                  | ✅ Đơn giản — chỉ cần NestJS + Redis                                                                    | ✅ Thấp — Nginx đã có sẵn trong kiến trúc, chỉ thêm 5 dòng config `limit_req`                            | ❌ Cao — cần thêm container Kong + DB riêng (PostgreSQL/Cassandra), ~150MB |
+| Chống gian lận đặt vé (theo User ID) | ⚠️ Có nhưng lẫn lộn cùng lớp với IP check                                                               | ✅ Tách biệt rõ ràng — Lớp 2 khóa cứng theo User ID trên Redis qua Lua, bất kể user đổi IP (VPN/Proxy)     | ✅ Có plugin hỗ trợ, nhưng cần cấu hình JWT plugin kèm theo                |
+| Độ phức tạp hạ tầng                  | ✅ Đơn giản — chỉ cần NestJS + Redis                                                                    | ✅ Thấp — OpenResty đã có sẵn trong kiến trúc, chỉ thêm các file script Lua                              | ❌ Cao — cần thêm container Kong + DB riêng (PostgreSQL/Cassandra), ~150MB |
 | Phù hợp quy mô đồ án (team nhỏ)      | ✅ Rất phù hợp                                                                                          | ✅ Phù hợp — không tăng độ phức tạp vận hành                                                             | ❌ Over-engineering cho Modular Monolith                                   |
-| Khả năng mở rộng sau này             | ⚠️ Hạn chế — mọi thứ gói trong NestJS                                                                   | ✅ Tốt — nếu cần chuyển sang Kong sau, chỉ thay Nginx                                                    | ✅ Rất tốt — plugin ecosystem phong phú                                    |
+| Khả năng mở rộng sau này             | ⚠️ Hạn chế — mọi thứ gói trong NestJS                                                                   | ✅ Tốt — nếu cần chuyển sang Kong sau, chỉ thay OpenResty                                                | ✅ Rất tốt — plugin ecosystem phong phú                                    |
 
-#### Chốt giải pháp: Phương án B — Two-Tiered Rate Limiting (Nginx + NestJS)
+#### Chốt giải pháp: Phương án B — Two-Tiered Rate Limiting (OpenResty + NestJS)
 
 **Lý do:**
 
-- **Nginx đã có sẵn** trong kiến trúc Container Diagram với vai trò Reverse Proxy — chỉ cần bổ sung cấu hình `limit_req`, không thêm container hay dependency mới.
-- **Tách biệt trách nhiệm rõ ràng:** Lớp 1 (Nginx) chỉ lo chặn IP bất hợp pháp bằng native C module (`ngx_http_limit_req_module`) với tốc độ nano-giây, không tiêu tốn tài nguyên NestJS. Lớp 2 (NestJS) chỉ lo bảo vệ nghiệp vụ theo User ID sau khi đã decode JWT.
-- **Kong là over-engineering** cho Modular Monolith: chỉ có 1 NestJS app phía sau, không cần hệ sinh thái plugin phức tạp. Nếu sau này chuyển sang Microservices, có thể nâng cấp từ Nginx lên Kong mà không cần tái cấu trúc.
+- **Nginx/OpenResty đã có sẵn** trong kiến trúc Container Diagram với vai trò Reverse Proxy — chỉ cần bổ sung cấu hình `limit_req` và các file kịch bản Lua, không thêm container hay dependency mới.
+- **Tách biệt trách nhiệm rõ ràng:** Lớp 1 (OpenResty) chỉ lo chặn IP bất hợp pháp bằng native C module (`ngx_http_limit_req_module`) với tốc độ nano-giây, không tiêu tốn tài nguyên NestJS. Lớp 2 (OpenResty qua Lua script) lo bảo vệ nghiệp vụ theo User ID bằng cách trực tiếp giải mã token JWT và đối soát Sliding Window Log trên Redis trước khi chuyển tiếp request vào NestJS Application.
+- **Kong là over-engineering** cho Modular Monolith: chỉ có 1 NestJS app phía sau, không cần hệ sinh thái plugin phức tạp. Nếu sau này chuyển sang Microservices, có thể nâng cấp từ OpenResty lên Kong mà không cần tái cấu trúc.
 
 #### Kiến trúc 2 lớp Rate Limiting
 
@@ -1035,23 +1046,25 @@ flowchart TD
     classDef reject fill:#fce4ec,stroke:#880e4f,stroke-width:2px,color:#880e4f;
 
     Internet["Internet Traffic"]:::internet
-    Internet --> Nginx
+    Internet --> OpenResty
 
-    subgraph Layer1["Lớp 1: API Gateway"]
-        Nginx["Nginx Reverse Proxy<br/>(limit_req: 50 req/s per IP)<br/>Token Bucket - In-memory"]:::gateway
+    subgraph OpenRestyGateway["OpenResty API Gateway"]
+        subgraph Layer1["Lớp 1: IP protection"]
+            IPLimit["limit_req module<br/>(50 req/s, burst 30)<br/>Token Bucket (In-memory)"]:::gateway
+        end
+        
+        subgraph Layer2["Lớp 2: Identity protection"]
+            DecodeJWT["Decode JWT & Verify signature<br/>(lấy User ID)"]:::gateway
+            SlidingWindow["Lua Script + Redis Sorted Set<br/>(Sliding Window Log)<br/>- 10 req/min (POST /bookings)<br/>- 3 req/min (POST /payments)"]:::db
+        end
     end
 
-    Nginx -->|"Request hợp lệ (IP chưa vượt ngưỡng)"| NestJS
-    Nginx -->|"IP vượt ngưỡng"| Reject1["HTTP 429<br/>X-RateLimit-Source: gateway"]:::reject
-
-    subgraph Layer2["Lớp 2: Application - Bảo vệ nghiệp vụ"]
-        NestJS["NestJS Application<br/>(Decode JWT -> lấy User ID)"]:::app
-        SlidingWindow["Redis Sliding Window Log<br/>(Lua Script - theo User ID)<br/>10 req/min cho POST /bookings"]:::db
-    end
-
-    NestJS --> SlidingWindow
-    SlidingWindow -->|"User ID chưa vượt ngưỡng"| BookingEngine["Booking Engine"]:::app
-    SlidingWindow -->|"User ID vượt ngưỡng"| Reject2["HTTP 429<br/>X-RateLimit-Source: app-user"]:::reject
+    IPLimit -->|"IP hợp lệ"| DecodeJWT
+    IPLimit -->|"IP vượt ngưỡng"| Reject1["HTTP 429<br/>X-RateLimit-Source: gateway"]:::reject
+    
+    DecodeJWT --> SlidingWindow
+    SlidingWindow -->|"User ID chưa vượt ngưỡng"| NestJS["NestJS Application<br/>(Business Logic / Workers)"]:::app
+    SlidingWindow -->|"User ID vượt ngưỡng"| Reject2["HTTP 429<br/>X-RateLimit-Source: gateway-user"]:::reject
 ```
 
 #### Lớp 1 — API Gateway (Nginx `limit_req`)
@@ -1098,19 +1111,18 @@ server {
 
 Bên cạnh Nginx ở cổng vào, tại chính ứng dụng NestJS cũng áp dụng một bộ lọc giới hạn tần suất yêu cầu IP-based toàn cục thông qua `ThrottlerGuard` để chống spam API cơ bản:
 
-- **Cấu hình:** 60 requests/phút (60 requests per minute) cho mỗi địa chỉ IP.
-- **Phạm vi:** Mặc định áp dụng cho tất cả các API công khai hoặc không nhạy cảm (như xem thông tin concert, login/register...).
-- **Cơ chế bỏ qua (Skip):** Các endpoint nhạy cảm (như `/bookings`, `/payments/momo`, `/payments/vnpay`) đã được bảo vệ bởi lớp rate limit chuyên sâu sẽ sử dụng decorator `@SkipThrottle()` để bỏ qua bộ lọc IP này, tránh cản trở người dùng thật khi thao tác thanh toán hoặc đặt vé nhanh.
+- **Cấu hình:** Mặc định áp dụng cho tất cả các API công khai hoặc không nhạy cảm (như xem thông tin concert, login/register...). Giới hạn có thể tùy biến qua biến môi trường `THROTTLER_LIMIT` (ví dụ: mặc định `100000` ở local để tránh chặn nhầm trong phát triển/kiểm thử tải).
+- **Cơ chế bỏ qua (Skip):** Các endpoint nhạy cảm (như `/bookings`, `/payments/momo`, `/payments/vnpay`) đã được bảo vệ bởi lớp rate limit chuyên sâu tại Gateway sẽ sử dụng decorator `@SkipThrottle()` để bỏ qua bộ lọc IP này, tránh cản trở người dùng thật khi thao tác thanh toán hoặc đặt vé nhanh.
 
-#### Lớp 2 — Application Layer (Redis Sliding Window Log)
+#### Lớp 2 — Gateway-level Identity Rate Limiting (Redis Sliding Window Log qua Lua)
 
-**Mục đích:** Bảo vệ nghiệp vụ chuyên sâu (Business Logic Protection). Ngăn chặn một tài khoản (User ID) lách luật bằng cách mở nhiều tab, dùng VPN đổi IP, hoặc viết script gửi đồng thời hàng loạt request đặt vé.
+**Mục đích:** Bảo vệ nghiệp vụ chuyên sâu (Business Logic Protection). Ngăn chặn một tài khoản (User ID) lách luật bằng cách mở nhiều tab, dùng VPN đổi IP, hoặc viết script gửi đồng thời hàng loạt request đặt vé. Việc giải mã JWT và đối soát rate limit được thực hiện ngay tại **OpenResty API Gateway** (sử dụng thư viện `lua-resty-jwt` và `resty.redis`) giúp lọc bỏ các request spam sớm trước khi chúng chạm tới NestJS.
 
-**Thuật toán:** Sliding Window Log trên Redis — sử dụng Lua Script với Sorted Set (`ZSET`) để lưu trữ log thời gian của từng request và đếm chính xác số request trong cửa sổ thời gian trượt, triệt tiêu hiện tượng burst tại ranh giới window mà Fixed Window mắc phải.
+**Thuật toán:** Sliding Window Log trên Redis — sử dụng Lua Script trực tiếp thực thi tại Gateway tương tác với Redis thông qua Sorted Set (`ZSET`) để lưu trữ log thời gian của từng request và đếm chính xác số request trong cửa sổ thời gian trượt, triệt tiêu hiện tượng burst tại ranh giới window mà Fixed Window mắc phải.
 
 **Chỉ áp dụng cho các endpoint nhạy cảm:**
 
-| Endpoint                                     | Window | Max Requests | Áp dụng theo | Lý do                                |
+| Endpoint                                     | Window | Max Requests | Áp dụng theo | Lý lý                                |
 | -------------------------------------------- | ------ | ------------ | ------------ | ------------------------------------ |
 | `POST /bookings` (đặt vé)                    | 1 phút | 10           | User ID      | Chống script spam đặt chỗ hàng loạt  |
 | `POST /payments/momo` / `vnpay` (thanh toán) | 1 phút | 3            | User ID      | Chống gửi request thanh toán lặp lại |
@@ -1159,13 +1171,13 @@ return 1  -- CHO PHÉP
 | :-------------------------------- | :----------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `rate_limit:{tracker}:{endpoint}` | Sorted Set   | Đếm số lượng request trượt trong cửa sổ thời gian. `tracker` mặc định là User ID (hoặc fallback IP address), `endpoint` là đường dẫn API (ví dụ: `rate_limit:u-123:/bookings` hoặc `rate_limit:u-123:/payments/momo`). |
 
-**Hành vi khi vượt ngưỡng:** Trả về `HTTP 429 Too Many Requests` kèm header `X-RateLimit-Source: app-user` để client phân biệt với lỗi 429 từ Nginx Gateway.
+**Hành vi khi vượt ngưỡng:** Trả về `HTTP 429 Too Many Requests` kèm header `X-RateLimit-Source: gateway-user` để client phân biệt với lỗi 429 từ Nginx Gateway IP-based rate limit (`gateway`).
 
-**Thiết kế chịu lỗi & Đồng bộ đa thực thể (Resilience & Cluster-ready):**
+**Thiết kế chịu lỗi & Đồng bộ đa thực thể (Gateway Resilience):**
 
-- **Đồng bộ thời gian:** Sử dụng `redis.call('time')` đảm bảo các thực thể NestJS khác nhau không bị ảnh hưởng bởi lỗi lệch múi giờ (Clock Drift).
-- **Cơ chế dự phòng (Fail-Open):** Custom Guard sẽ bọc lệnh gọi Redis trong khối try-catch. Nếu Redis bị gián đoạn, Guard ghi log warning và cho phép yêu cầu đi tiếp (`return true`) để không gián đoạn dịch vụ.
-- **Trust Proxy:** Cấu hình `trust proxy` trong `main.ts` để đọc đúng địa chỉ IP của Client khi chạy sau Nginx phục vụ fallback rate limit theo IP.
+- **Đồng bộ thời gian:** Sử dụng `redis.call('time')` của Redis Server để tính timestamp hiện tại thay vì dùng thời gian hệ thống của các instance Gateway khác nhau, giúp loại bỏ hoàn toàn ảnh hưởng của lỗi lệch múi giờ (Clock Drift).
+- **Cơ chế dự phòng (Fail-Open):** Lua script tại OpenResty bọc lệnh kết nối và truy vấn Redis trong các khối kiểm tra an toàn. Nếu Redis bị gián đoạn hoặc gặp sự cố kết nối, Gateway sẽ ghi nhận lỗi cảnh báo vào error log và tự động áp dụng cơ chế **Fail-Open** (cho phép request đi tiếp tới NestJS) để tránh gây gián đoạn dịch vụ của người dùng thật.
+- **Trust Proxy:** Cấu hình `trust proxy` trong NestJS `main.ts` và thiết lập các trường Header thích hợp (`X-Real-IP`, `X-Forwarded-For`) tại Nginx để NestJS backend nhận dạng đúng địa chỉ IP của Client khi nằm sau Gateway.
 
 #### Phòng chống vắt kiệt CPU (Failed Authentication IP-based Rate Limiter)
 
