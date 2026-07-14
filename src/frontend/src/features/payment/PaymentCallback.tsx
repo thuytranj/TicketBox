@@ -42,6 +42,7 @@ interface PaymentStatusDetails {
 
 type CallbackOutcome =
   | { gateway: 'momo'; resultCode: number | null; message: string; isSuccess: boolean; isCancelled: boolean }
+  | { gateway: 'vnpay'; responseCode: string | null; message: string; isSuccess: boolean; isCancelled: boolean }
   | null;
 
 const normalizeCallbackMessage = (message: string) =>
@@ -121,9 +122,11 @@ const TicketQrCode: React.FC<{ value: string }> = ({ value }) => {
 };
 
 export const PaymentCallback: React.FC = () => {
-  const { orderId } = useParams<{ orderId: string }>();
+  const { orderId: pathOrderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const orderId = pathOrderId || searchParams.get('orderId') || searchParams.get('vnp_TxnRef') || '';
   
   const [booking, setBooking] = useState<BookingDetails | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatusDetails | null>(null);
@@ -206,6 +209,43 @@ export const PaymentCallback: React.FC = () => {
       };
     };
 
+    const getVnpayCallbackOutcome = (): CallbackOutcome => {
+      const routerSearch = location.search && location.search !== '?' ? location.search : '';
+      const search = (routerSearch || window.location.search).replace(/^\?/, '');
+      if (!search) return null;
+
+      const params = new URLSearchParams(search);
+      const vnpTxnRef = params.get('vnp_TxnRef');
+      const vnpResponseCode = params.get('vnp_ResponseCode');
+      const vnpSecureHash = params.get('vnp_SecureHash');
+
+      if (!vnpTxnRef || !vnpResponseCode || !vnpSecureHash) {
+        return null;
+      }
+
+      if (orderId && !vnpTxnRef.includes(orderId)) {
+        return null;
+      }
+
+      const isSuccess = vnpResponseCode === '00';
+      const isCancelled = vnpResponseCode === '24';
+      
+      let message = 'Giao dịch VNPAY thất bại';
+      if (isSuccess) {
+        message = 'Thanh toán VNPAY thành công';
+      } else if (isCancelled) {
+        message = 'Giao dịch VNPAY đã bị hủy bởi người dùng';
+      }
+
+      return {
+        gateway: 'vnpay',
+        responseCode: vnpResponseCode,
+        message,
+        isSuccess,
+        isCancelled,
+      };
+    };
+
     const forwardGatewayCallback = async () => {
       if (forwardedGatewayCallbackRef.current) return null;
 
@@ -223,9 +263,21 @@ export const PaymentCallback: React.FC = () => {
         await apiClient.request(`/payments/momo/webhook?${search}`, {
           method: 'POST',
         });
+        return getMomoCallbackOutcome();
       }
 
-      return getMomoCallbackOutcome();
+      const vnpTxnRef = params.get('vnp_TxnRef');
+      const vnpSecureHash = params.get('vnp_SecureHash');
+
+      if (vnpTxnRef && vnpSecureHash && vnpTxnRef.includes(orderId)) {
+        forwardedGatewayCallbackRef.current = true;
+        await apiClient.request(`/payments/vnpay/webhook?${search}`, {
+          method: 'POST',
+        });
+        return getVnpayCallbackOutcome();
+      }
+
+      return null;
     };
 
     const runPoll = async () => {
@@ -275,7 +327,7 @@ export const PaymentCallback: React.FC = () => {
         <div className="alert alert-danger">{error}</div>
         <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
           <button onClick={() => navigate('/')} className="btn btn-primary">
-            Back to Home
+            Quay lại Trang chủ
           </button>
         </div>
       </div>
@@ -292,11 +344,10 @@ export const PaymentCallback: React.FC = () => {
                 <CheckCircle size={64} style={{ color: 'var(--success)' }} />
               </div>
               <h1 style={{ fontSize: '2rem', marginBottom: '1rem', color: 'var(--success)' }}>
-                Thanh toán thành công! / Payment Successful!
+                Thanh toán thành công!
               </h1>
               <p style={{ color: 'var(--text-muted)', marginBottom: '2.5rem', maxWidth: '500px', marginLeft: 'auto', marginRight: 'auto' }}>
                 Vé của bạn đã được xác nhận và kích hoạt. Hãy xuất trình mã QR bên dưới khi check-in tại sự kiện.
-                (Your tickets are confirmed and activated. Present the QR code below at the event gate.)
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem' }}>
@@ -317,10 +368,10 @@ export const PaymentCallback: React.FC = () => {
                       }}
                     >
                       <strong style={{ display: 'block', fontSize: '1.25rem', color: 'var(--text-strong)', marginBottom: '0.25rem' }}>
-                        VÉ ĐIỆN TỬ / E-TICKET
+                        VÉ ĐIỆN TỬ
                       </strong>
                       <span style={{ display: 'block', color: 'var(--primary)', fontWeight: 800, marginBottom: '1.5rem', textTransform: 'uppercase' }}>
-                        Hạng: {t.ticketType?.name || 'General Admission'}
+                        Hạng vé: {t.ticketType?.name || 'Thường (GA)'}
                       </span>
                       
                       {qrHash ? (
@@ -329,14 +380,14 @@ export const PaymentCallback: React.FC = () => {
                         </div>
                       ) : (
                         <div style={{ padding: '2rem', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
-                          QR Code is generating...
+                          Đang tạo mã QR...
                         </div>
                       )}
                       
                       <div style={{ marginTop: '1.5rem', fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                        <span><strong>Mã vé / ID:</strong> {t.id}</span>
-                        <span><strong>Trạng thái / Status:</strong> {t.status}</span>
-                        <span><strong>Soát vé / Check-in:</strong> {t.checkinStatus === 'checked_in' ? 'Đã soát / Checked In' : 'Chưa soát / Not Checked In'}</span>
+                        <span><strong>Mã vé:</strong> {t.id}</span>
+                        <span><strong>Trạng thái:</strong> {t.status === 'valid' ? 'Hợp lệ' : t.status === 'refunded' ? 'Đã hoàn tiền' : t.status}</span>
+                        <span><strong>Soát vé:</strong> {t.checkinStatus === 'checked_in' ? 'Đã soát' : 'Chưa soát'}</span>
                       </div>
                     </div>
                   );
@@ -344,14 +395,14 @@ export const PaymentCallback: React.FC = () => {
               </div>
 
               {paymentStatus?.payments.length ? (
-                <section className="soft-panel" aria-label="Payment status" style={{ marginTop: '2rem', textAlign: 'left' }}>
-                  <h2 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Payment status</h2>
+                <section className="soft-panel" aria-label="Trạng thái thanh toán" style={{ marginTop: '2rem', textAlign: 'left' }}>
+                  <h2 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Trạng thái thanh toán</h2>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     {paymentStatus.payments.map((payment) => (
                       <div key={payment.id} className="summary-row" style={{ gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                        <span>{payment.gateway}</span>
-                        <strong style={{ color: 'var(--text-strong)' }}>{payment.status}</strong>
-                        {payment.transactionId && <span>{payment.transactionId}</span>}
+                        <span>{payment.gateway === 'momo' ? 'Ví MoMo' : payment.gateway === 'vnpay' ? 'Cổng VNPAY' : payment.gateway}</span>
+                        <strong style={{ color: 'var(--text-strong)' }}>{payment.status === 'success' ? 'Thành công' : payment.status === 'failed' ? 'Thất bại' : payment.status}</strong>
+                        {payment.transactionId && <span>Mã giao dịch: {payment.transactionId}</span>}
                       </div>
                     ))}
                   </div>
@@ -394,11 +445,10 @@ export const PaymentCallback: React.FC = () => {
                 <Clock size={64} />
               </div>
               <h1 style={{ fontSize: '2rem', marginBottom: '1rem', color: 'var(--warning)' }}>
-                Giao dịch đang chờ xác nhận / Payment Status Pending
+                Giao dịch đang chờ xác nhận
               </h1>
               <p style={{ color: 'var(--text-muted)', marginBottom: '2.5rem', maxWidth: '500px', marginLeft: 'auto', marginRight: 'auto' }}>
                 Hệ thống chưa nhận được phản hồi xác nhận từ cổng thanh toán. Trạng thái giao dịch sẽ được cập nhật tự động. Vui lòng kiểm tra email của bạn sau ít phút hoặc xem lịch sử đơn hàng.
-                (We are waiting for payment confirmation. Status will update shortly. Please check your email or order history.)
               </p>
             </div>
           )}
@@ -409,7 +459,7 @@ export const PaymentCallback: React.FC = () => {
               className="btn btn-outline"
               style={{ minWidth: 150, gap: '0.5rem' }}
             >
-              <ArrowLeft size={16} /> Về trang chủ / Home
+              <ArrowLeft size={16} /> Về trang chủ
             </button>
             
             {(status === 'timeout' || status === 'failed' || status === 'cancelled') && orderId && (
@@ -432,7 +482,7 @@ export const PaymentCallback: React.FC = () => {
                 className="btn btn-primary"
                 style={{ minWidth: 150, gap: '0.5rem' }}
               >
-                <RefreshCw size={16} /> Thử lại / Refresh
+                <RefreshCw size={16} /> Thử lại
               </button>
             )}
           </div>
