@@ -6,7 +6,7 @@ Xác minh hệ thống có khả năng tự bảo vệ và duy trì hoạt độ
 Yêu cầu chứng minh (Theo IM13): **"Test payment lỗi liên tiếp; trang concert vẫn hoạt động."**
 
 ## 2. Kế hoạch và Kịch bản Test (Test Plan)
-- **Công cụ:** Gửi request thông qua file `payment-api.http` (hoặc REST Client tương đương).
+- **Công cụ:** Gửi request thông qua file `src/backend/test/http/payment-api.http` (hoặc REST Client tương đương).
 - **Cơ chế ngắt mạch (Circuit Breaker):** Sử dụng thư viện `opossum` (`src/backend/src/payment/circuit-breaker/circuit-breaker.service.ts`).
   - **Threshold:** 50% lỗi.
   - **Volume:** Cần tối thiểu 5 requests lỗi để bắt đầu kích hoạt tính toán.
