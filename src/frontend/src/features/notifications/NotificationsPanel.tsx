@@ -21,35 +21,35 @@ const getNotificationMeta = (notification: NotificationLog) => {
   switch (notification.type) {
     case 'booking_confirmed':
       return {
-        label: 'Booking',
+        label: 'Đặt vé',
         icon: <TicketCheck size={12} />,
-        actionLabel: 'View booking',
+        actionLabel: 'Xem chi tiết vé',
         to: notification.referenceId ? `/payment-callback/${notification.referenceId}` : null,
       };
     case 'concert_reminder':
       return {
-        label: 'Reminder',
+        label: 'Nhắc nhở',
         icon: <CalendarClock size={12} />,
-        actionLabel: 'View concert',
+        actionLabel: 'Xem sự kiện',
         to: notification.referenceId ? `/concerts/${notification.referenceId}` : null,
       };
     case 'ai_bio_completed':
       return {
-        label: 'AI Bio',
+        label: 'Tiểu sử AI',
         icon: <Sparkles size={12} />,
-        actionLabel: 'Review bio',
+        actionLabel: 'Duyệt tiểu sử',
         to: notification.referenceId ? `/admin/concerts?action=edit&id=${notification.referenceId}&step=2` : null,
       };
     case 'ai_bio_failed':
       return {
-        label: 'AI Bio',
+        label: 'Tiểu sử AI',
         icon: <TriangleAlert size={12} />,
-        actionLabel: 'Review bio',
+        actionLabel: 'Duyệt tiểu sử',
         to: notification.referenceId ? `/admin/concerts?action=edit&id=${notification.referenceId}&step=2` : null,
       };
     default:
       return {
-        label: 'Update',
+        label: 'Cập nhật',
         icon: <Bell size={12} />,
         actionLabel: null,
         to: null,
@@ -201,7 +201,7 @@ export const NotificationsPanel: React.FC = () => {
               backgroundColor: 'var(--surface-alt)',
             }}
           >
-            <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: 600 }}>Notifications</h3>
+            <h3 style={{ fontSize: '1rem', margin: 0, fontWeight: 600 }}>Thông báo</h3>
             {unreadCount > 0 && (
               <button
                 onClick={handleMarkAllAsRead}
@@ -216,7 +216,7 @@ export const NotificationsPanel: React.FC = () => {
                   gap: '0.25rem',
                 }}
               >
-                <MailOpen size={14} /> Mark all read
+                <MailOpen size={14} /> Đánh dấu tất cả đã đọc
               </button>
             )}
           </div>
@@ -225,7 +225,7 @@ export const NotificationsPanel: React.FC = () => {
           <div style={{ flex: 1, overflowY: 'auto', maxHeight: '350px' }}>
             {notifications.length === 0 ? (
               <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                No notifications found.
+                Không có thông báo nào.
               </div>
             ) : (
               notifications.map((n) => {
