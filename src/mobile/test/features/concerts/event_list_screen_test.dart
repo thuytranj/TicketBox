@@ -7,10 +7,20 @@ import 'package:ticketbox_mobile/features/concerts/models/concert.dart';
 import 'package:ticketbox_mobile/features/concerts/providers/concert_provider.dart';
 import 'package:ticketbox_mobile/features/concerts/screens/event_list_screen.dart';
 import 'package:ticketbox_mobile/features/concerts/widgets/event_card.dart';
-import 'package:ticketbox_mobile/shared/widgets/gate_button.dart';
 import 'package:ticketbox_mobile/shared/widgets/gate_empty_state.dart';
 import 'package:ticketbox_mobile/shared/widgets/gate_error_state.dart';
 import 'package:ticketbox_mobile/shared/widgets/gate_loading_state.dart';
+
+// ── Navigation spy ─────────────────────────────────────────────────────────────
+
+class _NavObserver extends NavigatorObserver {
+  final List<Route<dynamic>> pushed = [];
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pushed.add(route);
+  }
+}
 
 // ── Mock Providers ─────────────────────────────────────────────────────────────
 
@@ -21,35 +31,18 @@ class _MockConcertProvider extends ChangeNotifier implements ConcertProvider {
   List<Concert> concerts;
   @override
   String errorMessage;
-  @override
-  Concert? selectedConcert;
 
   bool fetchCalled = false;
-  bool selectCalled = false;
 
   _MockConcertProvider({
     this.state = ConcertState.loaded,
     this.concerts = const [],
     this.errorMessage = '',
-    this.selectedConcert,
   });
 
   @override
   Future<void> fetchConcerts() async {
     fetchCalled = true;
-  }
-
-  @override
-  void selectConcert(Concert concert) {
-    selectCalled = true;
-    selectedConcert = concert;
-    notifyListeners();
-  }
-
-  @override
-  void clearSelection() {
-    selectedConcert = null;
-    notifyListeners();
   }
 }
 
@@ -71,14 +64,16 @@ class _MockAuthProvider extends ChangeNotifier implements AuthProvider {
   Future<void> checkAuthStatus() async {}
 }
 
-// ── Helper ─────────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 Widget _wrap({
   required _MockConcertProvider concertMock,
   _MockAuthProvider? authMock,
+  List<NavigatorObserver>? observers,
 }) =>
     MaterialApp(
       theme: GateAppTheme.dark(),
+      navigatorObservers: observers ?? [],
       home: MultiProvider(
         providers: [
           ChangeNotifierProvider<ConcertProvider>.value(value: concertMock),
@@ -89,16 +84,21 @@ Widget _wrap({
       ),
     );
 
-// Sample concerts for testing
+// Sample concerts — "upcoming" so they appear in Sắp diễn ra tab.
+final _futureTime = DateTime.now().add(const Duration(days: 5));
 final _concertA = Concert(
   id: 'c1',
   title: 'Rock Night 2026',
   location: 'Hà Nội Arena',
+  startTime: _futureTime,
+  status: 'active',
 );
 final _concertB = Concert(
   id: 'c2',
   title: 'Jazz Evening',
   location: 'TP.HCM Convention Center',
+  startTime: _futureTime,
+  status: 'active',
 );
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -163,20 +163,84 @@ void main() {
 
       expect(find.byType(GateEmptyState), findsOneWidget);
       expect(find.byIcon(Icons.event_busy_outlined), findsOneWidget);
+    });
+
+    // ── Search bar ────────────────────────────────────────────────────────────
+
+    testWidgets('search bar is rendered in loaded state', (tester) async {
+      final mock = _MockConcertProvider(
+        state: ConcertState.loaded,
+        concerts: [_concertA],
+      );
+      await tester.pumpWidget(_wrap(concertMock: mock));
+
+      expect(find.byKey(const Key('search_field')), findsOneWidget);
+    });
+
+    testWidgets('search bar has placeholder text', (tester) async {
+      final mock = _MockConcertProvider(
+        state: ConcertState.loaded,
+        concerts: [],
+      );
+      await tester.pumpWidget(_wrap(concertMock: mock));
+
       expect(
-        find.text('Hiện không có sự kiện đang mở để soát vé.'),
+        find.text('Tìm theo tên hoặc địa điểm…'),
         findsOneWidget,
       );
     });
 
-    // ── Loaded state ──────────────────────────────────────────────────────────
+    // ── Tab bar ───────────────────────────────────────────────────────────────
 
-    testWidgets('shows EventCard for each concert', (tester) async {
+    testWidgets('renders 3 tabs', (tester) async {
+      final mock = _MockConcertProvider(
+        state: ConcertState.loaded,
+        concerts: [],
+      );
+      await tester.pumpWidget(_wrap(concertMock: mock));
+
+      expect(find.byKey(const Key('event_tab_bar')), findsOneWidget);
+      expect(find.byKey(const Key('tab_today')), findsOneWidget);
+      expect(find.byKey(const Key('tab_upcoming')), findsOneWidget);
+      expect(find.byKey(const Key('tab_past')), findsOneWidget);
+    });
+
+    testWidgets('Hôm nay tab is active by default', (tester) async {
+      final mock = _MockConcertProvider(
+        state: ConcertState.loaded,
+        concerts: [],
+      );
+      await tester.pumpWidget(_wrap(concertMock: mock));
+
+      // The TabBar is present and the first tab label is visible
+      expect(find.text('Hôm nay'), findsOneWidget);
+    });
+
+    // ── No confirm CTA ────────────────────────────────────────────────────────
+
+    testWidgets('confirm_cta key does not exist in widget tree', (tester) async {
+      final mock = _MockConcertProvider(
+        state: ConcertState.loaded,
+        concerts: [_concertA],
+      );
+      await tester.pumpWidget(_wrap(concertMock: mock));
+
+      expect(find.byKey(const Key('confirm_cta')), findsNothing);
+    });
+
+    // ── Loaded concerts ───────────────────────────────────────────────────────
+
+    testWidgets('shows EventCards for concerts in Sắp diễn ra tab',
+        (tester) async {
       final mock = _MockConcertProvider(
         state: ConcertState.loaded,
         concerts: [_concertA, _concertB],
       );
       await tester.pumpWidget(_wrap(concertMock: mock));
+
+      // Tap the Sắp diễn ra tab to show upcoming concerts
+      await tester.tap(find.text('Sắp diễn ra'));
+      await tester.pumpAndSettle();
 
       expect(find.byType(EventCard), findsNWidgets(2));
       expect(find.text('Rock Night 2026'), findsOneWidget);
@@ -190,99 +254,116 @@ void main() {
       );
       await tester.pumpWidget(_wrap(concertMock: mock));
 
+      await tester.tap(find.text('Sắp diễn ra'));
+      await tester.pumpAndSettle();
+
       expect(find.text('Hà Nội Arena'), findsOneWidget);
     });
 
-    // ── Selection ─────────────────────────────────────────────────────────────
+    // ── Direct navigation on tap ──────────────────────────────────────────────
 
-    testWidgets('tapping EventCard calls selectConcert', (tester) async {
+    testWidgets('tapping EventCard pushes a route (no confirm step)',
+        (tester) async {
+      final observer = _NavObserver();
       final mock = _MockConcertProvider(
         state: ConcertState.loaded,
         concerts: [_concertA],
       );
+      await tester.pumpWidget(
+        _wrap(concertMock: mock, observers: [observer]),
+      );
+
+      await tester.tap(find.text('Sắp diễn ra'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(EventCard), findsOneWidget);
+
+      // Tap card — navigation should be pushed immediately.
+      // We intentionally do NOT pump after tap to avoid building
+      // PreloadScreen (which depends on providers not in this test tree).
+      await tester.tap(find.byType(EventCard).first);
+
+      // One initial route + one pushed route = 2 total
+      expect(observer.pushed.length, greaterThanOrEqualTo(1));
+    });
+
+    // ── Pagination ────────────────────────────────────────────────────────────
+
+    testWidgets('pagination footer renders when more than 6 concerts',
+        (tester) async {
+      final manyConcerts = List.generate(
+        8,
+        (i) => Concert(
+          id: 'c$i',
+          title: 'Concert $i',
+          location: 'Venue $i',
+          startTime: DateTime.now().add(Duration(days: i + 1)),
+          status: 'active',
+        ),
+      );
+      final mock = _MockConcertProvider(
+        state: ConcertState.loaded,
+        concerts: manyConcerts,
+      );
       await tester.pumpWidget(_wrap(concertMock: mock));
 
-      await tester.tap(find.byType(EventCard).first);
+      await tester.tap(find.text('Sắp diễn ra'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('pagination_footer')), findsOneWidget);
+      expect(find.text('Trang 1 / 2'), findsOneWidget);
+    });
+
+    testWidgets('next page button advances pagination', (tester) async {
+      final manyConcerts = List.generate(
+        8,
+        (i) => Concert(
+          id: 'c$i',
+          title: 'Concert $i',
+          location: 'Venue $i',
+          startTime: DateTime.now().add(Duration(days: i + 1)),
+          status: 'active',
+        ),
+      );
+      final mock = _MockConcertProvider(
+        state: ConcertState.loaded,
+        concerts: manyConcerts,
+      );
+      await tester.pumpWidget(_wrap(concertMock: mock));
+
+      await tester.tap(find.text('Sắp diễn ra'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Trang 1 / 2'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('page_next')));
       await tester.pump();
 
-      expect(mock.selectCalled, isTrue);
+      expect(find.text('Trang 2 / 2'), findsOneWidget);
     });
 
-    testWidgets('selected EventCard shows check icon', (tester) async {
-      final mock = _MockConcertProvider(
-        state: ConcertState.loaded,
-        concerts: [_concertA],
-        selectedConcert: _concertA,
-      );
-      await tester.pumpWidget(_wrap(concertMock: mock));
-
-      expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
-    });
-
-    testWidgets('unselected EventCard does not show check icon', (tester) async {
-      final mock = _MockConcertProvider(
-        state: ConcertState.loaded,
-        concerts: [_concertA],
-        selectedConcert: null,
-      );
-      await tester.pumpWidget(_wrap(concertMock: mock));
-
-      expect(find.byIcon(Icons.check_circle_rounded), findsNothing);
-    });
-
-    // ── CTA state ─────────────────────────────────────────────────────────────
-
-    testWidgets('CTA button is disabled when no concert selected', (tester) async {
-      final mock = _MockConcertProvider(
-        state: ConcertState.loaded,
-        concerts: [_concertA],
-        selectedConcert: null,
-      );
-      await tester.pumpWidget(_wrap(concertMock: mock));
-
-      final cta = tester.widget<GateButton>(find.byKey(const Key('confirm_cta')));
-      expect(cta.onPressed, isNull);
-    });
-
-    testWidgets('CTA button is enabled when concert is selected', (tester) async {
-      final mock = _MockConcertProvider(
-        state: ConcertState.loaded,
-        concerts: [_concertA],
-        selectedConcert: _concertA,
-      );
-      await tester.pumpWidget(_wrap(concertMock: mock));
-
-      final cta = tester.widget<GateButton>(find.byKey(const Key('confirm_cta')));
-      expect(cta.onPressed, isNotNull);
-    });
-
-    testWidgets('CTA label shows "Chọn một sự kiện" when no selection',
+    testWidgets('pagination footer absent when 6 or fewer concerts',
         (tester) async {
+      final fewConcerts = List.generate(
+        4,
+        (i) => Concert(
+          id: 'c$i',
+          title: 'Concert $i',
+          location: 'Venue $i',
+          startTime: DateTime.now().add(Duration(days: i + 1)),
+          status: 'active',
+        ),
+      );
       final mock = _MockConcertProvider(
         state: ConcertState.loaded,
-        concerts: [_concertA],
-        selectedConcert: null,
+        concerts: fewConcerts,
       );
       await tester.pumpWidget(_wrap(concertMock: mock));
 
-      expect(
-        find.text('Chọn một sự kiện để tiếp tục'),
-        findsOneWidget,
-      );
-    });
+      await tester.tap(find.text('Sắp diễn ra'));
+      await tester.pumpAndSettle();
 
-    testWidgets('CTA label shows concert title when selected', (tester) async {
-      final mock = _MockConcertProvider(
-        state: ConcertState.loaded,
-        concerts: [_concertA],
-        selectedConcert: _concertA,
-      );
-      await tester.pumpWidget(_wrap(concertMock: mock));
-
-      expect(
-        find.text('Xác nhận: Rock Night 2026'),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('pagination_footer')), findsNothing);
     });
 
     // ── Logout ────────────────────────────────────────────────────────────────

@@ -1,14 +1,15 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/theme.dart';
 import '../../../shared/widgets/widgets.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../concerts/models/concert.dart';
-import '../models/preload_step.dart';
 import '../providers/checkin_provider.dart';
 import '../services/checkin_service.dart';
+import '../widgets/dashboard_stat_card.dart';
 import 'scanner_screen.dart';
 
 class PreloadScreen extends StatefulWidget {
@@ -19,19 +20,13 @@ class PreloadScreen extends StatefulWidget {
   State<PreloadScreen> createState() => _PreloadScreenState();
 }
 
-class _PreloadScreenState extends State<PreloadScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _syncIconController;
-
+class _PreloadScreenState extends State<PreloadScreen> {
   CheckinProvider? _checkinProvider;
   bool _didPersistPreparedConcertSnapshot = false;
 
   @override
   void initState() {
     super.initState();
-    _syncIconController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CheckinProvider>().preloadData(widget.concert.id);
     });
@@ -51,13 +46,9 @@ class _PreloadScreenState extends State<PreloadScreen> with SingleTickerProvider
   void _onProviderChanged() {
     if (!mounted || _checkinProvider == null) return;
     final state = _checkinProvider!.state;
+
     if (state == PreloadState.loading) {
       _didPersistPreparedConcertSnapshot = false;
-      if (!_syncIconController.isAnimating) {
-        _syncIconController.repeat();
-      }
-    } else {
-      _syncIconController.stop();
     }
 
     if (state == PreloadState.loaded && !_didPersistPreparedConcertSnapshot) {
@@ -95,9 +86,10 @@ class _PreloadScreenState extends State<PreloadScreen> with SingleTickerProvider
   @override
   void dispose() {
     _checkinProvider?.removeListener(_onProviderChanged);
-    _syncIconController.dispose();
     super.dispose();
   }
+
+  // ── Error message sanitisation (unchanged) ─────────────────────────────────
 
   String _sanitizeErrorMessage(String raw) {
     final lower = raw.toLowerCase();
@@ -114,381 +106,216 @@ class _PreloadScreenState extends State<PreloadScreen> with SingleTickerProvider
     if (lower.contains('404') || lower.contains('not found')) {
       return 'Không tìm thấy dữ liệu sự kiện trên máy chủ.';
     }
-    return 'Lỗi tải dữ liệu: $raw';
+    return 'Không thể tải dữ liệu. Vui lòng thử lại.';
   }
 
-  // ── Step State Resolvers ───────────────────────────────────────────────────
+  // ── UI builders ────────────────────────────────────────────────────────────
 
-  /// Trả về trạng thái của từng bước: 'pending' (chờ), 'active' (đang chạy),
-  /// 'success' (thành công), 'error' (thất bại).
-  String _getStepStatus(PreloadStep targetStep, CheckinProvider provider) {
-    final currentStep = provider.currentStep;
-    final isError = provider.state == PreloadState.error;
+  /// Hero header: large concert name + location + optional date.
+  Widget _buildHeroHeader() {
+    final concert = widget.concert;
+    final startLocal = concert.startTime?.toLocal();
 
-    if (isError && currentStep == targetStep) {
-      return 'error';
-    }
-
-    if (currentStep == PreloadStep.completed) {
-      return 'success';
-    }
-
-    if (currentStep.index > targetStep.index) {
-      return 'success';
-    }
-
-    if (currentStep == targetStep && provider.state == PreloadState.loading) {
-      return 'active';
-    }
-
-    return 'pending';
-  }
-
-  // ── UI Widget Builders ─────────────────────────────────────────────────────
-
-  Widget _buildEventCard() {
-    return GateCard(
-      elevated: true,
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: GateColors.primary.withValues(alpha: 0.12),
-              borderRadius: GateRadii.sm,
-            ),
-            child: const Icon(
-              Icons.confirmation_number_outlined,
-              color: GateColors.primary,
-              size: 24,
-            ),
-          ),
-          GateSpacing.horizontal(GateSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.concert.title,
-                  style: GateTypography.heading2,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                 GateSpacing.vertical(GateSpacing.xs),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 14,
-                      color: GateColors.onSurfaceSub,
-                    ),
-                    GateSpacing.horizontal(GateSpacing.xs),
-                    Expanded(
-                      child: Text(
-                        widget.concert.location,
-                        style: GateTypography.bodyMedium.copyWith(
-                          color: GateColors.onSurfaceSub,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStepItem(
-    String title,
-    String subtitle,
-    PreloadStep targetStep,
-    CheckinProvider provider,
-  ) {
-    final status = _getStepStatus(targetStep, provider);
-
-    Widget iconWidget;
-    Color titleColor;
-    Color subtitleColor;
-
-    switch (status) {
-      case 'success':
-        iconWidget = const Icon(
-          Icons.check_circle_outline_rounded,
-          color: GateColors.networkOnline,
-          size: 24,
-        );
-        titleColor = GateColors.onBackground;
-        subtitleColor = GateColors.onSurfaceSub;
-        break;
-      case 'active':
-        iconWidget = RotationTransition(
-          turns: _syncIconController,
-          child: const Icon(
-            Icons.sync_rounded,
-            color: GateColors.primary,
-            size: 24,
-          ),
-        );
-        titleColor = GateColors.primary;
-        subtitleColor = GateColors.primary.withValues(alpha: 0.7);
-        break;
-      case 'error':
-        iconWidget = Icon(
-          Icons.error_outline_rounded,
-          color: GateColors.scanInvalid.primary,
-          size: 24,
-        );
-        titleColor = GateColors.scanInvalid.primary;
-        subtitleColor = GateColors.scanInvalid.primary.withValues(alpha: 0.8);
-        break;
-      case 'pending':
-      default:
-        iconWidget = const Icon(
-          Icons.radio_button_unchecked_rounded,
-          color: GateColors.border,
-          size: 24,
-        );
-        titleColor = GateColors.onSurfaceSub;
-        subtitleColor = GateColors.onSurfaceSub.withValues(alpha: 0.6);
-        break;
+    String? dateLabel;
+    if (startLocal != null) {
+      final d = startLocal.day.toString().padLeft(2, '0');
+      final m = startLocal.month.toString().padLeft(2, '0');
+      final y = startLocal.year;
+      final hh = startLocal.hour.toString().padLeft(2, '0');
+      final mm = startLocal.minute.toString().padLeft(2, '0');
+      dateLabel = '$d/$m/$y · $hh:$mm';
     }
 
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: GateSpacing.sm),
-      child: Row(
+      padding: EdgeInsets.fromLTRB(
+        GateSpacing.md,
+        GateSpacing.lg,
+        GateSpacing.md,
+        GateSpacing.sm,
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: iconWidget,
+          // Eyebrow label
+          Text(
+            'SỰ KIỆN ĐANG MỞ',
+            style: GateTypography.caption.copyWith(
+              color: GateColors.primary,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
           ),
-          GateSpacing.horizontal(GateSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GateTypography.bodyLarge.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: titleColor,
+          GateSpacing.vertical(GateSpacing.xs),
+          // Concert title
+          Text(
+            concert.title,
+            style: GateTypography.heading1,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          GateSpacing.vertical(GateSpacing.xs),
+          // Location row
+          Row(
+            children: [
+              const Icon(
+                Icons.location_on_outlined,
+                size: 14,
+                color: GateColors.onSurfaceSub,
+              ),
+              GateSpacing.horizontal(GateSpacing.xs),
+              Expanded(
+                child: Text(
+                  concert.location,
+                  style: GateTypography.bodyMedium.copyWith(
+                    color: GateColors.onSurfaceSub,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
+              ),
+            ],
+          ),
+          // Date row (optional)
+          if (dateLabel != null) ...[
+            GateSpacing.vertical(2),
+            Row(
+              children: [
+                const Icon(
+                  Icons.schedule_outlined,
+                  size: 14,
+                  color: GateColors.onSurfaceSub,
+                ),
+                GateSpacing.horizontal(GateSpacing.xs),
                 Text(
-                  subtitle,
+                  dateLabel,
                   style: GateTypography.caption.copyWith(
-                    color: subtitleColor,
+                    color: GateColors.onSurfaceSub,
                   ),
                 ),
               ],
             ),
-          ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildProgressCard(CheckinProvider provider) {
-    return GateCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'TIẾN TRÌNH ĐỒNG BỘ',
-            style: GateTypography.label.copyWith(
-              color: GateColors.onSurfaceSub,
-              letterSpacing: 1.0,
-            ),
-          ),
-          GateSpacing.vertical(GateSpacing.sm),
-          const Divider(),
-          GateSpacing.vertical(GateSpacing.sm),
-          _buildStepItem(
-            'Kết nối máy chủ',
-            'Xác thực và kiểm tra trạng thái API',
-            PreloadStep.connecting,
-            provider,
-          ),
-          _buildStepItem(
-            'Tải dữ liệu danh sách vé',
-            'Tải dữ liệu từ cổng soát vé trung tâm',
-            PreloadStep.downloading,
-            provider,
-          ),
-          _buildStepItem(
-            'Thiết lập lưu trữ offline',
-            'Lưu danh sách vé cục bộ an toàn trên máy',
-            PreloadStep.saving,
-            provider,
-          ),
-        ],
+  /// One-line connectivity-aware status indicator.
+  Widget _buildStatusLine(CheckinProvider provider) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: GateSpacing.md),
+      child: StreamBuilder<List<ConnectivityResult>>(
+        stream: Connectivity().onConnectivityChanged,
+        builder: (context, snapshot) {
+          final isOnline = snapshot.hasData
+              ? snapshot.data!.any((r) => r != ConnectivityResult.none)
+              : true; // assume online until proven otherwise
+
+          return _StatusLine(
+            providerState: provider.state,
+            isOnline: isOnline,
+          );
+        },
       ),
     );
   }
 
-  Widget _buildSummaryCard(CheckinProvider provider) {
-    if (provider.state != PreloadState.loaded) return const SizedBox.shrink();
+  /// 3-card dashboard grid — only rendered when data is loaded.
+  Widget _buildDashboardGrid(CheckinProvider provider) {
+    // Fixed height placeholder keeps button position stable during load.
+    const double gridHeight = 110;
 
-    final timeString = DateTime.now().toLocal().toString().substring(11, 16);
+    if (provider.state != PreloadState.loaded) {
+      return const SizedBox(height: gridHeight);
+    }
 
-    return GateCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'DỮ LIỆU ĐỒNG BỘ CỤC BỘ',
-                style: GateTypography.label.copyWith(
-                  color: GateColors.onSurfaceSub,
-                  letterSpacing: 1.0,
-                ),
-              ),
-              Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: GateSpacing.sm,
-                  vertical: GateSpacing.xs / 2,
-                ),
-                decoration: BoxDecoration(
-                  color: GateColors.networkOnline.withValues(alpha: 0.15),
-                  borderRadius: GateRadii.sm,
-                  border: Border.all(
-                    color: GateColors.networkOnline.withValues(alpha: 0.4),
-                  ),
-                ),
-                child: Text(
-                  'SẴN SÀNG',
-                  style: GateTypography.caption.copyWith(
-                    color: GateColors.networkOnline,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          GateSpacing.vertical(GateSpacing.sm),
-          const Divider(),
-          GateSpacing.vertical(GateSpacing.md),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatItem(
-                  'Vé Thường',
-                  '${provider.ticketCount}',
-                  Icons.local_activity_outlined,
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 40,
-                color: GateColors.border,
-              ),
-              Expanded(
-                child: _buildStatItem(
-                  'Khách VIP',
-                  '${provider.vipCount}',
-                  Icons.star_outline_rounded,
-                ),
-              ),
-            ],
-          ),
-          GateSpacing.vertical(GateSpacing.md),
-          Center(
-            child: Text(
-              'Cập nhật offline hoàn tất lúc $timeString. Thiết bị sẽ tự động chuyển sang chế độ offline nếu mất kết nối.',
-              textAlign: TextAlign.center,
-              style: GateTypography.caption.copyWith(
-                color: GateColors.onSurfaceSub,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+    final checkedIn = provider.checkedInCount;
+    final total = provider.totalEntries;
+    final scannedLabel = '$checkedIn / $total';
 
-  Widget _buildStatItem(String label, String value, IconData icon) {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+    return SizedBox(
+      height: gridHeight,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: GateSpacing.md),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Icon(icon, size: 18, color: GateColors.primary),
-            GateSpacing.horizontal(GateSpacing.xs),
-            Text(
-              label,
-              style: GateTypography.bodyMedium.copyWith(
-                color: GateColors.onSurfaceSub,
+            DashboardStatCard(
+              key: const Key('stat_scanned'),
+              label: 'Đã quét',
+              value: scannedLabel,
+              icon: Icons.qr_code_scanner_rounded,
+              accentColor: GateColors.primary,
+            ),
+            GateSpacing.horizontal(GateSpacing.sm),
+            DashboardStatCard(
+              key: const Key('stat_ticket_remaining'),
+              label: 'Vé còn lại',
+              value: '${provider.ticketRemaining}',
+              icon: Icons.local_activity_outlined,
+              accentColor: GateColors.networkOnline,
+            ),
+            GateSpacing.horizontal(GateSpacing.sm),
+            DashboardStatCard(
+              key: const Key('stat_vip_remaining'),
+              label: 'VIP chưa vào',
+              value: '${provider.vipRemaining}',
+              icon: Icons.star_outline_rounded,
+              accentColor: GateColors.syncPending,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Compact error card — only shown in error state.
+  Widget _buildErrorCard(CheckinProvider provider) {
+    if (provider.state != PreloadState.error) return const SizedBox.shrink();
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        GateSpacing.md,
+        GateSpacing.md,
+        GateSpacing.md,
+        0,
+      ),
+      child: GateCard(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: GateColors.scanInvalid.primary,
+              size: 20,
+            ),
+            GateSpacing.horizontal(GateSpacing.sm),
+            Expanded(
+              child: Text(
+                _sanitizeErrorMessage(provider.errorMessage),
+                style: GateTypography.bodyMedium.copyWith(
+                  color: GateColors.onSurface,
+                ),
               ),
             ),
           ],
         ),
-        GateSpacing.vertical(GateSpacing.xs),
-        Text(
-          value,
-          style: GateTypography.counter.copyWith(
-            fontSize: 24,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildErrorExplanation(CheckinProvider provider) {
-    if (provider.state != PreloadState.error) return const SizedBox.shrink();
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: GateSpacing.xs),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.info_outline_rounded,
-                size: 16,
-                color: GateColors.scanInvalid.primary,
-              ),
-              GateSpacing.horizontal(GateSpacing.xs),
-              Text(
-                'Lý do thất bại:',
-                style: GateTypography.label.copyWith(
-                  color: GateColors.scanInvalid.primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          GateSpacing.vertical(GateSpacing.xs),
-          Text(
-            _sanitizeErrorMessage(provider.errorMessage),
-            style: GateTypography.bodyMedium.copyWith(
-              color: GateColors.onSurface,
-            ),
-          ),
-        ],
       ),
     );
   }
 
+  /// Bottom action bar.
   Widget _buildBottomBar(CheckinProvider provider) {
     final state = provider.state;
-    final isLoading = state == PreloadState.loading || state == PreloadState.initial;
+    final isLoading =
+        state == PreloadState.loading || state == PreloadState.initial;
     final isError = state == PreloadState.error;
 
     Widget button;
-
     if (isLoading) {
       button = GateButton(
         key: const Key('preload_action_btn'),
-        label: 'Đang tải dữ liệu...',
+        label: 'Đang chuẩn bị...',
         onPressed: null,
         isLoading: true,
         fullWidth: true,
@@ -503,8 +330,8 @@ class _PreloadScreenState extends State<PreloadScreen> with SingleTickerProvider
       );
     } else {
       button = GateButton(
-        key: const Key('preload_action_btn'),
-        label: 'Vào màn hình quét vé',
+        key: const Key('start_scan_btn'),
+        label: 'BẮT ĐẦU QUÉT MÃ QR',
         icon: Icons.qr_code_scanner_rounded,
         onPressed: () async {
           await _persistPreparedConcertSnapshot();
@@ -536,30 +363,96 @@ class _PreloadScreenState extends State<PreloadScreen> with SingleTickerProvider
     );
   }
 
-  // ── Build Method ───────────────────────────────────────────────────────────
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final checkinProvider = context.watch<CheckinProvider>();
+    final provider = context.watch<CheckinProvider>();
 
     return GateScaffold(
-      title: 'Đồng bộ check-in',
-      bottomBar: _buildBottomBar(checkinProvider),
-      body: SingleChildScrollView(
-        physics: const ClampingScrollPhysics(),
-        padding: EdgeInsets.all(GateSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildEventCard(),
-            GateSpacing.vertical(GateSpacing.md),
-            _buildProgressCard(checkinProvider),
-            GateSpacing.vertical(GateSpacing.md),
-            _buildSummaryCard(checkinProvider),
-            _buildErrorExplanation(checkinProvider),
-          ],
-        ),
+      title: 'Check-in',
+      bottomBar: _buildBottomBar(provider),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildHeroHeader(),
+          GateSpacing.vertical(GateSpacing.sm),
+          _buildStatusLine(provider),
+          GateSpacing.vertical(GateSpacing.md),
+          _buildDashboardGrid(provider),
+          _buildErrorCard(provider),
+          const Spacer(),
+        ],
       ),
     );
+  }
+}
+
+// ── Status line widget ──────────────────────────────────────────────────────
+
+/// Inline widget that renders one coloured dot + status text.
+/// Kept as a separate widget so its [providerState] and [isOnline] inputs are
+/// explicit and easy to test.
+class _StatusLine extends StatelessWidget {
+  const _StatusLine({
+    required this.providerState,
+    required this.isOnline,
+  });
+
+  final PreloadState providerState;
+  final bool isOnline;
+
+  @override
+  Widget build(BuildContext context) {
+    final (dotColor, text) = _resolve();
+
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: dotColor,
+            shape: BoxShape.circle,
+          ),
+        ),
+        GateSpacing.horizontal(GateSpacing.sm),
+        Expanded(
+          child: Text(
+            text,
+            style: GateTypography.bodyMedium.copyWith(
+              color: GateColors.onSurfaceSub,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  (Color, String) _resolve() {
+    switch (providerState) {
+      case PreloadState.initial:
+      case PreloadState.loading:
+        return (
+          GateColors.onSurfaceSub,
+          'Đang chuẩn bị dữ liệu check-in...',
+        );
+      case PreloadState.error:
+        return (
+          GateColors.scanInvalid.primary,
+          'Trạng thái: Chưa sẵn sàng',
+        );
+      case PreloadState.loaded:
+        if (isOnline) {
+          return (
+            GateColors.networkOnline,
+            'Trạng thái: Đã đồng bộ (Ngoại tuyến sẵn sàng)',
+          );
+        }
+        return (
+          GateColors.networkOffline,
+          'Trạng thái: Mất kết nối (Đang chạy chế độ offline)',
+        );
+    }
   }
 }

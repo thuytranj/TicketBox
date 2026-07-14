@@ -23,7 +23,6 @@ void main() {
       await tester.pumpWidget(
         _wrap(EventCard(
           concert: _concert,
-          isSelected: false,
           onTap: () {},
         )),
       );
@@ -34,7 +33,6 @@ void main() {
       await tester.pumpWidget(
         _wrap(EventCard(
           concert: _concert,
-          isSelected: false,
           onTap: () {},
         )),
       );
@@ -45,61 +43,41 @@ void main() {
       await tester.pumpWidget(
         _wrap(EventCard(
           concert: _concert,
-          isSelected: false,
           onTap: () {},
         )),
       );
       expect(find.byIcon(Icons.location_on_outlined), findsOneWidget);
     });
 
-    // ── Unselected state ──────────────────────────────────────────────────────
-
-    testWidgets('unselected: no check icon visible', (tester) async {
+    testWidgets('renders chevron right icon for navigation affordance',
+        (tester) async {
       await tester.pumpWidget(
         _wrap(EventCard(
           concert: _concert,
-          isSelected: false,
+          onTap: () {},
+        )),
+      );
+      expect(find.byIcon(Icons.chevron_right_rounded), findsOneWidget);
+    });
+
+    // ── No selection state ────────────────────────────────────────────────────
+
+    testWidgets('does not show check_circle icon (no selection state)',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(EventCard(
+          concert: _concert,
           onTap: () {},
         )),
       );
       expect(find.byIcon(Icons.check_circle_rounded), findsNothing);
     });
 
-    // ── Selected state ────────────────────────────────────────────────────────
-
-    testWidgets('selected: shows check icon', (tester) async {
+    testWidgets('border is always 1dp (no selection-based width)',
+        (tester) async {
       await tester.pumpWidget(
         _wrap(EventCard(
           concert: _concert,
-          isSelected: true,
-          onTap: () {},
-        )),
-      );
-      expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
-    });
-
-    testWidgets('selected: primary border color applied', (tester) async {
-      await tester.pumpWidget(
-        _wrap(EventCard(
-          concert: _concert,
-          isSelected: true,
-          onTap: () {},
-        )),
-      );
-      // AnimatedContainer with the border is present when selected
-      final container = tester.widget<AnimatedContainer>(
-        find.byType(AnimatedContainer).first,
-      );
-      final decoration = container.decoration as BoxDecoration;
-      final border = decoration.border as Border;
-      expect(border.top.width, 2.0);
-    });
-
-    testWidgets('unselected: 1dp border', (tester) async {
-      await tester.pumpWidget(
-        _wrap(EventCard(
-          concert: _concert,
-          isSelected: false,
           onTap: () {},
         )),
       );
@@ -111,6 +89,27 @@ void main() {
       expect(border.top.width, 1.0);
     });
 
+    // ── Description removed ───────────────────────────────────────────────────
+
+    testWidgets('description text is NOT rendered in card', (tester) async {
+      final concertWithDesc = Concert(
+        id: 'c-desc',
+        title: 'Desc Concert',
+        location: 'Venue',
+        description: 'A very detailed description that should not appear',
+      );
+      await tester.pumpWidget(
+        _wrap(EventCard(
+          concert: concertWithDesc,
+          onTap: () {},
+        )),
+      );
+      expect(
+        find.text('A very detailed description that should not appear'),
+        findsNothing,
+      );
+    });
+
     // ── Interaction ───────────────────────────────────────────────────────────
 
     testWidgets('onTap fires when card is tapped', (tester) async {
@@ -118,23 +117,20 @@ void main() {
       await tester.pumpWidget(
         _wrap(EventCard(
           concert: _concert,
-          isSelected: false,
           onTap: () => tapped = true,
         )),
       );
 
-      // Tap on the GestureDetector/InkWell area
       await tester.tap(find.text('Summer Vibes Festival'));
       await tester.pump();
 
       expect(tapped, isTrue);
     });
 
-    testWidgets('has minimum height of 80dp', (tester) async {
+    testWidgets('has minimum height of 72dp', (tester) async {
       await tester.pumpWidget(
         _wrap(EventCard(
           concert: _concert,
-          isSelected: false,
           onTap: () {},
         )),
       );
@@ -142,7 +138,62 @@ void main() {
       final container = tester.widget<AnimatedContainer>(
         find.byType(AnimatedContainer).first,
       );
-      expect(container.constraints?.minHeight, 80);
+      expect(container.constraints?.minHeight, 72);
+    });
+
+    // ── Status chip ───────────────────────────────────────────────────────────
+
+    testWidgets('shows Hôm nay chip for today concert', (tester) async {
+      final todayConcert = Concert(
+        id: 'today-1',
+        title: 'Today Event',
+        location: 'Venue',
+        startTime: DateTime.now(),
+        status: 'active',
+      );
+      await tester.pumpWidget(
+        _wrap(EventCard(
+          concert: todayConcert,
+          onTap: () {},
+        )),
+      );
+      expect(find.text('Hôm nay'), findsOneWidget);
+    });
+
+    testWidgets('shows Đã diễn ra chip for completed concert', (tester) async {
+      final pastConcert = Concert(
+        id: 'past-1',
+        title: 'Past Event',
+        location: 'Venue',
+        startTime: DateTime.now().subtract(const Duration(days: 2)),
+        endTime: DateTime.now().subtract(const Duration(days: 1)),
+        status: 'completed',
+      );
+      await tester.pumpWidget(
+        _wrap(EventCard(
+          concert: pastConcert,
+          onTap: () {},
+        )),
+      );
+      expect(find.text('Đã diễn ra'), findsOneWidget);
+    });
+
+    testWidgets('no status chip for future concert', (tester) async {
+      final futureConcert = Concert(
+        id: 'future-1',
+        title: 'Future Event',
+        location: 'Venue',
+        startTime: DateTime.now().add(const Duration(days: 5)),
+        status: 'active',
+      );
+      await tester.pumpWidget(
+        _wrap(EventCard(
+          concert: futureConcert,
+          onTap: () {},
+        )),
+      );
+      expect(find.text('Hôm nay'), findsNothing);
+      expect(find.text('Đã diễn ra'), findsNothing);
     });
 
     // ── Long text ─────────────────────────────────────────────────────────────
@@ -157,7 +208,6 @@ void main() {
       await tester.pumpWidget(
         _wrap(EventCard(
           concert: longTitleConcert,
-          isSelected: false,
           onTap: () {},
         )),
       );

@@ -768,6 +768,44 @@ class CheckinService {
     );
     return Sqflite.firstIntValue(result) ?? 0;
   }
+
+  /// Returns the total number of entries that have been scanned (checked in)
+  /// for [concertId], across all entry types.
+  Future<int> getTotalCheckedIn(String concertId) async {
+    final db = await _dbHelper.database;
+    final result = await db.rawQuery(
+      "SELECT COUNT(*) FROM checkin_entries "
+      "WHERE concert_id = ? AND checkin_status = 'checked_in'",
+      [concertId],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// Returns the number of standard tickets that have NOT yet been scanned
+  /// for [concertId].
+  Future<int> getTicketRemaining(String concertId) async {
+    final db = await _dbHelper.database;
+    final result = await db.rawQuery(
+      "SELECT COUNT(*) FROM checkin_entries "
+      "WHERE concert_id = ? AND entry_type = 'ticket' "
+      "AND checkin_status != 'checked_in'",
+      [concertId],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// Returns the number of VIP guests that have NOT yet been scanned
+  /// for [concertId].
+  Future<int> getVipRemaining(String concertId) async {
+    final db = await _dbHelper.database;
+    final result = await db.rawQuery(
+      "SELECT COUNT(*) FROM checkin_entries "
+      "WHERE concert_id = ? AND entry_type = 'vip_guest' "
+      "AND checkin_status != 'checked_in'",
+      [concertId],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
 }
 
 class SyncInProgressException implements Exception {

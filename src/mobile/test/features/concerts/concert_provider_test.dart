@@ -7,9 +7,8 @@ import 'package:ticketbox_mobile/core/network/dio_client.dart';
 
 // ── Stub layer ────────────────────────────────────────────────────────────────
 //
-// We subclass ConcertService and override getConcerts() so the provider under
-// test never touches the network.  The DioClient/storage passed to super() are
-// never used because getConcerts is fully overridden.
+// We subclass ConcertService and override getAllConcerts() so the provider
+// under test never touches the network.
 
 class _FakeStorage extends FlutterSecureStorage {
   const _FakeStorage();
@@ -24,7 +23,7 @@ class _StubConcertService extends ConcertService {
   _StubConcertService(this.response) : super(_FakeDioClient());
 
   @override
-  Future<List<Concert>> getConcerts() async => response;
+  Future<List<Concert>> getAllConcerts() async => response;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -34,57 +33,74 @@ Concert _c(String id) => Concert(id: id, title: 'C$id', location: 'Venue');
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 void main() {
-  group('ConcertProvider — stale selection invalidation', () {
-    test('selected concert cleared when absent from refreshed list', () async {
+  group('ConcertProvider — fetchConcerts', () {
+    test('state transitions: loading → loaded on success', () async {
+      final stub = _StubConcertService([_c('A'), _c('B')]);
+      final provider = ConcertProvider(stub);
+
+      expect(provider.state, ConcertState.initial);
+      final future = provider.fetchConcerts();
+      expect(provider.state, ConcertState.loading);
+      await future;
+      expect(provider.state, ConcertState.loaded);
+    });
+
+    test('concerts populated after successful fetch', () async {
       final stub = _StubConcertService([_c('A'), _c('B')]);
       final provider = ConcertProvider(stub);
 
       await provider.fetchConcerts();
-      provider.selectConcert(_c('A'));
-      expect(provider.selectedConcert?.id, 'A');
 
-      stub.response = [_c('B'), _c('C')]; // A removed
-      await provider.fetchConcerts();
-
-      expect(provider.selectedConcert, isNull,
-          reason: 'A was removed — selection should be cleared');
+      expect(provider.concerts.map((c) => c.id).toList(), ['A', 'B']);
     });
 
-    test('selected concert kept when still present in refreshed list', () async {
-      final stub = _StubConcertService([_c('A'), _c('B')]);
+    test('state transitions: loading → error on failure', () async {
+      final stub = _StubConcertService([]);
       final provider = ConcertProvider(stub);
 
-      await provider.fetchConcerts();
-      provider.selectConcert(_c('B'));
+      // Override to throw
+      final throwingStub = _ThrowingConcertService();
+      final failProvider = ConcertProvider(throwingStub);
 
-      stub.response = [_c('B'), _c('C')];
-      await provider.fetchConcerts();
+      await failProvider.fetchConcerts();
 
-      expect(provider.selectedConcert?.id, 'B');
+      expect(failProvider.state, ConcertState.error);
+      expect(failProvider.errorMessage, isNotEmpty);
     });
 
-    test('no selection before fetch — selectedConcert stays null', () async {
+    test('only 2 notifyListeners calls during fetch (loading + loaded)',
+        () async {
       final stub = _StubConcertService([_c('A')]);
       final provider = ConcertProvider(stub);
-      await provider.fetchConcerts();
-      expect(provider.selectedConcert, isNull);
-    });
-
-    test('only 2 notifyListeners calls during fetch (loading + loaded)', () async {
-      final stub = _StubConcertService([_c('A')]);
-      final provider = ConcertProvider(stub);
-      provider.selectConcert(_c('OLD'));
-
-      stub.response = [_c('NEW')]; // OLD gone
 
       int count = 0;
       provider.addListener(() => count++);
       await provider.fetchConcerts();
 
       // loading notify + loaded notify = 2
-      // selection clear is NOT a separate notifyListeners
       expect(count, 2);
-      expect(provider.selectedConcert, isNull);
+    });
+
+    test('refreshing replaces concerts list', () async {
+      final stub = _StubConcertService([_c('A'), _c('B')]);
+      final provider = ConcertProvider(stub);
+
+      await provider.fetchConcerts();
+      expect(provider.concerts.length, 2);
+
+      stub.response = [_c('C')];
+      await provider.fetchConcerts();
+      expect(provider.concerts.length, 1);
+      expect(provider.concerts.first.id, 'C');
     });
   });
+}
+
+class _ThrowingConcertService extends ConcertService {
+  _ThrowingConcertService() : super(_FakeDioClient());
+
+  @override
+  Future<List<Concert>> getAllConcerts() async {
+    throw Exception('Simulated network error');
+  }
 }
