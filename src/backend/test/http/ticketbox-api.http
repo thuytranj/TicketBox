@@ -1,0 +1,72 @@
+@baseUrl = http://localhost:3000/api/v1
+# Thay thế giá trị token này sau khi bạn gọi API đăng nhập
+@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIwMTllZWUyMC02YzViLTdjOWQtOWEwZC03ZTJlMmVkMmVlN2UiLCJlbWFpbCI6InRyaW5oaG9taW5odGhhbmcyazVAZ21haWwuY29tIiwicm9sZSI6ImF1ZGllbmNlIiwiaWF0IjoxNzgyNDgyNDg1LCJleHAiOjE3ODI0ODMzODV9.gHeYEITe_vn432NQeSuDdzd5UCXM3563JCIlTjaodjY
+@concertId = fbcc9845-fe9b-40d2-8854-d335a6b37418
+@ticketTypeId = 026645a7-4ab8-4929-97a3-c174d1711e8d
+
+###
+# HƯỚNG DẪN:
+# 1. Cài đặt extension "REST Client" trong VS Code (ID: humao.rest-client)
+# 2. Thay thế các biến @authToken, @concertId, @ticketTypeId ở trên bằng UUID thật từ database
+# 3. Chạy lệnh Redis Warm-up trước khi test: SET concert:YOUR_CONCERT_UUID_HERE:ticket_type:YOUR_TICKET_TYPE_UUID_HERE:stock 10
+# 4. Nhấn "Send Request" ở trên mỗi block để gọi API
+
+### KỊCH BẢN 1: TẠO ĐƠN HÀNG THÀNH CÔNG (CẦN GẮN ĐÚNG TOKEN & UUID)
+POST {{baseUrl}}/bookings
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+Idempotency-Key: test-key-0027
+X-Captcha-Token: test-dummy-token
+
+{
+  "concertId": "{{concertId}}",
+  "items": [
+    {
+      "ticketTypeId": "{{ticketTypeId}}",
+      "quantity": 2
+    }
+  ]
+}
+
+### KỊCH BẢN 2: TEST IDEMPOTENCY (CHỐNG TRỪ TIỀN 2 LẦN)
+# Nhấn Send Request liên tục vào block này, nó sẽ trả về kết quả Cached của Kịch bản 1
+POST {{baseUrl}}/bookings
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+Idempotency-Key: test-key-003
+X-Captcha-Token: test-dummy-token
+
+{
+  "concertId": "{{concertId}}",
+  "items": [
+    {
+      "ticketTypeId": "{{ticketTypeId}}",
+      "quantity": 2
+    }
+  ]
+}
+
+### KỊCH BẢN 3: TEST VƯỢT QUÁ SỐ LƯỢNG MUA (PER-USER LIMIT)
+# Đổi Idempotency-Key mới, và yêu cầu mua 5 vé (giả sử giới hạn là 4)
+POST {{baseUrl}}/bookings
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+Idempotency-Key: test-key-002
+X-Captcha-Token: test-dummy-token
+
+{
+  "concertId": "{{concertId}}",
+  "items": [
+    {
+      "ticketTypeId": "{{ticketTypeId}}",
+      "quantity": 5
+    }
+  ]
+}
+
+### KỊCH BẢN 4: GỌI API LẤY THÔNG TIN ĐƠN HÀNG (Polling status)
+# (Cần thay đổi ORDER_ID bằng id đơn hàng trong CSDL)
+GET {{baseUrl}}/bookings/ORDER_ID
+Authorization: Bearer {{authToken}}
+
+###

@@ -506,6 +506,80 @@ erDiagram
     USERS ||--o{ NOTIFICATION_LOGS : "receives"
     CONCERTS ||--o| CONCERT_AI_BIOS : "has AI bio draft"
 ```
+### Ranh giới giao dịch (Transaction Boundary)
+
+Sơ đồ ERD cho thấy cấu trúc bảng tĩnh. Phần này giải thích rõ **ranh giới giao dịch** (Transaction Boundary) — tức là lệnh nào chạy trong cùng 1 DB Transaction, lệnh nào chạy độc lập, và cơ chế rollback bù trừ (Compensation) khi thất bại.
+
+#### Luồng đặt vé (Order → Ticket tạo ban đầu)
+
+```
+[API Request - POST /bookings]
+   │
+   ├─ [BookingService.createBooking]  ← Không có DB Transaction ở đây
+   │     1. Validate TicketType (SELECT - READ only)
+   │     2. Chạy Redis Lua Script (Atomic - DECRBY inventory, INCRBY user_limit)
+   │        ─── Nếu thất bại → rollback Redis ngược lại (release-ticket.lua)
+   │     3. Tạo orderId (UUID v7)
+   │     4. Gửi message vào RabbitMQ queue "booking_tasks" (ASYNC)
+   │     5. Gửi message vào queue "booking_delay_queue" với TTL=10min (ASYNC)
+   │     6. Trả về 202 Accepted ngay lập tức (không chờ DB)
+   │
+   └─ [BookingConsumer.onMessage]  ← Chạy async trong Worker
+         ┌──────────────────────────────────────────────┐
+         │  DB TRANSACTION (dataSource.transaction())   │
+         │  ─────────────────────────────────────────── │
+         │  • INSERT INTO orders (id, userId, ...)      │
+         │  • INSERT INTO tickets (id, orderId, ...)    │
+         │    (một row/ticket theo quantity)             │
+         │  ─────────────────────────────────────────── │
+         │  Nếu lỗi → cả 2 INSERT tự động ROLLBACK      │
+         └──────────────────────────────────────────────┘
+         → Trạng thái: order.status = 'pending', ticket.status = 'reserved'
+```
+
+#### Luồng thanh toán thành công (Payment → Order PAID → Ticket ACTIVE)
+
+```
+[Webhook IPN từ MoMo/VNPAY]
+   │
+   ├─ [PaymentService.processSuccessfulPayment]
+   │     1. SET Redis "payment:webhook:{orderId}" NX  ← Idempotency Lock
+   │        ─── Nếu key đã tồn tại → SKIP (webhook trùng lặp)
+   │     2. UPDATE payments SET status='success' WHERE orderId=... ← Giao dịch độc lập
+   │     3. UPDATE orders SET status='paid' WHERE id=...          ← Giao dịch độc lập
+   │     4. Gửi event vào RabbitMQ queue "payment_success"        ← ASYNC
+   │
+   │  ⚠️  Ranh giới giao dịch: Bước 2 và 3 KHÔNG nằm trong cùng 1 DB Transaction.
+   │     Thứ tự được đảm bảo theo tuần tự, nhưng nếu server crash giữa chừng,
+   │     job Cron sẽ quét và tự đồng bộ lại.
+   │
+   └─ [PaymentConsumer / Worker xử lý "payment_success"]
+         • UPDATE tickets SET status='active' WHERE orderId=...
+         → Trạng thái cuối: order='paid', ticket='active' (vé có thể dùng QR check-in)
+```
+
+#### Luồng hết hạn đơn hàng (Order EXPIRED - Compensation)
+
+```
+[RabbitMQ DLX - Sau 10 phút TTL]
+   │
+   └─ [BookingDlxConsumer.onExpired]
+         1. Tìm order theo idempotencyKey
+         2. Kiểm tra: Nếu order đã PAID hoặc không còn PENDING → SKIP
+         3. UPDATE orders SET status='expired'
+         4. Chạy release-ticket.lua (INCRBY inventory trên Redis) ← Compensation
+         → Vé "reserved" đã giải phóng, inventory về lại pool
+```
+
+#### Tóm tắt phạm vi giao dịch
+
+| Thao tác | Loại giao dịch | Rollback khi lỗi |
+|---|---|---|
+| Đặt chỗ inventory Redis (Lua) | Atomic Redis (single-threaded) | release-ticket.lua ngay lập tức |
+| Tạo Order + Tickets trong DB | **DB Transaction** (TypeORM DataSource) | Tự động ROLLBACK toàn bộ |
+| Cập nhật Payment + Order PAID | Tuần tự, không Transaction | Idempotency Key chống xử lý 2 lần |
+| Activate Tickets sau thanh toán | Worker async | Retry tự động qua RabbitMQ |
+| Hết hạn & hoàn trả inventory | DLX Queue (10 phút TTL) | Lua script compensation |
 
 ### Đặc tả chi tiết các bảng cơ sở dữ liệu
 
@@ -1442,22 +1516,6 @@ Trường `svg_stage_map` lưu trữ nội dung SVG sơ đồ sân khấu trực
    - Dữ liệu trả về sẽ tự động ghi đè giá trị `availableQuantity` từ Redis vào trước khi phản hồi cho client.
    - **Ưu điểm:** Đảm bảo hiển thị tồn kho chính xác 100% cho client mà hoàn toàn không cần gọi vào PostgreSQL hay invalidate cache tĩnh của hạng vé mỗi khi có giao dịch mua vé thành công.
 
-```mermaid
-flowchart TD
-    classDef req fill:#e8eaf6,stroke:#1a237e,stroke-width:2px,color:#1a237e;
-    classDef redis fill:#fff8e1,stroke:#ff6f00,stroke-width:2px,color:#824a00;
-    classDef db fill:#e0f2f1,stroke:#004d40,stroke-width:2px,color:#004d40;
-    classDef decision fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#4a148c;
-    classDef success fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px,color:#1b5e20;
-
-    Req(["GET /concerts/:id/stagemap"]):::req --> RedisGet["Redis GET cache:concerts:{id}:stagemap"]:::redis
-    RedisGet --> Check{"Cache hit?"}:::decision
-    Check -->|"Hit"| ReturnCached["Trả SVG trực tiếp (< 1ms)"]:::success
-    Check -->|"Miss"| QueryPG["Query PostgreSQL: SELECT svg_stage_map FROM concerts WHERE id = ..."]:::db
-    QueryPG --> SetRedis["Redis SET cache:concerts:{id}:stagemap (TTL 30 phút)"]:::redis
-    SetRedis --> ReturnFresh["Trả SVG cho client"]:::success
-```
-
 ---
 
 ## Chiến lược xử lý High Concurrency
@@ -2029,6 +2087,52 @@ sequenceDiagram
 | Mở rộng sau          | ✅ Thêm FCM worker vào exchange | —                                     |
 
 **Chốt:** **In-app (DB) + Email (Resend API)**. Bỏ qua FCM để giảm tải cấu hình hạ tầng. Kiến trúc Topic Exchange cho phép thêm FCM worker sau mà không sửa code hiện tại.
+
+---
+
+### ADR-05: Chọn Cơ chế Lưu trữ Dữ liệu Chính — SQL (PostgreSQL) vs NoSQL (MongoDB/Cassandra)
+
+| Tiêu chí | SQL (PostgreSQL) | NoSQL (MongoDB/Cassandra) |
+| --- | --- | --- |
+| **Hỗ trợ giao dịch ACID** | ✅ Rất mạnh, cần thiết cho đặt vé/thanh toán | ❌ Hạn chế hoặc phức tạp khi thực hiện đa bảng |
+| **Ràng buộc quan hệ dữ liệu** | ✅ Chặt chẽ (Foreign Keys, Constraints) | ❌ Không hỗ trợ ở tầng DB (phải tự handle ở App) |
+| **Khả năng chịu tải ghi cao** | ⚠️ Bị giới hạn bởi I/O và Connection Pool | ✅ Rất cao (write-heavy tốt) |
+| **Công cụ hỗ trợ (ORM/Migration)**| ✅ TypeORM tích hợp native, migration tốt | ⚠️ Mongoose/Prisma hỗ trợ trung bình |
+| **Phù hợp nghiệp vụ** | ✅ Hệ thống thương mại điện tử/bán vé phức tạp | ❌ Thích hợp cho log, feed, hoặc chat |
+
+**Chốt:** **SQL (PostgreSQL)**. Hệ thống TicketBox yêu cầu tính nhất quán cực kỳ cao (ACID) cho luồng mua vé và thanh toán, các thực thể liên kết chặt chẽ (Users, Concerts, TicketTypes, Orders, Tickets, Payments). Để giải quyết bài toán tải ghi cao khi mở bán vé, hệ thống kết hợp **Redis Lua Script** (để giữ chỗ nguyên tử trong bộ nhớ) và **RabbitMQ** (để đệm và ghi xuống DB tuần tự) thay vì đánh đổi tính toàn vẹn dữ liệu để chuyển sang NoSQL.
+
+---
+
+### ADR-06: Chọn Cơ chế Xác thực — JWT (Stateless) vs Session-based (Stateful)
+
+| Tiêu chí | JWT (Stateless) | Session-based (Stateful) |
+| --- | --- | --- |
+| **Khả năng mở rộng (Scale-out)** | ✅ Dễ dàng, không cần đồng bộ session | ⚠️ Cần Redis store/Sticky sessions |
+| **Xử lý tại API Gateway** | ✅ Gateway tự giải mã JWT và check rate limit | ❌ Bắt buộc Gateway gọi DB/Auth Service check session |
+| **Thu hồi quyền lập tức** | ⚠️ Phức tạp (cần blacklist/refresh token) | ✅ Lập tức khi xóa session trong DB/Redis |
+| **Chi phí network/DB** | ✅ Zero DB lookup cho việc xác thực | ❌ Mỗi request đều cần truy vấn kiểm tra session |
+| **CPU protection** | ✅ Gateway decode & chặn token fake sớm | ❌ NestJS phải gánh luồng kiểm tra session phức tạp |
+
+**Chốt:** **JWT (Stateless)**. JWT cho phép OpenResty Gateway tự kiểm tra chữ ký và trích xuất `userId` để áp dụng Rate Limit (Layer 2) ngay tại rìa hệ thống mà không cần gửi request vào NestJS hay truy vấn database/Redis kiểm tra session. Đối với bài toán thu hồi quyền (logout), hệ thống sử dụng Refresh Token kết hợp cơ chế hết hạn ngắn của Access Token để tối giản hóa rủi ro stale token.
+
+---
+
+### ADR-07: Giải quyết tranh chấp dữ liệu soát vé ngoại tuyến (Offline Check-in Conflict) — First Timestamp Wins vs Last Write Wins
+
+| Tiêu chí | First Timestamp Wins (Lần quét đầu thắng) | Last Write Wins (Lần ghi cuối thắng) |
+| --- | --- | --- |
+| **Tính hợp lệ của vé** | ✅ Bảo vệ người vào cổng sớm nhất (người mua thật) | ❌ Chấp nhận lượt quét cuối (người gian lận có thể ghi đè) |
+| **Độ tin cậy bảo mật** | ✅ Kháng lỗi fraud/duplicate vé cực tốt | ❌ Dễ bị khai thác tấn công double-spend |
+| **Cơ chế xử lý** | ⚠️ So sánh `scanTime` lúc đồng bộ, override nếu quét sớm hơn | ✅ Ghi đè tự động không cần kiểm tra thời gian quét |
+| **Tính minh bạch** | ✅ Đánh dấu rõ ràng scan nào là `VALID` / `INVALIDATED_FRAUD` | ❌ Mất lịch sử của lần quét hợp lệ đầu tiên |
+
+**Chốt:** **First Timestamp Wins (Lần quét đầu thắng)**. Khi các thiết bị di động soát vé offline đồng bộ dữ liệu check-in về server qua API `/checkin/sync` (bất đồng bộ qua RabbitMQ `checkin.sync.queue`), hệ thống áp dụng thuật toán so sánh thời gian quét thực tế (`scanTime` trên thiết bị):
+1. Nếu vé chưa được check-in -> Đánh dấu `CHECKED_IN` và log là `VALID`.
+2. Nếu vé đã được check-in trước đó (ở thiết bị khác hoặc online):
+   - Nếu `scanTime` của log mới **sớm hơn** `checkedInAt` hiện tại -> Thực hiện **ghi đè** thời gian check-in của vé sang log mới, chuyển trạng thái log cũ thành `INVALIDATED_FRAUD` (gian lận/vé giả vào sau), và lưu log mới là `VALID`.
+   - Nếu `scanTime` của log mới **muộn hơn hoặc bằng** `checkedInAt` hiện tại -> Giữ nguyên trạng thái vé, lưu log mới dưới trạng thái `INVALIDATED_FRAUD` (lượt quét trễ).
+Luồng xử lý này đảm bảo công bằng cho khán giả sở hữu vé hợp lệ vào cổng đầu tiên.
 
 ---
 

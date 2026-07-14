@@ -45,6 +45,9 @@ describe('ConcertList', () => {
       </MemoryRouter>
     );
 
+    // Switch to active tab first
+    fireEvent.click(await screen.findByRole('button', { name: /Sắp diễn ra & Đang bán/i }));
+
     expect(screen.getByText('Đang tải sự kiện...')).toBeInTheDocument();
     await waitFor(() => {
       expect(apiClient.request).toHaveBeenCalledWith('/concerts?status=active&page=1&limit=9');
@@ -70,6 +73,9 @@ describe('ConcertList', () => {
         <ConcertList />
       </MemoryRouter>
     );
+
+    // Switch to active tab first
+    fireEvent.click(await screen.findByRole('button', { name: /Sắp diễn ra & Đang bán/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/Trang/i)).toBeInTheDocument();
@@ -137,5 +143,49 @@ describe('ConcertList', () => {
       expect(link).toBeInTheDocument();
       expect(link.getAttribute('href')).toBe('/concerts/c1');
     });
+  });
+
+  it('filters list client-side when selecting a city from the dropdown', async () => {
+    vi.spyOn(apiClient, 'request').mockResolvedValue({
+      concerts: [
+        {
+          id: 'c1',
+          title: 'Hanoi Concert',
+          description: 'Show in Hanoi',
+          location: 'Sân vận động Mỹ Đình, Hà Nội',
+          posterUrl: '',
+          startTime: '2026-07-20T19:30:00Z',
+          tags: ['pop'],
+          status: 'active',
+        },
+        {
+          id: 'c2',
+          title: 'HCM Concert',
+          description: 'Show in Saigon',
+          location: 'Nhà thi đấu Phú Thọ, TP. Hồ Chí Minh',
+          posterUrl: '',
+          startTime: '2026-07-25T19:30:00Z',
+          tags: ['pop'],
+          status: 'active',
+        },
+      ]
+    });
+
+    render(
+      <MemoryRouter>
+        <ConcertList />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Hanoi Concert')).toBeInTheDocument();
+      expect(screen.getByText('HCM Concert')).toBeInTheDocument();
+    });
+
+    const locationSelect = screen.getByLabelText(/Lọc theo địa điểm/i);
+    fireEvent.change(locationSelect, { target: { value: 'Hà Nội' } });
+
+    expect(screen.getByText('Hanoi Concert')).toBeInTheDocument();
+    expect(screen.queryByText('HCM Concert')).not.toBeInTheDocument();
   });
 });

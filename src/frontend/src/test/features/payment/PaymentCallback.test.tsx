@@ -286,4 +286,94 @@ describe('PaymentCallback', () => {
       expect(screen.getByText('Gateway checksum mismatch')).toBeInTheDocument();
     });
   });
+
+  it('submits VNPAY redirect parameters and processes successful payment', async () => {
+    const search = '?vnp_Amount=200000000&vnp_ResponseCode=00&vnp_TxnRef=order_123&vnp_SecureHash=hash_123';
+    window.history.pushState({}, '', `/payment-callback/order_123${search}`);
+
+    const requestSpy = vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
+      if (String(url).startsWith('/payments/vnpay/webhook?')) {
+        return { message: 'received' };
+      }
+
+      if (url === '/bookings/order_123') {
+        return {
+          id: 'order_123',
+          status: 'paid',
+          totalAmount: 2000000,
+          tickets: [],
+        };
+      }
+
+      if (url === '/payments/order_123') {
+        return {
+          orderId: 'order_123',
+          orderStatus: 'paid',
+          payments: [],
+        };
+      }
+
+      return {};
+    });
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/payment-callback/order_123',
+            search,
+          },
+        ]}
+      >
+        <Routes>
+          <Route path="/payment-callback/:orderId" element={<PaymentCallback />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Payment Successful!/i)).toBeInTheDocument();
+    });
+
+    expect(requestSpy).toHaveBeenCalledWith(
+      `/payments/vnpay/webhook${search}`,
+      { method: 'POST' },
+    );
+  });
+
+  it('renders VNPAY cancelled state and supports query param extraction without path orderId', async () => {
+    const search = '?vnp_Amount=200000000&vnp_ResponseCode=24&vnp_TxnRef=order_123&vnp_SecureHash=hash_123';
+    window.history.pushState({}, '', `/payment/callback/vnpay${search}`);
+
+    vi.spyOn(apiClient, 'request').mockImplementation(async (url) => {
+      if (String(url).startsWith('/payments/vnpay/webhook?')) {
+        return { message: 'received' };
+      }
+
+      return {
+        id: 'order_123',
+        status: 'pending',
+        totalAmount: 2000000,
+      };
+    });
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/payment/callback/vnpay',
+            search,
+          },
+        ]}
+      >
+        <Routes>
+          <Route path="/payment/callback/vnpay" element={<PaymentCallback />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Thanh toán đã bị hủy/i)).toBeInTheDocument();
+    });
+  });
 });

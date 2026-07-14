@@ -65,6 +65,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
           </button>
 
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginLeft: 'auto' }}>
+            <NotificationsPanel />
             <Link to="/" className="btn btn-outline">
               Xem trang khách
             </Link>
@@ -72,7 +73,6 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
               <LogOut size={17} />
               Đăng xuất
             </button>
-            <NotificationsPanel />
           </div>
         </header>
 

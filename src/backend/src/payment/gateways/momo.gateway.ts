@@ -147,10 +147,13 @@ export class MomoGatewayService implements IPaymentGateway {
       signature: receivedSignature,
     } = payload;
 
+    const effectiveAccessKey = accessKey || this.accessKey;
+    const effectiveExtraData = extraData ?? '';
+
     const rawSignature = [
-      `accessKey=${accessKey}`,
+      `accessKey=${effectiveAccessKey}`,
       `amount=${amount}`,
-      `extraData=${extraData}`,
+      `extraData=${effectiveExtraData}`,
       `message=${message}`,
       `orderId=${orderId}`,
       `orderInfo=${orderInfo}`,

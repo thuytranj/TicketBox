@@ -32,6 +32,21 @@ import { AdminDashboard } from './features/admin/AdminDashboard';
 import { AdminConcerts } from './features/admin/AdminConcerts';
 import { NotificationsPanel } from './features/notifications/NotificationsPanel';
 
+const BrandLogo: React.FC<{ size?: number }> = ({ size = 26 }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" width={size} height={size} style={{ verticalAlign: 'middle', borderRadius: '6px', overflow: 'hidden' }}>
+    <defs>
+      <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#ff2d55"/>
+        <stop offset="100%" stopColor="#863bff"/>
+      </linearGradient>
+    </defs>
+    <rect x="10" y="10" width="80" height="80" rx="22" fill="url(#logoGrad)"/>
+    <path d="M35 48V25c0-2 1.5-3.5 3.5-3.5h23c2 0 3.5 1.5 3.5 3.5v23c-3 0-5 2-5 5s2 5 5 5v12c0 2-1.5 3.5-3.5 3.5h-23c-2 0-3.5-1.5-3.5-3.5v-12c3 0 5-2 5-5s-2-5-5-5z" fill="#ffffff"/>
+    <circle cx="50" cy="35" r="4.5" fill="url(#logoGrad)"/>
+    <line x1="43" y1="53" x2="57" y2="53" stroke="url(#logoGrad)" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="3 3"/>
+  </svg>
+);
+
 const NavigationHeader: React.FC = () => {
   const { user, logout } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -41,7 +56,7 @@ const NavigationHeader: React.FC = () => {
       <header className="site-header">
         <div className="site-header-inner">
           <Link to="/" className="brand-link">
-            <span className="brand-mark">TB</span>
+            <BrandLogo />
             <span>TicketBox</span>
           </Link>
 
@@ -548,6 +563,8 @@ const AppContent: React.FC = () => (
     <Route path="/bookings/processing/:orderId" element={<ProtectedRoute><PublicLayout><BookingProcess /></PublicLayout></ProtectedRoute>} />
     <Route path="/checkout/:orderId" element={<ProtectedRoute><PublicLayout><CheckoutPage /></PublicLayout></ProtectedRoute>} />
     <Route path="/payment-callback/:orderId" element={<ProtectedRoute><PublicLayout><PaymentCallback /></PublicLayout></ProtectedRoute>} />
+    <Route path="/payment/callback/momo" element={<ProtectedRoute><PublicLayout><PaymentCallback /></PublicLayout></ProtectedRoute>} />
+    <Route path="/payment/callback/vnpay" element={<ProtectedRoute><PublicLayout><PaymentCallback /></PublicLayout></ProtectedRoute>} />
     <Route path="/my-bookings" element={<ProtectedRoute><PublicLayout><MyBookings /></PublicLayout></ProtectedRoute>} />
 
     <Route path="/admin" element={<AdminRoute><AdminLayout><AdminDashboard /></AdminLayout></AdminRoute>} />
