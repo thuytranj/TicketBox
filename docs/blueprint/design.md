@@ -506,6 +506,80 @@ erDiagram
     USERS ||--o{ NOTIFICATION_LOGS : "receives"
     CONCERTS ||--o| CONCERT_AI_BIOS : "has AI bio draft"
 ```
+### Ranh giới giao dịch (Transaction Boundary)
+
+Sơ đồ ERD cho thấy cấu trúc bảng tĩnh. Phần này giải thích rõ **ranh giới giao dịch** (Transaction Boundary) — tức là lệnh nào chạy trong cùng 1 DB Transaction, lệnh nào chạy độc lập, và cơ chế rollback bù trừ (Compensation) khi thất bại.
+
+#### Luồng đặt vé (Order → Ticket tạo ban đầu)
+
+```
+[API Request - POST /bookings]
+   │
+   ├─ [BookingService.createBooking]  ← Không có DB Transaction ở đây
+   │     1. Validate TicketType (SELECT - READ only)
+   │     2. Chạy Redis Lua Script (Atomic - DECRBY inventory, INCRBY user_limit)
+   │        ─── Nếu thất bại → rollback Redis ngược lại (release-ticket.lua)
+   │     3. Tạo orderId (UUID v7)
+   │     4. Gửi message vào RabbitMQ queue "booking_tasks" (ASYNC)
+   │     5. Gửi message vào queue "booking_delay_queue" với TTL=10min (ASYNC)
+   │     6. Trả về 202 Accepted ngay lập tức (không chờ DB)
+   │
+   └─ [BookingConsumer.onMessage]  ← Chạy async trong Worker
+         ┌──────────────────────────────────────────────┐
+         │  DB TRANSACTION (dataSource.transaction())   │
+         │  ─────────────────────────────────────────── │
+         │  • INSERT INTO orders (id, userId, ...)      │
+         │  • INSERT INTO tickets (id, orderId, ...)    │
+         │    (một row/ticket theo quantity)             │
+         │  ─────────────────────────────────────────── │
+         │  Nếu lỗi → cả 2 INSERT tự động ROLLBACK      │
+         └──────────────────────────────────────────────┘
+         → Trạng thái: order.status = 'pending', ticket.status = 'reserved'
+```
+
+#### Luồng thanh toán thành công (Payment → Order PAID → Ticket ACTIVE)
+
+```
+[Webhook IPN từ MoMo/VNPAY]
+   │
+   ├─ [PaymentService.processSuccessfulPayment]
+   │     1. SET Redis "payment:webhook:{orderId}" NX  ← Idempotency Lock
+   │        ─── Nếu key đã tồn tại → SKIP (webhook trùng lặp)
+   │     2. UPDATE payments SET status='success' WHERE orderId=... ← Giao dịch độc lập
+   │     3. UPDATE orders SET status='paid' WHERE id=...          ← Giao dịch độc lập
+   │     4. Gửi event vào RabbitMQ queue "payment_success"        ← ASYNC
+   │
+   │  ⚠️  Ranh giới giao dịch: Bước 2 và 3 KHÔNG nằm trong cùng 1 DB Transaction.
+   │     Thứ tự được đảm bảo theo tuần tự, nhưng nếu server crash giữa chừng,
+   │     job Cron sẽ quét và tự đồng bộ lại.
+   │
+   └─ [PaymentConsumer / Worker xử lý "payment_success"]
+         • UPDATE tickets SET status='active' WHERE orderId=...
+         → Trạng thái cuối: order='paid', ticket='active' (vé có thể dùng QR check-in)
+```
+
+#### Luồng hết hạn đơn hàng (Order EXPIRED - Compensation)
+
+```
+[RabbitMQ DLX - Sau 10 phút TTL]
+   │
+   └─ [BookingDlxConsumer.onExpired]
+         1. Tìm order theo idempotencyKey
+         2. Kiểm tra: Nếu order đã PAID hoặc không còn PENDING → SKIP
+         3. UPDATE orders SET status='expired'
+         4. Chạy release-ticket.lua (INCRBY inventory trên Redis) ← Compensation
+         → Vé "reserved" đã giải phóng, inventory về lại pool
+```
+
+#### Tóm tắt phạm vi giao dịch
+
+| Thao tác | Loại giao dịch | Rollback khi lỗi |
+|---|---|---|
+| Đặt chỗ inventory Redis (Lua) | Atomic Redis (single-threaded) | release-ticket.lua ngay lập tức |
+| Tạo Order + Tickets trong DB | **DB Transaction** (TypeORM DataSource) | Tự động ROLLBACK toàn bộ |
+| Cập nhật Payment + Order PAID | Tuần tự, không Transaction | Idempotency Key chống xử lý 2 lần |
+| Activate Tickets sau thanh toán | Worker async | Retry tự động qua RabbitMQ |
+| Hết hạn & hoàn trả inventory | DLX Queue (10 phút TTL) | Lua script compensation |
 
 ### Đặc tả chi tiết các bảng cơ sở dữ liệu
 
