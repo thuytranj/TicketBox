@@ -1312,7 +1312,10 @@ sequenceDiagram
     end
 ```
 
-**Hành vi khi sập toàn bộ cổng:** Khi cả hai Circuit Breaker đều `OPEN`, hệ thống kích hoạt chế độ bảo trì luồng mua vé. Mọi yêu cầu tạo đơn hàng mới (`POST /bookings`) và yêu cầu thanh toán (`POST /payments`) đều bị chặn với lỗi `HTTP 503 Service Unavailable`. Các API đọc thông tin như `GET /concerts/:id` và `GET /stagemap` vẫn hoạt động bình thường qua Redis Cache để khán giả xem thông tin sự kiện và sơ đồ ghế.
+**Hành vi khi sập toàn bộ cổng:** Khi cả hai Circuit Breaker đều `OPEN`, hệ thống áp dụng chiến lược **Frontend-driven failover**:
+- Frontend gọi `GET /payments/circuit-breaker/status` định kỳ để kiểm tra trạng thái mạch.
+- Nếu cả hai cổng đều `OPEN`, Frontend tự động disable nút thanh toán, hiển thị thông báo bảo trì. Backend vẫn cho phép `POST /bookings` (giữ chỗ Redis), nhưng các endpoint tạo giao dịch thanh toán (`POST /payments/momo`, `POST /payments/vnpay`) sẽ nhận lỗi `503` từ Opossum. Các API đọc thông tin như `GET /concerts/:id` và `GET /stagemap` vẫn hoạt động bình thường qua Redis Cache.
+
 
 ---
 
@@ -1742,10 +1745,15 @@ sequenceDiagram
 
 ### Concert Reminder Scheduler
 
-- **Cron:** `@Cron('*/5 * * * *')` — quét mỗi 5 phút.
+> **Lưu ý triển khai:** Cả `ConcertReminderScheduler` (gửi reminder) lẫn `handleConcertCompletion` (chuyển trạng thái `completed`) đều nằm trong **Notification Module** (`src/notification/concert-reminder.scheduler.ts`) thay vì Concert Module, vì chúng chia sẻ cùng context RabbitMQ/Redis của Worker Background.
+
+- **Cron Reminder:** `@Cron('*/5 * * * *')` — quét mỗi 5 phút.
 - **Query:** `SELECT * FROM concerts WHERE start_time BETWEEN NOW() + INTERVAL '23 hours 55 minutes' AND NOW() + INTERVAL '24 hours 5 minutes' AND reminder_sent = false`
 - **Hành động:** Lấy danh sách user có vé `paid` → publish message → cập nhật `reminder_sent = true`.
 - **Giới hạn:** Chỉ gửi đúng 1 lần. Không gửi lại khi concert đổi giờ (ngoài phạm vi đồ án).
+- **Distributed Lock:** Sử dụng khóa `{concert-reminder}:lock` (TTL 60s) trên Redis để đảm bảo chỉ 1 instance chạy tại một thời điểm.
+
+- **Cron Concert Completion:** `@Cron('*/15 * * * *')` — quét mỗi 15 phút, tìm concert `active` có `end_time < NOW()`, chuyển sang `completed` và xóa toàn bộ cache liên quan. Sử dụng khóa `{concert-completion}:lock` (TTL 60s).
 
 ### Email (Resend Service)
 
@@ -1753,6 +1761,19 @@ sequenceDiagram
 - **Gửi Email:** Thực hiện qua API gửi email của Resend, gửi trực tiếp tới email của khách hàng.
 - **E-ticket Email:** Chứa thông tin concert + chi tiết vé + **QR code nhúng inline** dưới dạng ảnh đính kèm (CID attachment).
 - **Chuyển production:** Sử dụng domain riêng đã cấu hình DNS trên Resend.
+
+### Queue trực tiếp (Direct Queues) — OTP và VIP Email
+
+Ngoài luồng Topic Exchange, hệ thống còn duy trì hai queue độc lập xử lý trực tiếp (không qua exchange):
+
+| Queue | Mục đích | Worker |
+|---|---|---|
+| `notification.email.otp` | Gửi email OTP xác minh tài khoản và reset mật khẩu | Background Worker |
+| `notification.email.vip` | Gửi email mời VIP kèm QR code định danh | Background Worker |
+
+**VIP Email Queue — Dead Letter Exchange (DLX) và Retry:**
+- Queue `notification.email.vip` được gắn DLX `notification.email.vip.dlx` (type: direct).
+- Khi gửi email VIP thất bại (lỗi Resend API), hệ thống thực hiện **Exponential Backoff Retry tối đa 3 lần** (1s → 2s → 4s). Nếu vẫn thất bại sau 3 lần, message được chuyển tới queue `notification.email.vip.failed` để lưu lại phục vụ điều tra sau.
 
 ### Bảng `notification_logs` (BIGSERIAL PK)
 
