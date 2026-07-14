@@ -7,6 +7,27 @@ import { Plus, Edit2, Trash2, CalendarDays, MapPin, Tag, Music2, ChevronRight, L
 import heroPreview from '../../assets/hero.png';
 import { useSocket } from '../socket/SocketContext';
 
+const formatTicketDate = (dateStr?: string | null) => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  const hours = d.getHours().toString().padStart(2, '0');
+  const minutes = d.getMinutes().toString().padStart(2, '0');
+  const day = d.getDate().toString().padStart(2, '0');
+  const month = (d.getMonth() + 1).toString().padStart(2, '0');
+  const year = d.getFullYear();
+  return `${hours}:${minutes} ${day}/${month}/${year}`;
+};
+
+const formatInputWithCommas = (value: number | string) => {
+  if (value === undefined || value === null) return '';
+  const isNegative = value.toString().startsWith('-');
+  const numStr = value.toString().replace(/\D/g, '');
+  if (!numStr) return isNegative ? '-' : '';
+  const formatted = Number(numStr).toLocaleString('en-US');
+  return isNegative ? `-${formatted}` : formatted;
+};
+
 interface TicketType {
   id: string;
   name: 'GA' | 'SVIP' | 'VIP' | 'CAT1' | 'CAT2';
@@ -27,6 +48,8 @@ interface FormTicketType {
   totalQuantity: number;
   availableQuantity: number;
   maxPerUser: number;
+  saleStartTime?: string | null;
+  saleEndTime?: string | null;
 }
 
 interface ConcertAIBio {
@@ -109,6 +132,7 @@ export const AdminConcerts: React.FC = () => {
   const [importingVip, setImportingVip] = useState(false);
   const [vipImportJob, setVipImportJob] = useState<VipGuestImport | null>(null);
   const [vipGuestsList, setVipGuestsList] = useState<VipGuest[]>([]);
+  const [showErrorTable, setShowErrorTable] = useState(false);
 
   // Ticket types management states (associated with currently edited concert)
   const [ticketTypes, setTicketTypes] = useState<FormTicketType[]>([]);
@@ -123,6 +147,10 @@ export const AdminConcerts: React.FC = () => {
   const [editTicketQty, setEditTicketQty] = useState(0);
   const [editTicketMaxUser, setEditTicketMaxUser] = useState(1);
   const [updatingTicketType, setUpdatingTicketType] = useState(false);
+  const [newTicketSaleStart, setNewTicketSaleStart] = useState('');
+  const [newTicketSaleEnd, setNewTicketSaleEnd] = useState('');
+  const [editTicketSaleStart, setEditTicketSaleStart] = useState('');
+  const [editTicketSaleEnd, setEditTicketSaleEnd] = useState('');
 
   // Custom Modal States
   const [confirmModal, setConfirmModal] = useState<{
@@ -552,6 +580,8 @@ export const AdminConcerts: React.FC = () => {
             price: type.price,
             totalQuantity: type.totalQuantity,
             maxPerUser: type.maxPerUser,
+            saleStartTime: type.saleStartTime || undefined,
+            saleEndTime: type.saleEndTime || undefined,
           })),
     };
 
@@ -708,6 +738,22 @@ export const AdminConcerts: React.FC = () => {
     }
   };
 
+  const handleDownloadErrorCsv = (job: VipGuestImport) => {
+    if (!job.errorLogs || job.errorLogs.length === 0) return;
+    const headers = 'Dòng,Email,Lý do lỗi\n';
+    const rows = job.errorLogs
+      .map((log) => `${log.row},"${log.email || ''}","${log.reason}"`)
+      .join('\n');
+    const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `import_errors_${job.id}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const getProgressPercentage = () => {
     if (!vipImportJob || !vipImportJob.totalRows || vipImportJob.totalRows === 0) return 0;
     return Math.min(100, Math.round(((vipImportJob.importedRows || 0) / vipImportJob.totalRows) * 100));
@@ -772,11 +818,15 @@ export const AdminConcerts: React.FC = () => {
       totalQuantity: newTicketQty,
       availableQuantity: newTicketQty,
       maxPerUser: newTicketMaxUser,
+      saleStartTime: newTicketSaleStart ? new Date(newTicketSaleStart).toISOString() : undefined,
+      saleEndTime: newTicketSaleEnd ? new Date(newTicketSaleEnd).toISOString() : undefined,
     };
 
     if (!editingConcertId) {
       setTicketTypes((current) => [...current, nextTicketType]);
       setSuccess('Đã thêm hạng vé vào concert mới.');
+      setNewTicketSaleStart('');
+      setNewTicketSaleEnd('');
       return;
     }
 
@@ -790,9 +840,13 @@ export const AdminConcerts: React.FC = () => {
           price: newTicketPrice,
           totalQuantity: newTicketQty,
           maxPerUser: newTicketMaxUser,
+          saleStartTime: newTicketSaleStart ? new Date(newTicketSaleStart).toISOString() : null,
+          saleEndTime: newTicketSaleEnd ? new Date(newTicketSaleEnd).toISOString() : null,
         }),
       });
       setSuccess('Đã thêm hạng vé.');
+      setNewTicketSaleStart('');
+      setNewTicketSaleEnd('');
       // Refresh ticket types list
       const ticketsRes = await apiClient.request<TicketType[]>(`/concerts/${editingConcertId}/ticket-types`);
       setTicketTypes(ticketsRes);
@@ -834,12 +888,26 @@ export const AdminConcerts: React.FC = () => {
     setEditTicketPrice(type.price);
     setEditTicketQty(type.totalQuantity);
     setEditTicketMaxUser(type.maxPerUser);
+
+    const toLocalDateTimeString = (dateStr?: string | Date | null) => {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      const offset = d.getTimezoneOffset() * 60000;
+      return new Date(d.getTime() - offset).toISOString().slice(0, 16);
+    };
+
+    setEditTicketSaleStart(toLocalDateTimeString(type.saleStartTime));
+    setEditTicketSaleEnd(toLocalDateTimeString(type.saleEndTime));
+
     setError('');
     setSuccess('');
   };
 
   const handleCancelEditTicketType = () => {
     setEditingTicketTypeId(null);
+    setEditTicketSaleStart('');
+    setEditTicketSaleEnd('');
     setError('');
   };
 
@@ -867,6 +935,8 @@ export const AdminConcerts: React.FC = () => {
       price: editTicketPrice,
       totalQuantity: editTicketQty,
       maxPerUser: editTicketMaxUser,
+      saleStartTime: editTicketSaleStart ? new Date(editTicketSaleStart).toISOString() : null,
+      saleEndTime: editTicketSaleEnd ? new Date(editTicketSaleEnd).toISOString() : null,
     };
 
     try {
@@ -1251,32 +1321,98 @@ export const AdminConcerts: React.FC = () => {
                   <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>Quản lý hạng vé</h3>
                   
                   {/* Add ticket type mini-form */}
-                  <div className="ticket-mini-form">
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label htmlFor="ticket-type-name" className="form-label">Hạng vé</label>
-                      <select id="ticket-type-name" className="form-control" value={newTicketName} onChange={(e: any) => setNewTicketName(e.target.value)}>
-                        <option value="GA">GA</option>
-                        <option value="SVIP">SVIP</option>
-                        <option value="VIP">VIP</option>
-                        <option value="CAT1">CAT1</option>
-                        <option value="CAT2">CAT2</option>
-                      </select>
+                  <div style={{ padding: '1.5rem', background: 'var(--surface-alt)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem' }}>
+                      
+                      {/* Cột 1: Thông tin cơ bản */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <h4 style={{ fontSize: '0.82rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.25rem', fontWeight: 700 }}>
+                          Thông tin cơ bản
+                        </h4>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label htmlFor="ticket-type-name" className="form-label">Hạng vé</label>
+                          <input
+                            id="ticket-type-name"
+                            type="text"
+                            className="form-control"
+                            placeholder="GA, SVIP, VIP..."
+                            value={newTicketName}
+                            onChange={(e) => setNewTicketName(e.target.value as TicketTypeName)}
+                          />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label htmlFor="ticket-type-price" className="form-label">Giá (VND)</label>
+                          <input
+                            id="ticket-type-price"
+                            type="text"
+                            className="form-control"
+                            placeholder="0"
+                            value={formatInputWithCommas(newTicketPrice)}
+                            onChange={(e) => {
+                              const isNeg = e.target.value.startsWith('-');
+                              const val = Number(e.target.value.replace(/\D/g, ''));
+                              setNewTicketPrice(isNeg ? -val : val);
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Cột 2: Số lượng & Giới hạn */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <h4 style={{ fontSize: '0.82rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.25rem', fontWeight: 700 }}>
+                          Số lượng & Giới hạn
+                        </h4>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label htmlFor="ticket-type-qty" className="form-label">Số lượng</label>
+                          <input id="ticket-type-qty" type="number" className="form-control" placeholder="0" value={newTicketQty || ''} onChange={(e) => setNewTicketQty(Number(e.target.value))} />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label htmlFor="ticket-type-max" className="form-label">Tối đa/người</label>
+                          <input id="ticket-type-max" type="number" className="form-control" placeholder="Tối đa" value={newTicketMaxUser || ''} onChange={(e) => setNewTicketMaxUser(Number(e.target.value))} />
+                        </div>
+                      </div>
+
+                      {/* Cột 3: Cấu hình Thời gian Bán vé */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <h4 style={{ fontSize: '0.82rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.25rem', fontWeight: 700 }}>
+                          Thời gian mở bán (Tùy chọn)
+                        </h4>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label htmlFor="ticket-type-start" className="form-label">Thời gian mở bán (Bắt đầu)</label>
+                          <input
+                            id="ticket-type-start"
+                            type="datetime-local"
+                            className="form-control"
+                            value={newTicketSaleStart}
+                            onChange={(e) => setNewTicketSaleStart(e.target.value)}
+                          />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label htmlFor="ticket-type-end" className="form-label">Thời gian kết thúc bán</label>
+                          <input
+                            id="ticket-type-end"
+                            type="datetime-local"
+                            className="form-control"
+                            value={newTicketSaleEnd}
+                            onChange={(e) => setNewTicketSaleEnd(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
                     </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label htmlFor="ticket-type-price" className="form-label">Giá (VND)</label>
-                      <input id="ticket-type-price" type="number" className="form-control" value={newTicketPrice} onChange={(e) => setNewTicketPrice(Number(e.target.value))} />
+
+                    {/* Hàng nút bấm thêm */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={handleAddTicketType}
+                        disabled={addingTicketType}
+                        style={{ padding: '8px 24px', display: 'inline-flex', alignItems: 'center', gap: '8px', height: '38px' }}
+                      >
+                        <Plus size={16} /> Thêm
+                      </button>
                     </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label htmlFor="ticket-type-qty" className="form-label">Số lượng</label>
-                      <input id="ticket-type-qty" type="number" className="form-control" value={newTicketQty} onChange={(e) => setNewTicketQty(Number(e.target.value))} />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label htmlFor="ticket-type-max" className="form-label">Tối đa/người</label>
-                      <input id="ticket-type-max" type="number" className="form-control" value={newTicketMaxUser} onChange={(e) => setNewTicketMaxUser(Number(e.target.value))} />
-                    </div>
-                    <button className="btn btn-primary" onClick={handleAddTicketType} disabled={addingTicketType}>
-                      Thêm
-                    </button>
                   </div>
 
                   {/* List of ticket types */}
@@ -1287,75 +1423,135 @@ export const AdminConcerts: React.FC = () => {
                       ticketTypes.map((type) => (
                         <div key={type.id || type.clientId} className="ticket-row">
                           {editingTicketTypeId === type.id ? (
-                            <div className="ticket-mini-form" style={{ flex: 1, marginBottom: 0 }}>
-                              <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label htmlFor="edit-ticket-name" className="form-label">Hạng vé đang sửa</label>
-                                <select
-                                  id="edit-ticket-name"
-                                  className="form-control"
-                                  value={editTicketName}
-                                  onChange={(e) => setEditTicketName(e.target.value as TicketTypeName)}
+                            <div style={{ flex: 1, padding: '1.5rem', background: 'var(--surface-alt)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem' }}>
+                                
+                                {/* Cột 1: Thông tin cơ bản đang sửa */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                  <h4 style={{ fontSize: '0.82rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.25rem', fontWeight: 700 }}>
+                                    Thông tin cơ bản
+                                  </h4>
+                                  <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label htmlFor="edit-ticket-name" className="form-label">Hạng vé đang sửa</label>
+                                    <input
+                                      id="edit-ticket-name"
+                                      type="text"
+                                      className="form-control"
+                                      placeholder="Tên hạng vé..."
+                                      value={editTicketName}
+                                      onChange={(e) => setEditTicketName(e.target.value as TicketTypeName)}
+                                    />
+                                  </div>
+                                  <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label htmlFor="edit-ticket-price" className="form-label">Giá hạng vé đang sửa</label>
+                                    <input
+                                      id="edit-ticket-price"
+                                      type="text"
+                                      className="form-control"
+                                      value={formatInputWithCommas(editTicketPrice)}
+                                      onChange={(e) => {
+                                        const isNeg = e.target.value.startsWith('-');
+                                        const val = Number(e.target.value.replace(/\D/g, ''));
+                                        setEditTicketPrice(isNeg ? -val : val);
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Cột 2: Số lượng & Giới hạn đang sửa */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                  <h4 style={{ fontSize: '0.82rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.25rem', fontWeight: 700 }}>
+                                    Số lượng & Giới hạn
+                                  </h4>
+                                  <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label htmlFor="edit-ticket-qty" className="form-label">Số lượng hạng vé đang sửa</label>
+                                    <input
+                                      id="edit-ticket-qty"
+                                      type="number"
+                                      className="form-control"
+                                      value={editTicketQty}
+                                      onChange={(e) => setEditTicketQty(Number(e.target.value))}
+                                    />
+                                  </div>
+                                  <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label htmlFor="edit-ticket-max" className="form-label">Tối đa mỗi người hạng vé đang sửa</label>
+                                    <input
+                                      id="edit-ticket-max"
+                                      type="number"
+                                      className="form-control"
+                                      value={editTicketMaxUser}
+                                      onChange={(e) => setEditTicketMaxUser(Number(e.target.value))}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Cột 3: Cấu hình Thời gian Bán vé đang sửa */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                  <h4 style={{ fontSize: '0.82rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.25rem', fontWeight: 700 }}>
+                                    Thời gian mở bán
+                                  </h4>
+                                  <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label htmlFor="edit-ticket-start" className="form-label">Thời gian mở bán đang sửa</label>
+                                    <input
+                                      id="edit-ticket-start"
+                                      type="datetime-local"
+                                      className="form-control"
+                                      value={editTicketSaleStart}
+                                      onChange={(e) => setEditTicketSaleStart(e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label htmlFor="edit-ticket-end" className="form-label">Thời gian kết thúc bán đang sửa</label>
+                                    <input
+                                      id="edit-ticket-end"
+                                      type="datetime-local"
+                                      className="form-control"
+                                      value={editTicketSaleEnd}
+                                      onChange={(e) => setEditTicketSaleEnd(e.target.value)}
+                                    />
+                                  </div>
+                                </div>
+
+                              </div>
+
+                              {/* Hàng nút bấm lưu/hủy */}
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+                                <button type="button" className="btn btn-outline" onClick={handleCancelEditTicketType} style={{ padding: '8px 20px', height: '38px' }}>
+                                  Hủy
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  onClick={handleUpdateTicketType}
+                                  disabled={updatingTicketType}
+                                  style={{ padding: '8px 20px', height: '38px' }}
                                 >
-                                  <option value="GA">GA</option>
-                                  <option value="SVIP">SVIP</option>
-                                  <option value="VIP">VIP</option>
-                                  <option value="CAT1">CAT1</option>
-                                  <option value="CAT2">CAT2</option>
-                                </select>
+                                  Lưu hạng vé
+                                </button>
                               </div>
-                              <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label htmlFor="edit-ticket-price" className="form-label">Giá hạng vé đang sửa</label>
-                                <input
-                                  id="edit-ticket-price"
-                                  type="number"
-                                  className="form-control"
-                                  value={editTicketPrice}
-                                  onChange={(e) => setEditTicketPrice(Number(e.target.value))}
-                                />
-                              </div>
-                              <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label htmlFor="edit-ticket-qty" className="form-label">Số lượng hạng vé đang sửa</label>
-                                <input
-                                  id="edit-ticket-qty"
-                                  type="number"
-                                  className="form-control"
-                                  value={editTicketQty}
-                                  onChange={(e) => setEditTicketQty(Number(e.target.value))}
-                                />
-                              </div>
-                              <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label htmlFor="edit-ticket-max" className="form-label">Tối đa mỗi người hạng vé đang sửa</label>
-                                <input
-                                  id="edit-ticket-max"
-                                  type="number"
-                                  className="form-control"
-                                  value={editTicketMaxUser}
-                                  onChange={(e) => setEditTicketMaxUser(Number(e.target.value))}
-                                />
-                              </div>
-                              <button
-                                type="button"
-                                className="btn btn-primary"
-                                onClick={handleUpdateTicketType}
-                                disabled={updatingTicketType}
-                              >
-                                Lưu hạng vé
-                              </button>
-                              <button type="button" className="btn btn-outline" onClick={handleCancelEditTicketType}>
-                                Hủy
-                              </button>
                             </div>
                           ) : (
                             <>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                               <div>
                                 <strong style={{ fontSize: '1.1rem', color: 'var(--text-strong)' }}>{type.name}</strong>
-                                <span style={{ marginLeft: '1.5rem', color: 'var(--text-muted)' }}>
+                                <span style={{ marginLeft: '1.5rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                                   {type.price.toLocaleString()} VND
                                 </span>
                                 <span style={{ marginLeft: '1.5rem', color: 'var(--text-muted)' }}>
-                                  Còn: {type.availableQuantity} / {type.totalQuantity}
+                                  Còn: <strong>{type.availableQuantity} / {type.totalQuantity}</strong>
                                 </span>
                               </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px', alignItems: 'center' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  <CalendarDays size={13} /> Mở bán: {type.saleStartTime ? <strong>{formatTicketDate(type.saleStartTime)}</strong> : <em>Ngay khi hoạt động</em>}
+                                </span>
+                                <span style={{ color: 'var(--border-strong)' }}>|</span>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  <CalendarDays size={13} /> Kết thúc: {type.saleEndTime ? <strong>{formatTicketDate(type.saleEndTime)}</strong> : <em>Đến khi kết thúc sự kiện</em>}
+                                </span>
+                              </div>
+                            </div>
                               <div style={{ display: 'flex', gap: '0.25rem' }}>
                                 {type.id && (
                                   <button
@@ -1585,6 +1781,44 @@ export const AdminConcerts: React.FC = () => {
                       }</strong></span>
                       <span>{vipImportJob.importedRows || 0} / {vipImportJob.totalRows || 0} dòng</span>
                     </div>
+                  </div>
+                )}
+
+                {vipImportJob && vipImportJob.errorLogs && vipImportJob.errorLogs.length > 0 && (
+                  <div style={{ marginTop: '1rem', padding: '1rem', border: '1px solid var(--danger)', borderRadius: 'var(--radius)', backgroundColor: 'rgba(239, 68, 68, 0.05)' }}>
+                    <div style={{ fontWeight: 600, color: 'var(--danger)', marginBottom: '0.5rem' }}>
+                      ⚠️ Nhập danh sách hoàn tất với {vipImportJob.errorLogs.length} dòng bị lỗi.
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                      <button type="button" className="btn btn-outline btn-sm" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => handleDownloadErrorCsv(vipImportJob)}>
+                        Tải file log lỗi (.csv)
+                      </button>
+                      <button type="button" className="btn btn-outline btn-sm" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => setShowErrorTable(!showErrorTable)}>
+                        {showErrorTable ? 'Ẩn chi tiết lỗi' : 'Xem chi tiết lỗi'}
+                      </button>
+                    </div>
+                    {showErrorTable && (
+                      <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius)', backgroundColor: 'var(--surface)' }}>
+                        <table className="data-table" style={{ fontSize: '0.8rem', width: '100%' }}>
+                          <thead>
+                            <tr>
+                              <th>Dòng</th>
+                              <th>Email</th>
+                              <th>Lý do lỗi</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {vipImportJob.errorLogs.map((log, idx) => (
+                              <tr key={idx}>
+                                <td>{log.row}</td>
+                                <td>{log.email || '—'}</td>
+                                <td style={{ color: 'var(--danger)' }}>{log.reason}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1830,21 +2064,21 @@ export const AdminConcerts: React.FC = () => {
                       <div className="concert-card-actions">
                         <button
                           className="btn btn-outline"
-                          onClick={() => handleOpenEdit(concert)}
-                          aria-label={`Chỉnh sửa ${concert.title}`}
-                          title="Chỉnh sửa"
-                        >
-                          <Edit2 size={14} />
-                          Chỉnh sửa
-                        </button>
-                        <button
-                          className="btn btn-outline"
                           style={{ color: 'var(--danger)', borderColor: 'rgba(220,38,38,0.3)' }}
                           onClick={() => handleDeleteConcert(concert.id)}
                           aria-label={`Xóa ${concert.title}`}
                           title="Xóa"
                         >
                           <Trash2 size={14} />
+                        </button>
+                        <button
+                          className="btn btn-outline"
+                          onClick={() => handleOpenEdit(concert)}
+                          aria-label={`Chỉnh sửa ${concert.title}`}
+                          title="Chỉnh sửa"
+                        >
+                          <Edit2 size={14} />
+                          Chỉnh sửa
                         </button>
                       </div>
                     </div>

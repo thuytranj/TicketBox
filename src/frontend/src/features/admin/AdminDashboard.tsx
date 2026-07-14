@@ -969,23 +969,55 @@ export const AdminDashboard: React.FC = () => {
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
                     {salesProgress.map((summary) => {
-                      const ringColor = summary.failed ? 'var(--danger)' : summary.fillRate > 75 ? 'var(--success)' : summary.fillRate > 25 ? 'var(--primary)' : 'var(--warning)';
-                      
+                      const ringColor = summary.failed
+                        ? '#F43F5E' // Rose red
+                        : summary.fillRate > 75
+                        ? '#10B981' // Emerald green
+                        : summary.fillRate > 25
+                        ? '#6366F1' // Indigo blue
+                        : '#F59E0B'; // Amber orange
+
+                      const percentTextColor = summary.failed
+                        ? '#F43F5E'
+                        : summary.fillRate > 75
+                        ? '#10B981'
+                        : summary.fillRate > 25
+                        ? '#6366F1'
+                        : '#F59E0B';
+
                       return (
-                        <div key={summary.concertId} className="card" style={{ padding: '16px', background: 'var(--surface-alt)', border: '1px solid var(--border)', borderRadius: '10px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'all 0.2s' }}>
+                        <div
+                          key={summary.concertId}
+                          className="card interactive-card"
+                          style={{
+                            padding: '18px',
+                            background: 'var(--surface)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '12px',
+                            boxShadow: 'var(--shadow-sm)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
+                          }}
+                        >
                           <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '12px' }}>
                               <div style={{ flex: 1 }}>
-                                <strong style={{ fontSize: '0.92rem', color: 'var(--text-strong)', display: 'block', lineHeight: 1.3 }}>{summary.title}</strong>
-                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{safeFormatDate(summary.startTime)}</span>
+                                <strong style={{ fontSize: '0.94rem', color: 'var(--text-strong)', display: 'block', lineHeight: 1.35, fontWeight: 700 }}>
+                                  {summary.title}
+                                </strong>
+                                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', display: 'block', marginTop: '3px' }}>
+                                  {safeFormatDate(summary.startTime)}
+                                </span>
                               </div>
                               {getStatusBadge(summary.status)}
                             </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', margin: '8px 0 14px 0' }}>
-                              <div style={{ position: 'relative', width: 60, height: 60, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                <svg width={60} height={60} viewBox="0 0 60 60" style={{ transform: 'rotate(-90deg)' }}>
-                                  <circle cx={30} cy={30} r={25} fill="transparent" stroke="rgba(0,0,0,0.04)" strokeWidth={4.5} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', margin: '12px 0 16px 0' }}>
+                              <div style={{ position: 'relative', width: 62, height: 62, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <svg width={62} height={62} viewBox="0 0 60 60" style={{ transform: 'rotate(-90deg)' }}>
+                                  <circle cx={30} cy={30} r={25} fill="transparent" stroke="var(--border)" strokeWidth={4.5} style={{ opacity: 0.5 }} />
                                   <circle
                                     cx={30} cy={30} r={25} fill="transparent" stroke={ringColor} strokeWidth={4.5}
                                     strokeDasharray={2 * Math.PI * 25}
@@ -993,43 +1025,48 @@ export const AdminDashboard: React.FC = () => {
                                     strokeLinecap="round"
                                   />
                                 </svg>
-                                <div style={{ position: 'absolute', fontWeight: 800, fontSize: summary.failed ? '0.62rem' : '0.82rem', color: summary.failed ? 'var(--danger)' : 'var(--text-strong)' }}>
+                                <div style={{ position: 'absolute', fontWeight: 800, fontSize: summary.failed ? '0.55rem' : '0.86rem', color: percentTextColor, textAlign: 'center', lineHeight: 1.1 }}>
                                   {summary.failed ? 'Lỗi dữ liệu' : `${summary.fillRate}%`}
                                 </div>
                               </div>
 
                               <div>
-                                <strong style={{ fontSize: '1.05rem', color: 'var(--text-strong)', display: 'block' }}>
+                                <strong style={{ fontSize: '1.2rem', color: 'var(--text-strong)', display: 'block', fontWeight: 800 }}>
                                   {formatVnd(summary.revenue)}
                                 </strong>
-                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500 }}>Doanh thu vé</span>
+                                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600 }}>Doanh thu vé</span>
                               </div>
                             </div>
                           </div>
 
-                          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '10px', marginTop: '4px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', marginBottom: '8px', gap: '8px' }}>
-                              <span style={{ color: 'var(--text-muted)' }}>
-                                Đã bán: <strong style={{ color: 'var(--text-strong)' }}>{summary.soldTickets} / {summary.totalTickets}</strong>
-                              </span>
-                              <span style={{ color: 'var(--text-muted)' }}>
-                                Giữ chỗ: <strong style={{ color: summary.reservedTickets > 0 ? 'var(--warning)' : 'var(--text-strong)' }}>{summary.reservedTickets}</strong>
-                              </span>
-                              <span style={{ color: 'var(--text-muted)' }}>
-                                Soát vé: <strong>{summary.checkinRate}%</strong>
-                              </span>
+                          <div>
+                            {/* Bento-style stats block */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: '10px' }}>
+                              <div style={{ textAlign: 'center', background: 'var(--surface-alt)', padding: '6px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                <span style={{ display: 'block', fontSize: '0.66rem', color: 'var(--text-muted)', fontWeight: 500, marginBottom: '2px' }}>Đã bán</span>
+                                <strong style={{ fontSize: '0.82rem', color: 'var(--text-strong)' }}>{summary.soldTickets} / {summary.totalTickets}</strong>
+                              </div>
+                              <div style={{ textAlign: 'center', background: 'var(--surface-alt)', padding: '6px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                <span style={{ display: 'block', fontSize: '0.66rem', color: 'var(--text-muted)', fontWeight: 500, marginBottom: '2px' }}>Giữ chỗ</span>
+                                <strong style={{ fontSize: '0.82rem', color: summary.reservedTickets > 0 ? '#F59E0B' : 'var(--text-strong)' }}>{summary.reservedTickets}</strong>
+                              </div>
+                              <div style={{ textAlign: 'center', background: 'var(--surface-alt)', padding: '6px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                <span style={{ display: 'block', fontSize: '0.66rem', color: 'var(--text-muted)', fontWeight: 500, marginBottom: '2px' }}>Soát vé</span>
+                                <strong style={{ fontSize: '0.82rem', color: 'var(--text-strong)' }}>{summary.checkinRate}%</strong>
+                              </div>
                             </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', fontSize: '0.7rem' }}>
-                              <span style={{ padding: '2px 6px', background: 'var(--primary-soft)', color: 'var(--primary)', borderRadius: '4px', fontWeight: 700 }}>
+
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', fontSize: '0.7rem', marginTop: '10px' }}>
+                              <span style={{ padding: '3px 8px', background: 'var(--primary-soft)', color: 'var(--primary)', borderRadius: '4px', fontWeight: 700 }}>
                                 Hạng vé: <strong>{summary.ticketTypesCount}</strong>
                               </span>
                               {summary.reservedTickets > 0 && (
-                                <span style={{ padding: '2px 6px', background: 'var(--warning-soft)', color: 'var(--warning)', borderRadius: '4px', fontWeight: 700 }}>
+                                <span style={{ padding: '3px 8px', background: 'rgba(245, 158, 11, 0.08)', color: '#D97706', borderRadius: '4px', fontWeight: 700 }}>
                                   Giữ chỗ: <strong>{summary.reservedTickets}</strong>
                                 </span>
                               )}
-                              <span style={{ padding: '2px 6px', background: 'rgba(15, 159, 110, 0.08)', color: 'var(--success)', borderRadius: '4px', fontWeight: 700 }}>
-                                Trống: <strong>{summary.availableTickets}</strong>
+                              <span style={{ padding: '3px 8px', background: 'rgba(100, 116, 139, 0.08)', color: '#64748B', borderRadius: '4px', fontWeight: 700 }}>
+                                Còn trống: <strong>{summary.availableTickets}</strong>
                               </span>
                             </div>
 

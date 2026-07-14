@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import { ConcertDetail } from '../../../features/concerts/ConcertDetail';
+import { ConcertDetail, formatTicketSaleTime } from '../../../features/concerts/ConcertDetail';
 import { apiClient } from '../../../api/client';
 import { AuthProvider } from '../../../features/auth/AuthContext';
 
@@ -255,7 +255,7 @@ describe('ConcertDetail', () => {
       </AuthProvider>
     );
 
-    const expectedFutureDateStr = new Date(futureStart).toLocaleString();
+    const expectedFutureDateStr = formatTicketSaleTime(futureStart);
     await waitFor(() => {
       expect(screen.getByText(`Sắp mở bán (từ: ${expectedFutureDateStr})`)).toBeInTheDocument();
       expect(screen.getByText('Đã dừng bán')).toBeInTheDocument();

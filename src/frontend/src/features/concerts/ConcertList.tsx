@@ -34,40 +34,140 @@ export const ConcertList: React.FC = () => {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const [cityFilter, setCityFilter] = useState<string>('');
   const [page, setPage] = useState(1);
 
   const fetchConcerts = async () => {
     setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams({
-        status: 'active',
-        page: String(page),
-        limit: String(PAGE_SIZE),
-      });
-      if (search.trim()) params.set('search', search.trim());
-      if (selectedTag) params.set('tag', selectedTag);
+      const tagParam = selectedTag ? `&tag=${selectedTag}` : '';
+      const searchParam = search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
 
-      const response = await apiClient.request<{ concerts: Concert[]; meta?: ConcertMeta }>(
-        `/concerts?${params.toString()}`
-      );
-      setConcerts(response.concerts || []);
-      setMeta(response.meta || null);
-    } catch (err: any) {
-      setError(err.message || 'Không tải được danh sách sự kiện');
+      if (statusFilter === 'all') {
+        const [activeRes, completedRes] = await Promise.all([
+          apiClient.request<{ concerts: Concert[] }>(
+            `/concerts?status=active${tagParam}${searchParam}&page=1&limit=100`
+          ),
+          apiClient.request<{ concerts: Concert[] }>(
+            `/concerts?status=completed${tagParam}${searchParam}&page=1&limit=100`
+          ),
+        ]);
+        const activeList = activeRes?.concerts || [];
+        const completedList = completedRes?.concerts || [];
+        const combined = [...activeList, ...completedList];
+
+        const uniqueMap = new Map<string, Concert>();
+        combined.forEach((c) => {
+          if (c.status === 'active' || c.status === 'completed') {
+            uniqueMap.set(c.id, c);
+          }
+        });
+        const uniqueList = Array.from(uniqueMap.values());
+
+        uniqueList.sort(
+          (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+        );
+
+        setConcerts(uniqueList);
+        setMeta(null);
+      } else {
+        const response = await apiClient.request<{ concerts: Concert[]; meta?: ConcertMeta }>(
+          `/concerts?status=${statusFilter}${tagParam}${searchParam}&page=${page}&limit=${PAGE_SIZE}`
+        );
+        setConcerts(response.concerts || []);
+        setMeta(response.meta || null);
+      }
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Không tải được danh sách sự kiện';
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchConcerts();
-  }, [page, search, selectedTag]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, search, selectedTag, statusFilter]);
+
+  const handleStatusFilterChange = (status: 'all' | 'active' | 'completed') => {
+    setStatusFilter(status);
+    setPage(1);
+  };
+
+  const handleTagChange = (tag: string) => {
+    setSelectedTag(tag);
+    setPage(1);
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setPage(1);
+  };
 
   const allTags = useMemo(() => Array.from(new Set(concerts.flatMap((c) => c.tags || []))), [concerts]);
   const featuredConcert = concerts[0];
   const heroImage = featuredConcert?.posterUrl || heroPreview;
-  const totalPages = meta?.totalPages || 1;
+
+  const filteredConcerts = useMemo(() => {
+    if (!cityFilter) return concerts;
+    const lowerCity = cityFilter.toLowerCase();
+    if (lowerCity === 'khác') {
+      return concerts.filter(
+        (c) =>
+          c.location &&
+          !c.location.toLowerCase().includes('hồ chí minh') &&
+          !c.location.toLowerCase().includes('hcm') &&
+          !c.location.toLowerCase().includes('hà nội') &&
+          !c.location.toLowerCase().includes('đà nẵng')
+      );
+    }
+    return concerts.filter(
+      (c) => c.location && c.location.toLowerCase().includes(lowerCity)
+    );
+  }, [concerts, cityFilter]);
+
+  const paginatedConcerts = useMemo(() => {
+    if (statusFilter === 'all') {
+      const start = (page - 1) * PAGE_SIZE;
+      return filteredConcerts.slice(start, start + PAGE_SIZE);
+    }
+    return filteredConcerts;
+  }, [filteredConcerts, page, statusFilter]);
+
+  const totalPages = useMemo(() => {
+    if (statusFilter === 'all') {
+      return Math.max(1, Math.ceil(filteredConcerts.length / PAGE_SIZE));
+    }
+    return meta?.totalPages || 1;
+  }, [filteredConcerts, meta, statusFilter]);
+
+  const formatEventDuration = (startStr: string, endStr?: string) => {
+    if (!startStr) return '';
+    const start = new Date(startStr);
+    const optionsDate: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', year: 'numeric' };
+    const optionsTime: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
+
+    const startD = start.toLocaleDateString('vi-VN', optionsDate);
+    const startT = start.toLocaleTimeString('vi-VN', optionsTime);
+
+    if (!endStr) {
+      return `${startD} | ${startT}`;
+    }
+
+    const end = new Date(endStr);
+    if (start.toDateString() === end.toDateString()) {
+      const endT = end.toLocaleTimeString('vi-VN', optionsTime);
+      return `${startD} | ${startT} - ${endT}`;
+    } else {
+      const endD = end.toLocaleDateString('vi-VN', optionsDate);
+      const endT = end.toLocaleTimeString('vi-VN', optionsTime);
+      return `${startD} ${startT} - ${endD} ${endT}`;
+    }
+  };
 
   return (
     <>
@@ -102,36 +202,75 @@ export const ConcertList: React.FC = () => {
           </div>
         </header>
 
-        <div className="filter-bar">
-          <div className="input-with-icon">
-            <Search size={18} />
-            <input
-              type="text"
-              placeholder="Tìm theo nghệ sĩ, địa điểm, thể loại..."
-              value={search}
+        {/* Tab & Filter bar wrapper */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', gap: '1.5rem', borderBottom: '2px solid var(--border)', paddingBottom: '0.25rem' }}>
+            {(['all', 'active', 'completed'] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => handleStatusFilterChange(tab)}
+                style={{
+                  padding: '0.75rem 0.5rem',
+                  border: 'none',
+                  background: 'none',
+                  borderBottom: statusFilter === tab ? '3px solid var(--primary)' : '3px solid transparent',
+                  color: statusFilter === tab ? 'var(--primary)' : 'var(--text-muted)',
+                  fontWeight: 700,
+                  fontSize: '0.95rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  marginBottom: '-2px'
+                }}
+              >
+                {tab === 'all' ? 'Tất cả' : tab === 'active' ? 'Sắp diễn ra & Đang bán' : 'Đã diễn ra'}
+              </button>
+            ))}
+          </div>
+
+          <div className="filter-bar" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <div className="input-with-icon" style={{ flex: 2, minWidth: '250px' }}>
+              <Search size={18} />
+              <input
+                type="text"
+                placeholder="Tìm theo nghệ sĩ, địa điểm, thể loại..."
+                value={search}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="form-control"
+                aria-label="Tìm kiếm sự kiện"
+              />
+            </div>
+
+            <select
+              value={cityFilter}
               onChange={(e) => {
-                setSearch(e.target.value);
+                setCityFilter(e.target.value);
                 setPage(1);
               }}
               className="form-control"
-              aria-label="Tìm kiếm sự kiện"
-            />
-          </div>
+              style={{ flex: 1, minWidth: '150px' }}
+              aria-label="Lọc theo địa điểm"
+            >
+              <option value="">Tất cả địa điểm</option>
+              <option value="Hồ Chí Minh">TP. Hồ Chí Minh</option>
+              <option value="Hà Nội">Hà Nội</option>
+              <option value="Đà Nẵng">Đà Nẵng</option>
+              <option value="Khác">Khác</option>
+            </select>
 
-          <select
-            value={selectedTag}
-            onChange={(e) => {
-              setSelectedTag(e.target.value);
-              setPage(1);
-            }}
-            className="form-control"
-            aria-label="Lọc theo thể loại"
-          >
-            <option value="">Tất cả thể loại</option>
-            {allTags.map((tag) => (
-              <option key={tag} value={tag}>#{tag}</option>
-            ))}
-          </select>
+            <select
+              value={selectedTag}
+              onChange={(e) => handleTagChange(e.target.value)}
+              className="form-control"
+              style={{ flex: 1, minWidth: '150px' }}
+              aria-label="Lọc theo thể loại"
+            >
+              <option value="">Tất cả thể loại</option>
+              {allTags.map((tag) => (
+                <option key={tag} value={tag}>#{tag}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {loading && (
@@ -153,7 +292,7 @@ export const ConcertList: React.FC = () => {
           </div>
         )}
 
-        {!loading && !error && concerts.length === 0 && (
+        {!loading && !error && paginatedConcerts.length === 0 && (
           <div className="empty-state">
             <Ticket size={34} />
             <p>Chưa có sự kiện phù hợp.</p>
@@ -161,21 +300,14 @@ export const ConcertList: React.FC = () => {
         )}
 
         <div className="concert-grid grid-list">
-          {concerts.map((concert) => {
+          {paginatedConcerts.map((concert) => {
             const isPast = concert.endTime && new Date() > new Date(concert.endTime);
             const isCancelled = concert.status === 'cancelled';
-            const startDate = concert.startTime ? new Date(concert.startTime) : null;
-            const dateStr = startDate
-              ? startDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
-              : null;
-            const timeStr = startDate
-              ? startDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-              : null;
 
             return (
               <article key={concert.id} className="card interactive-card concert-card">
                 <div className="concert-poster">
-                  {/* Status badge */}
+                  {/* Status overlay badge */}
                   {isPast ? (
                     <span className="concert-status-badge ended">Đã kết thúc</span>
                   ) : isCancelled ? (
@@ -187,20 +319,6 @@ export const ConcertList: React.FC = () => {
                     alt={concert.title}
                     loading="lazy"
                   />
-
-                  {/* Date overlay on poster */}
-                  {dateStr && (
-                    <div className="concert-poster-date">
-                      <CalendarDays size={13} />
-                      {dateStr}
-                      {timeStr && (
-                        <>
-                          <span style={{ opacity: 0.55, margin: '0 1px' }}>·</span>
-                          {timeStr}
-                        </>
-                      )}
-                    </div>
-                  )}
                 </div>
 
                 <div className="card-body">
@@ -213,6 +331,10 @@ export const ConcertList: React.FC = () => {
                   )}
                   <h3 className="concert-title">{concert.title}</h3>
                   <div className="meta-list">
+                    <p className="meta-item">
+                      <CalendarDays size={14} />
+                      {formatEventDuration(concert.startTime, concert.endTime)}
+                    </p>
                     <p className="meta-item">
                       <MapPin size={14} />
                       {concert.location || '—'}

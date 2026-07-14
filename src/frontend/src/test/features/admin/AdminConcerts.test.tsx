@@ -65,7 +65,7 @@ describe('AdminConcerts', () => {
       expect(screen.getByText('Van Phuc City')).toBeInTheDocument();
     });
 
-    const deleteButton = screen.getAllByRole('button').at(-1)!;
+    const deleteButton = screen.getByRole('button', { name: /Xóa Anh Trai Say Hi/i });
     fireEvent.click(deleteButton);
 
     await waitFor(async () => {
@@ -131,8 +131,8 @@ describe('AdminConcerts', () => {
     fireEvent.change(screen.getByLabelText(/Tên sự kiện/i), { target: { value: 'New Show' } });
     fireEvent.change(screen.getByLabelText(/Địa điểm/i), { target: { value: 'Stadium' } });
     fireEvent.change(screen.getByLabelText(/Mô tả/i), { target: { value: 'Great show.' } });
-    fireEvent.change(screen.getByLabelText(/Thời gian bắt đầu/i), { target: { value: '2026-07-01T18:00' } });
-    fireEvent.change(screen.getByLabelText(/Thời gian kết thúc/i), { target: { value: '2026-07-01T21:00' } });
+    fireEvent.change(screen.getByLabelText(/^Thời gian bắt đầu$/i), { target: { value: '2026-07-01T18:00' } });
+    fireEvent.change(screen.getByLabelText(/^Thời gian kết thúc$/i), { target: { value: '2026-07-01T21:00' } });
     fireEvent.change(screen.getByLabelText(/Giá \(VND\)/i), { target: { value: '1200000' } });
     fireEvent.change(screen.getByLabelText(/Số lượng/i), { target: { value: '80' } });
     fireEvent.click(screen.getByRole('button', { name: /^Thêm$/i }));
@@ -423,6 +423,8 @@ describe('AdminConcerts', () => {
             price: 650000,
             totalQuantity: 120,
             maxPerUser: 2,
+            saleStartTime: null,
+            saleEndTime: null,
           }),
         })
       );
@@ -501,5 +503,105 @@ describe('AdminConcerts', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Thêm$/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Giá vé không được âm');
+  });
+
+  it('renders CSV error logs alert, accordion and download button when import job has errors', async () => {
+    const concertsList: any[] = [];
+    let pollingCount = 0;
+    
+    vi.spyOn(apiClient, 'request').mockImplementation(async (url, options) => {
+      if (url === '/concerts' && options?.method === 'POST') {
+        concertsList.push({
+          id: 'c2',
+          title: 'New Show',
+          description: 'Great show.',
+          location: 'Stadium',
+          posterUrl: '',
+          startTime: '2026-07-01T18:00:00Z',
+          tags: [],
+          status: 'active',
+        });
+        return { id: 'c2' };
+      }
+      if (url === '/concerts?page=1&limit=100') {
+        return { concerts: concertsList };
+      }
+      if (url === '/concerts/c2/artist-bio') {
+        return {
+          concertId: 'c2',
+          draftBio: 'Artist biography draft.',
+          status: 'completed',
+          error: null,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      if (url === '/concerts/c2/artist-bio/confirm' && options?.method === 'PUT') {
+        return { message: 'Success' };
+      }
+      if (url === '/concerts/c2/guests?page=1&limit=100') {
+        return { data: [], meta: { totalPages: 1, totalItems: 0 } };
+      }
+      if (url === '/concerts/c2/guests/import' && options?.method === 'POST') {
+        return { jobId: 'job-err-123', status: 'pending' };
+      }
+      if (url === '/concerts/c2/guests/imports/job-err-123') {
+        pollingCount++;
+        return {
+          id: 'job-err-123',
+          concertId: 'c2',
+          status: pollingCount > 1 ? 'completed' : 'processing',
+          totalRows: 10,
+          importedRows: 8,
+          errorLogs: [
+            { row: 3, email: 'err1@test.com', reason: 'Invalid phone number format' },
+            { row: 5, email: '', reason: 'Email is required' }
+          ],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return { concerts: [] };
+    });
+
+    render(
+      <MemoryRouter>
+        <AdminConcerts />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /Tạo sự kiện/i }));
+
+    fireEvent.change(screen.getByLabelText(/Tên sự kiện/i), { target: { value: 'New Show' } });
+    fireEvent.change(screen.getByLabelText(/Địa điểm/i), { target: { value: 'Stadium' } });
+    fireEvent.change(screen.getByLabelText(/Mô tả/i), { target: { value: 'Great show.' } });
+    fireEvent.change(screen.getByLabelText(/^Thời gian bắt đầu$/i), { target: { value: '2026-07-01T18:00' } });
+    fireEvent.change(screen.getByLabelText(/^Thời gian kết thúc$/i), { target: { value: '2026-07-01T21:00' } });
+    fireEvent.change(screen.getByLabelText(/Giá \(VND\)/i), { target: { value: '1200000' } });
+    fireEvent.change(screen.getByLabelText(/Số lượng/i), { target: { value: '80' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Thêm$/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Tiếp tục sang Tiểu sử nghệ sĩ/i }));
+
+    fireEvent.click(await screen.findByRole('button', { name: /Tiếp tục sang Khách VIP/i }));
+
+    const file = new File(['fullName,email,phone,affiliateCompany\nNguyen A,nva@test.com,0901234567,Comp'], 'guests.csv', { type: 'text/csv' });
+    const uploader = await screen.findByLabelText(/Tải file danh sách khách VIP/i);
+    fireEvent.change(uploader, { target: { files: [file] } });
+
+    const importButton = screen.getByRole('button', { name: /Nhập danh sách khách VIP/i });
+    fireEvent.click(importButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Nhập danh sách hoàn tất với 2 dòng bị lỗi/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Tải file log lỗi/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Xem chi tiết lỗi/i })).toBeInTheDocument();
+    }, { timeout: 7000 });
+
+    fireEvent.click(screen.getByRole('button', { name: /Xem chi tiết lỗi/i }));
+    await waitFor(() => {
+      expect(screen.getByText('err1@test.com')).toBeInTheDocument();
+      expect(screen.getByText('Invalid phone number format')).toBeInTheDocument();
+      expect(screen.getByText('Email is required')).toBeInTheDocument();
+    });
   });
 });

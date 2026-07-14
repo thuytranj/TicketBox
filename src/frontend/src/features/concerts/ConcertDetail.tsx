@@ -31,6 +31,18 @@ const mapApiErrorToVietnamese = (msg: string): string => {
   return msg;
 };
 
+export const formatTicketSaleTime = (dateStr?: string | Date) => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  const hours = d.getHours().toString().padStart(2, '0');
+  const minutes = d.getMinutes().toString().padStart(2, '0');
+  const day = d.getDate().toString().padStart(2, '0');
+  const month = (d.getMonth() + 1).toString().padStart(2, '0');
+  const year = d.getFullYear();
+  return `${hours}:${minutes} ngày ${day}/${month}/${year}`;
+};
+
 interface TicketType {
   id: string;
   name: 'GA' | 'SVIP' | 'VIP' | 'CAT1' | 'CAT2';
@@ -402,32 +414,80 @@ export const ConcertDetail: React.FC = () => {
                       }}
                       className={`ticket-type-option ${selectedTicketType?.id === type.id ? 'selected' : ''}`}
                       disabled={hasNotStarted || hasEnded || type.availableQuantity === 0}
-                    >
-                      <div>
-                        <strong style={{ display: 'block', color: 'var(--text-strong)' }}>{type.name}</strong>
-                        <span
-                          style={{
-                            fontSize: '0.85rem',
-                            color: hasNotStarted
-                              ? 'var(--warning)'
-                              : hasEnded
-                              ? 'var(--text-muted)'
-                              : type.availableQuantity > 0
-                              ? 'var(--success)'
-                              : 'var(--danger)',
-                            fontWeight: 700,
-                          }}
-                        >
-                          {hasNotStarted
-                            ? `Sắp mở bán (từ: ${new Date(type.saleStartTime!).toLocaleString()})`
+                      style={{
+                        borderLeft: `4px solid ${
+                          hasNotStarted
+                            ? 'var(--warning)'
                             : hasEnded
-                            ? 'Đã dừng bán'
+                            ? 'var(--text-muted)'
                             : type.availableQuantity > 0
-                            ? `Còn ${type.availableQuantity} vé`
-                            : 'Hết vé / Sold Out'}
-                        </span>
+                            ? 'var(--success)'
+                            : 'var(--danger)'
+                        }`,
+                        padding: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '16px',
+                        background: selectedTicketType?.id === type.id 
+                          ? 'var(--primary-soft)' 
+                          : 'var(--surface)',
+                        opacity: (hasNotStarted || hasEnded || type.availableQuantity === 0) ? 0.75 : 1,
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', textAlign: 'left' }}>
+                        <strong style={{ display: 'block', color: 'var(--text-strong)', fontSize: '1rem', fontWeight: 700 }}>{type.name}</strong>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                          <span
+                            style={{
+                              width: '8px',
+                              height: '8px',
+                              borderRadius: '50%',
+                              backgroundColor: hasNotStarted
+                                ? 'var(--warning)'
+                                : hasEnded
+                                ? 'var(--text-muted)'
+                                : type.availableQuantity > 0
+                                ? 'var(--success)'
+                                : 'var(--danger)',
+                              display: 'inline-block',
+                              boxShadow: hasNotStarted
+                                ? '0 0 8px var(--warning)'
+                                : type.availableQuantity > 0
+                                ? '0 0 8px var(--success)'
+                                : 'none',
+                              marginTop: '5px',
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span
+                            style={{
+                              fontSize: '0.85rem',
+                              color: hasNotStarted
+                                ? 'var(--warning)'
+                                : hasEnded
+                                ? 'var(--text-muted)'
+                                : type.availableQuantity > 0
+                                ? 'var(--success)'
+                                : 'var(--danger)',
+                              fontWeight: 700,
+                              lineHeight: '1.2',
+                            }}
+                          >
+                            {hasNotStarted
+                              ? `Sắp mở bán (từ: ${formatTicketSaleTime(type.saleStartTime!)})`
+                              : hasEnded
+                              ? 'Đã dừng bán'
+                              : type.availableQuantity > 0
+                              ? `Còn ${type.availableQuantity} vé`
+                              : 'Hết vé / Sold Out'}
+                          </span>
+                        </div>
                       </div>
-                      <span style={{ fontWeight: 800 }}>{type.price.toLocaleString()} VND</span>
+                      <span style={{ fontWeight: 800, fontSize: '1.15rem', color: 'var(--text-strong)', whiteSpace: 'nowrap', alignSelf: 'center' }}>
+                        {type.price.toLocaleString()} VND
+                      </span>
                     </button>
                   );
                 })}

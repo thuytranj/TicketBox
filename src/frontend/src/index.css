@@ -762,6 +762,7 @@ img {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  height: 2.7em;
   transition: color var(--transition);
 }
 
