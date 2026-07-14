@@ -28,13 +28,18 @@ Khi thực thi kịch bản trên bằng file `payment-api.http`:
    - Cầu dao (Breaker) nhận thấy tỉ lệ lỗi > 50% ở 5 request trước đó. Nó chuyển sang trạng thái **OPEN**.
    - Ngay khi request thứ 6 tới, nó bị từ chối ngay lập tức (REJECT) và không thèm gọi qua MoMo nữa.
    - Server lập tức trả về Http Status `503 Service Unavailable`: *"Cổng thanh toán MoMo hiện đang bảo trì. Vui lòng chọn phương thức khác (VNPAY) hoặc thử lại sau."*
-3. **Tại request thứ 7 (Sau 30 giây - HALF-OPEN):**
+3. **Kiểm tra sự độc lập của hệ thống (Khi mạch đang OPEN):**
+   - Gọi `GET /concerts` (Xem danh sách concert): Trả về `200 OK` bình thường.
+   - Gọi `GET /concerts/{id}` (Xem chi tiết concert): Trả về `200 OK` kèm full dữ liệu ghế ngồi.
+   - Gọi `POST /payments/vnpay` (Cổng thanh toán phụ): Trả về `200 OK` và link thanh toán.
+   → **Kết luận:** Lỗi của MoMo bị khoanh vùng, hoàn toàn **không lan truyền (Cascading failure)** làm sập các tính năng khác của website.
+4. **Tại request thứ 7 (Sau 30 giây - HALF-OPEN):**
    - Cầu dao chuyển sang **HALF-OPEN** để "thử nước". 
    - Request lọt qua thành công và gọi tới MoMo (không dùng chữ FAIL_MOMO nữa). MoMo trả về thành công -> Cầu dao đóng lại (**CLOSED**), hệ thống phục hồi 100%.
 
 **Đánh giá sự đánh đổi (Graceful Degradation):**
 - Khi cổng MoMo bị sập, thay vì để ứng dụng "treo" (hanging) để ráng chờ MoMo trả lời (rồi sập luôn toàn bộ server vì cạn kiệt Connection Pool), Circuit Breaker đã **ngắt mạch lập tức** và trả về lỗi phản hồi cực nhanh.
-- Hệ thống chính (Node.js API) hoàn toàn không bị ảnh hưởng. Người dùng vẫn tiếp tục lướt xem Concert, đăng nhập, và thanh toán bằng VNPAY một cách hoàn toàn bình thường. Mọi chức năng khác của "trang concert" vẫn sống nhăn răng.
+- Hệ thống thiết kế theo chuẩn module độc lập, người dùng vẫn có thể xem Concert và mua vé bằng VNPAY bình thường, trải nghiệm cốt lõi không hề bị gián đoạn.
 
 ## 4. Bằng chứng (Minh chứng nộp đồ án)
 1. Cấu hình Circuit Breaker: `src/backend/src/payment/circuit-breaker/circuit-breaker.service.ts`
