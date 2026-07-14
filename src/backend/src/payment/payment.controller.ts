@@ -19,8 +19,6 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { IdempotencyInterceptor } from '../common/interceptors/idempotency.interceptor';
 import { PaymentService } from './payment.service';
 import { InitiatePaymentDto } from './dto/initiate-payment.dto';
-import { RedisRateLimit } from '../common/decorators/redis-rate-limit.decorator';
-import { RedisRateLimitGuard } from '../common/guards/redis-rate-limit.guard';
 
 @Controller('payments')
 export class PaymentController {
@@ -34,10 +32,9 @@ export class PaymentController {
    * Rate limited to 3 requests per 1 minute (60 seconds) per user ID using Redis sliding window.
    */
   @Post('momo')
-  @UseGuards(JwtAuthGuard, RedisRateLimitGuard)
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @SkipThrottle()
-  @RedisRateLimit({ limit: 3, ttlMs: 60000 })
   @UseInterceptors(IdempotencyInterceptor)
   async initiateMomo(
     @Body() dto: InitiatePaymentDto,
@@ -55,10 +52,9 @@ export class PaymentController {
    * Rate limited to 3 requests per 1 minute (60 seconds) per user ID using Redis sliding window.
    */
   @Post('vnpay')
-  @UseGuards(JwtAuthGuard, RedisRateLimitGuard)
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @SkipThrottle()
-  @RedisRateLimit({ limit: 3, ttlMs: 60000 })
   @UseInterceptors(IdempotencyInterceptor)
   async initiateVnpay(
     @Body() dto: InitiatePaymentDto,

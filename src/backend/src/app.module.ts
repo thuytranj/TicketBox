@@ -33,9 +33,8 @@ import { StatisticsModule } from './statistics/statistics.module';
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
       {
-        // Global default: 60 requests per minute per IP
-        ttl: 60000,
-        limit: 60,
+        ttl: process.env.THROTTLER_TTL ? parseInt(process.env.THROTTLER_TTL, 10) : 60000,
+        limit: process.env.THROTTLER_LIMIT ? parseInt(process.env.THROTTLER_LIMIT, 10) : 100000,
       },
     ]),
     RedisModule,

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import * as QRCode from 'qrcode';
 import { apiClient } from '../../api/client';
 import {
@@ -14,7 +14,9 @@ import {
   Clock,
   ArrowLeft,
   AlertTriangle,
-  CreditCard
+  CreditCard,
+  Copy,
+  Check
 } from 'lucide-react';
 import heroPreview from '../../assets/hero.png';
 
@@ -41,7 +43,7 @@ interface ConcertData {
   posterUrl: string;
   startTime: string;
   endTime: string;
-  status: 'draft' | 'active' | 'cancelled';
+  status: 'draft' | 'active' | 'cancelled' | 'completed';
   tags: string[];
 }
 
@@ -118,6 +120,22 @@ const QRCodeImage: React.FC<{ value: string }> = ({ value }) => {
   );
 };
 
+const formatConcertTime = (startTimeStr: string) => {
+  try {
+    const date = new Date(startTimeStr);
+    const weekdays = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+    const weekday = weekdays[date.getDay()];
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${weekday}, ${day}/${month}/${year} • ${hours}:${minutes}`;
+  } catch {
+    return new Date(startTimeStr).toLocaleString('vi-VN');
+  }
+};
+
 export const MyBookings: React.FC = () => {
   const navigate = useNavigate();
   const [bookings, setBookings] = useState<OrderData[]>([]);
@@ -128,10 +146,19 @@ export const MyBookings: React.FC = () => {
   const [timeTab, setTimeTab] = useState<'upcoming' | 'ended'>('upcoming');
   const [page, setPage] = useState(1);
   const itemsPerPage = 5;
+  const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null);
 
-  // Modal Wallet states
-  const [selectedOrderForTickets, setSelectedOrderForTickets] = useState<OrderData | null>(null);
+  // Modal Wallet states (Derived from searchParams to support browser back button navigation)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedOrderForTickets = bookings.find((o) => o.id === searchParams.get('wallet')) || null;
   const [currentTicketIndex, setCurrentTicketIndex] = useState(0);
+
+  const handleCopyOrderId = (orderId: string) => {
+    navigator.clipboard.writeText(orderId).then(() => {
+      setCopiedOrderId(orderId);
+      setTimeout(() => setCopiedOrderId(null), 2000);
+    });
+  };
 
   const fetchBookings = async () => {
     setLoading(true);
@@ -198,44 +225,54 @@ export const MyBookings: React.FC = () => {
 
   const openTicketWallet = (order: OrderData) => {
     if (order.tickets && order.tickets.length > 0) {
-      setSelectedOrderForTickets(order);
       setCurrentTicketIndex(0);
+      const newParams = new URLSearchParams(searchParams);
+      newParams.set('wallet', order.id);
+      setSearchParams(newParams);
     }
   };
 
   const closeTicketWallet = () => {
-    setSelectedOrderForTickets(null);
+    const newParams = new URLSearchParams(searchParams);
+    if (newParams.has('wallet')) {
+      newParams.delete('wallet');
+      setSearchParams(newParams);
+    }
   };
 
   const getOrderStatusBadge = (status: OrderData['status']) => {
-    switch (status) {
-      case 'paid':
-        return (
-          <span className="badge-pill" style={{ background: 'rgba(16, 185, 129, 0.08)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)', fontWeight: 700, padding: '4px 12px', borderRadius: '99px', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Đã thanh toán
-          </span>
-        );
-      case 'pending':
-        return (
-          <span className="badge-pill" style={{ background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.2)', fontWeight: 700, padding: '4px 12px', borderRadius: '99px', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Chờ thanh toán
-          </span>
-        );
-      case 'cancelled':
-        return (
-          <span className="badge-pill" style={{ background: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', fontWeight: 700, padding: '4px 12px', borderRadius: '99px', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Đã hủy
-          </span>
-        );
-      case 'expired':
-        return (
-          <span className="badge-pill" style={{ background: 'rgba(100, 116, 139, 0.08)', color: '#64748b', border: '1px solid rgba(100, 116, 139, 0.2)', fontWeight: 700, padding: '4px 12px', borderRadius: '99px', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Đã hết hạn
-          </span>
-        );
-      default:
-        return <span className="badge-pill" style={{ borderRadius: '99px', padding: '4px 12px' }}>{status}</span>;
-    }
+    const config = {
+      paid: { text: 'Đã thanh toán', color: '#10b981', bg: 'rgba(16, 185, 129, 0.08)', border: 'rgba(16, 185, 129, 0.2)' },
+      pending: { text: 'Chờ thanh toán', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.08)', border: 'rgba(245, 158, 11, 0.2)' },
+      cancelled: { text: 'Đã hủy', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.08)', border: 'rgba(239, 68, 68, 0.2)' },
+      expired: { text: 'Đã hết hạn', color: '#64748b', bg: 'rgba(100, 116, 139, 0.08)', border: 'rgba(100, 116, 139, 0.2)' },
+    }[status] || { text: status, color: 'var(--text-muted)', bg: 'var(--surface-alt)', border: 'var(--border)' };
+
+    return (
+      <span className="badge-pill" style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        background: config.bg,
+        color: config.color,
+        border: `1px solid ${config.border}`,
+        fontWeight: 700,
+        padding: '4px 12px',
+        borderRadius: '99px',
+        fontSize: '0.72rem',
+        letterSpacing: '0.05em',
+        textTransform: 'uppercase'
+      }}>
+        <span style={{
+          width: '6px',
+          height: '6px',
+          borderRadius: '50%',
+          backgroundColor: config.color,
+          display: 'inline-block'
+        }} />
+        {config.text}
+      </span>
+    );
   };
 
   // Pagination calculated based on the fully filtered list
@@ -335,69 +372,121 @@ export const MyBookings: React.FC = () => {
 
             return (
               <div key={order.id} className="booking-card">
-                {/* Concert Poster Section */}
-                <div className="booking-card-poster">
-                  <img
-                    src={concert.posterUrl || heroPreview}
-                    alt={concert.title}
-                  />
+                {/* 1. Header Strip (full width) */}
+                <div className="booking-card-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }}>Mã đơn:</span>
+                    <span style={{
+                      fontFamily: 'monospace',
+                      fontSize: '0.8rem',
+                      color: 'var(--text-strong)',
+                      fontWeight: 700,
+                      letterSpacing: '0.04em',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      maxWidth: '160px',
+                    }}>
+                      #{order.id.slice(0, 16).toUpperCase()}...
+                    </span>
+                    <button
+                      onClick={() => handleCopyOrderId(order.id)}
+                      title="Sao chép mã đơn hàng"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '24px',
+                        height: '24px',
+                        border: 'none',
+                        borderRadius: '6px',
+                        background: copiedOrderId === order.id ? 'rgba(16,185,129,0.12)' : 'transparent',
+                        color: copiedOrderId === order.id ? '#10b981' : 'var(--text-muted)',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        flexShrink: 0,
+                        padding: 0,
+                      }}
+                      onMouseEnter={e => { if (copiedOrderId !== order.id) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,0,0,0.06)'; }}
+                      onMouseLeave={e => { if (copiedOrderId !== order.id) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                    >
+                      {copiedOrderId === order.id ? <Check size={13} /> : <Copy size={13} />}
+                    </button>
+                    {copiedOrderId === order.id && (
+                      <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600, whiteSpace: 'nowrap', animation: 'fadeIn 0.2s ease' }}>
+                        Đã sao chép!
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ flexShrink: 0 }}>
+                    {getOrderStatusBadge(order.status)}
+                  </div>
                 </div>
 
-                {/* Main Order Details Section */}
+                {/* 2. Card Body (containing Poster on left + Info on right) */}
                 <div className="booking-card-body">
-                  <div>
-                    <div className="flex-between" style={{ marginBottom: '0.75rem', alignItems: 'flex-start', gap: '1rem' }}>
-                      <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-strong)', margin: 0, lineHeight: 1.3 }}>{concert.title}</h3>
-                      {getOrderStatusBadge(order.status)}
-                    </div>
-
-                    <div className="meta-list" style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap', marginBottom: '1rem', fontSize: '0.82rem' }}>
-                      <span className="meta-item" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)' }}>
-                        <CalendarDays size={14} style={{ color: 'var(--primary)' }} />
-                        {new Date(concert.startTime).toLocaleDateString('vi-VN')} {new Date(concert.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                      <span className="meta-item" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)' }}>
-                        <MapPin size={14} style={{ color: 'var(--primary)' }} />
-                        {concert.location}
-                      </span>
-                    </div>
-
-                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', background: 'var(--surface-alt)', padding: '6px 12px', borderRadius: '8px', display: 'inline-block' }}>
-                      Mã đơn hàng: <strong style={{ color: 'var(--text-strong)', fontFamily: 'monospace', fontSize: '0.88rem' }}>{order.id.slice(0, 8).toUpperCase()}...</strong>
-                      <span style={{ margin: '0 0.75rem', opacity: 0.5 }}>|</span>
-                      Ngày đặt: <strong>{new Date(order.createdAt).toLocaleDateString('vi-VN')}</strong>
-                    </div>
+                  <div className="booking-card-poster">
+                    <img
+                      src={concert.posterUrl || heroPreview}
+                      alt={concert.title}
+                    />
                   </div>
 
-                  <div className="flex-between" style={{ marginTop: '1.25rem', flexWrap: 'wrap', gap: '1.25rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
-                    <div>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Tổng thanh toán</span>
-                      <strong style={{ display: 'block', fontSize: '1.3rem', color: 'var(--text-strong)', fontWeight: 800, marginTop: '2px' }}>
-                        {order.totalAmount.toLocaleString()} VND
-                      </strong>
+                  <div className="booking-card-info">
+                    <h3 className="booking-card-title">{concert.title}</h3>
+                    
+                    <div className="booking-card-divider" />
+
+                    <div className="booking-card-meta">
+                      <span className="meta-item">
+                        <CalendarDays size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                        <span>{formatConcertTime(concert.startTime)}</span>
+                      </span>
+                      <span className="meta-item">
+                        <MapPin size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                        <span>{concert.location}</span>
+                      </span>
+                      <span className="meta-item">
+                        <Ticket size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                        <span>Số lượng: {order.tickets?.length || 0} vé ({order.tickets?.[0]?.ticketType?.name || 'Vé'})</span>
+                      </span>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '0.75rem' }}>
-                      {order.status === 'paid' && order.tickets && order.tickets.length > 0 && (
-                        <button
-                          onClick={() => openTicketWallet(order)}
-                          className="btn btn-primary"
-                          style={{ gap: '0.5rem', padding: '10px 18px', fontWeight: 700, borderRadius: '8px', fontSize: '0.88rem' }}
-                        >
-                          <QrCode size={16} /> Xem vé & mã QR
-                        </button>
-                      )}
-                      {order.status === 'pending' && (
-                        <button
-                          onClick={() => navigate(`/checkout/${order.id}`)}
-                          className="btn btn-outline"
-                          style={{ gap: '0.5rem', padding: '10px 18px', fontWeight: 700, borderRadius: '8px', fontSize: '0.88rem', borderColor: 'var(--warning)', color: 'var(--warning)', background: 'rgba(245, 158, 11, 0.03)' }}
-                        >
-                          <CreditCard size={16} /> Thanh toán ngay
-                        </button>
-                      )}
+                    <div className="booking-card-price-row">
+                      <span>Tổng tiền:</span>
+                      <strong>{order.totalAmount.toLocaleString()} VND</strong>
                     </div>
                   </div>
+                </div>
+
+                {/* 3. Card Footer (containing buttons) */}
+                <div className="booking-card-footer">
+                  <Link
+                    to={`/concerts/${concert.id}`}
+                    className="btn btn-outline"
+                    style={{ padding: '8px 16px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600 }}
+                  >
+                    Chi tiết sự kiện
+                  </Link>
+
+                  {order.status === 'paid' && order.tickets && order.tickets.length > 0 && (
+                    <button
+                      onClick={() => openTicketWallet(order)}
+                      className="btn btn-primary"
+                      style={{ gap: '0.5rem', padding: '8px 18px', fontWeight: 700, borderRadius: '8px', fontSize: '0.85rem' }}
+                    >
+                      <QrCode size={16} /> Xem vé &amp; mã QR
+                    </button>
+                  )}
+                  {order.status === 'pending' && (
+                    <button
+                      onClick={() => navigate(`/checkout/${order.id}`)}
+                      className="btn btn-primary"
+                      style={{ gap: '0.5rem', padding: '8px 18px', fontWeight: 700, borderRadius: '8px', fontSize: '0.85rem', background: 'var(--warning)', borderColor: 'var(--warning)', color: '#fff' }}
+                    >
+                      <CreditCard size={16} /> Thanh toán ngay
+                    </button>
+                  )}
                 </div>
               </div>
             );

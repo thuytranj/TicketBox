@@ -18,6 +18,7 @@ export enum ConcertStatus {
   DRAFT = 'draft',
   ACTIVE = 'active',
   CANCELLED = 'cancelled',
+  COMPLETED = 'completed',
 }
 
 @Entity('concerts')

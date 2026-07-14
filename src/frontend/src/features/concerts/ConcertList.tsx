@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../../api/client';
-import { CalendarDays, ChevronLeft, ChevronRight, MapPin, RotateCcw, Search, Sparkles, Ticket } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, MapPin, RotateCcw, Search, Ticket } from 'lucide-react';
 import heroPreview from '../../assets/hero.png';
 
 export interface Concert {
@@ -13,7 +13,8 @@ export interface Concert {
   startTime: string;
   endTime?: string;
   tags: string[];
-  status: 'draft' | 'active' | 'cancelled';
+  status: 'draft' | 'active' | 'cancelled' | 'completed';
+  biography?: string;
 }
 
 interface ConcertMeta {
@@ -160,56 +161,83 @@ export const ConcertList: React.FC = () => {
         )}
 
         <div className="concert-grid grid-list">
-          {concerts.map((concert) => (
-            <article key={concert.id} className="card interactive-card concert-card">
-              <div className="concert-poster">
-                {concert.endTime && new Date() > new Date(concert.endTime) ? (
-                  <span className="concert-status-badge ended">Đã kết thúc</span>
-                ) : concert.status === 'cancelled' ? (
-                  <span className="concert-status-badge ended">Đã hủy</span>
-                ) : null}
-                <img
-                  src={concert.posterUrl || heroPreview}
-                  alt={concert.title}
-                  loading="lazy"
-                />
-              </div>
-              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                <div className="tag-row">
-                  {concert.tags?.slice(0, 3).map((tag) => (
-                    <span key={tag} className="tag-pill">#{tag}</span>
-                  ))}
-                </div>
-                <h3 className="concert-title">{concert.title}</h3>
-                <div className="meta-list">
-                  <p className="meta-item">
-                    <MapPin size={16} />
-                    {concert.location}
-                  </p>
-                  <p className="meta-item">
-                    <CalendarDays size={16} />
-                    {new Date(concert.startTime).toLocaleString('vi-VN')}
-                    {concert.endTime && ` - ${new Date(concert.endTime).toLocaleString('vi-VN')}`}
-                  </p>
-                </div>
-                <div className="card-footer-action">
-                  {concert.endTime && new Date() > new Date(concert.endTime) ? (
-                    <button className="btn" disabled style={{ width: '100%', cursor: 'not-allowed' }}>
-                      Đã kết thúc
-                    </button>
-                  ) : concert.status === 'cancelled' ? (
-                    <button className="btn btn-outline" disabled style={{ width: '100%', cursor: 'not-allowed', color: 'var(--danger)', borderColor: 'var(--danger)' }}>
-                      Đã hủy
-                    </button>
-                  ) : (
-                    <Link to={`/concerts/${concert.id}`} className="btn btn-primary" style={{ width: '100%' }}>
-                      Chọn vé
-                    </Link>
+          {concerts.map((concert) => {
+            const isPast = concert.endTime && new Date() > new Date(concert.endTime);
+            const isCancelled = concert.status === 'cancelled';
+            const startDate = concert.startTime ? new Date(concert.startTime) : null;
+            const dateStr = startDate
+              ? startDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+              : null;
+            const timeStr = startDate
+              ? startDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+              : null;
+
+            return (
+              <article key={concert.id} className="card interactive-card concert-card">
+                <div className="concert-poster">
+                  {/* Status badge */}
+                  {isPast ? (
+                    <span className="concert-status-badge ended">Đã kết thúc</span>
+                  ) : isCancelled ? (
+                    <span className="concert-status-badge cancelled">Đã hủy</span>
+                  ) : null}
+
+                  <img
+                    src={concert.posterUrl || heroPreview}
+                    alt={concert.title}
+                    loading="lazy"
+                  />
+
+                  {/* Date overlay on poster */}
+                  {dateStr && (
+                    <div className="concert-poster-date">
+                      <CalendarDays size={13} />
+                      {dateStr}
+                      {timeStr && (
+                        <>
+                          <span style={{ opacity: 0.55, margin: '0 1px' }}>·</span>
+                          {timeStr}
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
-              </div>
-            </article>
-          ))}
+
+                <div className="card-body">
+                  {concert.tags && concert.tags.length > 0 && (
+                    <div className="tag-row">
+                      {concert.tags.slice(0, 3).map((tag) => (
+                        <span key={tag} className="tag-pill">#{tag}</span>
+                      ))}
+                    </div>
+                  )}
+                  <h3 className="concert-title">{concert.title}</h3>
+                  <div className="meta-list">
+                    <p className="meta-item">
+                      <MapPin size={14} />
+                      {concert.location || '—'}
+                    </p>
+                  </div>
+                  <div className="card-footer-action">
+                    {isPast ? (
+                      <Link to={`/concerts/${concert.id}`} className="btn btn-outline" style={{ width: '100%', color: 'var(--text-muted)' }}>
+                        Đã kết thúc (Xem chi tiết)
+                      </Link>
+                    ) : isCancelled ? (
+                      <button className="btn btn-outline" disabled style={{ width: '100%', cursor: 'not-allowed', color: 'var(--danger)', borderColor: 'var(--danger)' }}>
+                        Đã hủy
+                      </button>
+                    ) : (
+                      <Link to={`/concerts/${concert.id}`} className="btn btn-primary" style={{ width: '100%' }}>
+                        <Ticket size={16} />
+                        Chọn vé
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
         </div>
 
         {!loading && !error && totalPages > 1 && (

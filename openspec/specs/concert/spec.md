@@ -2,9 +2,7 @@
 
 ## Purpose
 TBD - created by archiving change blueprint. Update Purpose after archive.
-
 ## Requirements
-
 ### Requirement: Tải lên poster lên Cloudinary (Upload Poster)
 **Mô tả:**
 Hệ thống cho phép ban tổ chức (organizer) tải hình ảnh poster concert của họ lên Cloudinary thông qua API. Hệ thống nhận tệp tin hình ảnh và truyền trực tiếp qua stream lên Cloudinary để lưu trữ bảo mật.
@@ -39,15 +37,13 @@ Hệ thống cho phép ban tổ chức (organizer) tải hình ảnh poster conc
 - **WHEN** Ban tổ chức gửi yêu cầu tải ảnh poster vượt quá 10MB hoặc định dạng không hợp lệ, hoặc tài khoản không có vai trò `organizer`
 - **THEN** Hệ thống từ chối tải lên và trả về lỗi thích hợp (400 Bad Request hoặc 403 Forbidden)
 
-
 ### Requirement: Quản lý thông tin Concert (Concert Management)
-**Mô tả:**
-Hệ thống cho phép ban tổ chức tạo concert mới, cập nhật thông tin concert (bao gồm xử lý dọn dẹp ảnh poster cũ trên Cloudinary), hủy concert hoặc xóa concert nếu chưa có bookings nào phát sinh.
+Hệ thống SHALL cho phép ban tổ chức tạo concert mới, cập nhật thông tin concert (bao gồm xử lý dọn dẹp ảnh poster cũ trên Cloudinary), hủy concert hoặc xóa concert nếu chưa có bookings nào phát sinh. ConcertStatus bao gồm các trạng thái: `draft`, `active`, `cancelled`, và `completed`.
 
 **Luồng chính:**
 1. **Tạo concert:**
    - Ban tổ chức gửi yêu cầu POST đến `/concerts` với các thông tin chi tiết (`title`, `description`, `location`, `posterUrl`, `posterPublicId`, `start_time`, `end_time`, và tùy chọn danh sách `ticket_types`).
-   - Hệ thống lưu thông tin concert mới (lưu cả `posterPublicId`) và các loại vé liên kết vào PostgreSQL.
+   - Hệ thống lưu thông tin concert mới (lưu cả `posterPublicId`) và các loại vé liên kết vào PostgreSQL. Trạng thái mặc định là `draft`.
    - Trả về thông tin chi tiết với mã trạng thái 201 Created.
 2. **Cập nhật concert:**
    - Ban tổ chức gửi yêu cầu PATCH đến `/concerts/:id` với thông tin cần cập nhật.
@@ -107,7 +103,6 @@ Hệ thống cho phép ban tổ chức tạo concert mới, cập nhật thông 
 #### Scenario: Ban tổ chức xóa concert đã có bookings thất bại
 - **WHEN** Ban tổ chức gửi yêu cầu DELETE đến `/concerts/:id` khi concert này đã phát sinh ít nhất một đơn đặt vé (bookings) và tài khoản có vai trò `organizer`
 - **THEN** Hệ thống từ chối xóa, không thay đổi database hay cache, và trả về lỗi 400 Bad Request kèm thông điệp báo lỗi
-
 
 ### Requirement: Quản lý loại vé (Ticket Type Management)
 **Mô tả:**
@@ -171,7 +166,6 @@ Ban tổ chức quản lý cấu hình các loại vé phân hạng (GA, SVIP, V
 - **WHEN** Ban tổ chức gửi yêu cầu DELETE đến `/ticket-types/:id` của loại vé đã phát sinh ít nhất một đơn đặt vé (bookings) và tài khoản có vai trò `organizer`
 - **THEN** Hệ thống từ chối xóa, không thay đổi database hay cache, và trả về lỗi 400 Bad Request kèm thông điệp báo lỗi
 
-
 ### Requirement: Bộ nhớ đệm danh sách và chi tiết Concert (Concert Caching)
 **Mô tả:**
 Để tăng tốc truy cập cho khán giả, hệ thống áp dụng cơ chế Cache-aside trên Redis đối với thông tin chi tiết concert và danh sách concert mặc định (không lọc động).
@@ -223,7 +217,6 @@ Ban tổ chức quản lý cấu hình các loại vé phân hạng (GA, SVIP, V
 - **WHEN** Khán giả gửi yêu cầu GET đến `/concerts` kèm theo ít nhất một bộ lọc động như `search`, `location`, hoặc `tag`
 - **THEN** Hệ thống bỏ qua bộ nhớ đệm Redis, thực hiện truy vấn trực tiếp từ PostgreSQL dựa trên các bộ lọc và trả về kết quả cho khán giả
 
-
 ### Requirement: Sơ đồ sân khấu (Stage Map Caching)
 **Mô tả:**
 Vì tệp tin sơ đồ sân khấu dạng SVG có dung lượng khá lớn và rất ít khi thay đổi, hệ thống tách biệt API lấy sơ đồ sân khấu và lưu trữ bộ nhớ đệm riêng biệt với TTL dài hơn để tối ưu băng thông và tải cho PostgreSQL.
@@ -252,7 +245,6 @@ Vì tệp tin sơ đồ sân khấu dạng SVG có dung lượng khá lớn và 
 #### Scenario: Khán giả truy cập sơ đồ sân khấu thành công từ database (Cache Miss)
 - **WHEN** Khán giả gửi yêu cầu GET đến `/concerts/:id/stagemap` và khóa `cache:concerts:{id}:stagemap` chưa có trên Redis
 - **THEN** Hệ thống truy vấn cột `svg_stage_map` từ PostgreSQL, lưu kết quả vào Redis với khóa `cache:concerts:{id}:stagemap` và thời gian sống (TTL) là 1800 giây, sau đó trả về kết quả cho khán giả
-
 
 ### Requirement: Hybrid Caching tồn kho vé (Hybrid Caching for Ticket Inventory)
 **Mô tả:**
@@ -290,3 +282,11 @@ Hệ thống kết hợp thông tin cấu hình tĩnh của vé được cache b
 #### Scenario: Khán giả lấy danh sách loại vé của concert không tồn tại thất bại
 - **WHEN** Khán giả gửi yêu cầu GET đến `/concerts/:id/ticket-types` với `:id` không tồn tại trong hệ thống
 - **THEN** Hệ thống trả về lỗi 404 Not Found
+
+### Requirement: Tự động chuyển đổi trạng thái Concert hoàn thành (Automatic Concert Completion)
+Hệ thống SHALL tự động chuyển trạng thái của concert từ `active` sang `completed` sau khi thời gian kết thúc của concert (`end_time`) đã trôi qua.
+
+#### Scenario: Tự động cập nhật trạng thái concert khi kết thúc
+- **WHEN** Thời gian hiện tại vượt quá `end_time` của một concert có trạng thái `active`
+- **THEN** Hệ thống cập nhật trạng thái của concert đó thành `completed` trong PostgreSQL và xóa bộ nhớ đệm Redis liên quan
+

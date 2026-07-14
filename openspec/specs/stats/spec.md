@@ -4,7 +4,7 @@
 TBD - created by archiving change blueprint. Update Purpose after archive.
 ## Requirements
 ### Requirement: Tổng hợp số liệu thống kê thời gian thực
-Hệ thống SHALL cho phép ban tổ chức xem báo cáo tổng hợp doanh thu và số lượng vé bán ra của concert thông qua các truy vấn tối ưu.
+Hệ thống SHALL cho phép ban tổ chức xem báo cáo tổng hợp doanh thu và số lượng vé bán ra của concert thông qua các truy vấn tối ưu, bao gồm các concert ở trạng thái `completed`.
 
 #### Scenario: Truy vấn thống kê doanh thu thành công
 - **WHEN** Ban tổ chức có vai trò hợp lệ gọi API truy vấn thống kê của một concert

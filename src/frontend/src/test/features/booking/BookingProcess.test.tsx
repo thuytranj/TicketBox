@@ -36,7 +36,7 @@ describe('BookingProcess', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Holding your tickets. Please wait a moment...')).toBeInTheDocument();
+    expect(screen.getByText('Đang giữ vé cho bạn. Vui lòng chờ một chút...')).toBeInTheDocument();
   });
 
   it('polls and redirects to checkout screen when status is pending', async () => {
@@ -77,7 +77,7 @@ describe('BookingProcess', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Booking Expired or Cancelled')).toBeInTheDocument();
+      expect(screen.getByText('Đặt vé đã hết hạn hoặc bị hủy')).toBeInTheDocument();
     });
   });
 
@@ -93,7 +93,7 @@ describe('BookingProcess', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Failed to Secure Tickets')).toBeInTheDocument();
+      expect(screen.getByText('Không thể đặt vé')).toBeInTheDocument();
       expect(screen.getByText('Database lock timeout')).toBeInTheDocument();
     });
   });

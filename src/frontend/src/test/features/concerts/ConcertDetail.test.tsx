@@ -210,4 +210,65 @@ describe('ConcertDetail', () => {
       expect(bookingPanel).toHaveTextContent('Không thể tạo đơn đặt vé');
     });
   });
+
+  it('disables ticket type and shows proper status message if ticket sale time is in future or past', async () => {
+    const futureStart = new Date(Date.now() + 86400000).toISOString();
+    const pastEnd = new Date(Date.now() - 86400000).toISOString();
+
+    vi.spyOn(apiClient, 'request')
+      .mockResolvedValueOnce({
+        id: 'c1',
+        title: 'Anh Trai Say Hi',
+        location: 'Van Phuc City',
+        startTime: '2026-06-30T19:30:00Z',
+        description: 'Concert event desc.',
+      })
+      .mockResolvedValueOnce([
+        {
+          id: 't1',
+          name: 'SVIP',
+          price: 2000000,
+          totalQuantity: 100,
+          availableQuantity: 40,
+          maxPerUser: 2,
+          saleStartTime: futureStart,
+        },
+        {
+          id: 't2',
+          name: 'GA',
+          price: 800000,
+          totalQuantity: 500,
+          availableQuantity: 100,
+          maxPerUser: 4,
+          saleEndTime: pastEnd,
+        },
+      ])
+      .mockResolvedValueOnce({ svgStageMap: '' });
+
+    render(
+      <AuthProvider>
+        <MemoryRouter initialEntries={['/concerts/c1']}>
+          <Routes>
+            <Route path="/concerts/:id" element={<ConcertDetail />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>
+    );
+
+    const expectedFutureDateStr = new Date(futureStart).toLocaleString();
+    await waitFor(() => {
+      expect(screen.getByText(`Sắp mở bán (từ: ${expectedFutureDateStr})`)).toBeInTheDocument();
+      expect(screen.getByText('Đã dừng bán')).toBeInTheDocument();
+    });
+
+    const svipStatus = screen.getByText(`Sắp mở bán (từ: ${expectedFutureDateStr})`);
+    const gaStatus = screen.getByText('Đã dừng bán');
+
+    const svipButton = svipStatus.closest('button');
+    const gaButton = gaStatus.closest('button');
+
+    expect(svipButton).toBeDisabled();
+    expect(gaButton).toBeDisabled();
+  });
 });
+

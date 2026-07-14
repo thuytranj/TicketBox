@@ -38,14 +38,14 @@ const getNotificationMeta = (notification: NotificationLog) => {
         label: 'AI Bio',
         icon: <Sparkles size={12} />,
         actionLabel: 'Review bio',
-        to: notification.referenceId ? `/admin/concerts/${notification.referenceId}/bio` : null,
+        to: notification.referenceId ? `/admin/concerts?action=edit&id=${notification.referenceId}&step=2` : null,
       };
     case 'ai_bio_failed':
       return {
         label: 'AI Bio',
         icon: <TriangleAlert size={12} />,
         actionLabel: 'Review bio',
-        to: notification.referenceId ? `/admin/concerts/${notification.referenceId}/bio` : null,
+        to: notification.referenceId ? `/admin/concerts?action=edit&id=${notification.referenceId}&step=2` : null,
       };
     default:
       return {
@@ -69,7 +69,7 @@ export const NotificationsPanel: React.FC = () => {
   const fetchNotifications = async () => {
     try {
       const res = await apiClient.request<{ data: NotificationLog[] }>('/notifications?page=1&limit=20');
-      const items = res.data || [];
+      const items = Array.isArray(res.data) ? res.data : [];
       setNotifications(items);
       const unread = items.filter((n) => n.status === 'unread').length;
       setUnreadCount(unread);
@@ -284,7 +284,10 @@ export const NotificationsPanel: React.FC = () => {
                       {meta.to && meta.actionLabel && (
                         <Link
                           to={meta.to}
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsOpen(false);
+                          }}
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',

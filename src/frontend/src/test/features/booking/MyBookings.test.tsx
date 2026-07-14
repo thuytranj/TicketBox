@@ -194,6 +194,6 @@ describe('MyBookings', () => {
 
     // Close button
     fireEvent.click(screen.getByLabelText('Đóng ví vé'));
-    expect(screen.queryByText('Ví vé soát cửa')).toBeNull();
+    await waitFor(() => expect(screen.queryByText('Ví vé soát cửa')).toBeNull());
   });
 });

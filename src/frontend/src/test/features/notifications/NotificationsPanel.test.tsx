@@ -308,6 +308,6 @@ describe('NotificationsPanel', () => {
     expect(screen.getByText('AI Bio')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /View booking/i })).toHaveAttribute('href', '/payment-callback/order_123');
     expect(screen.getByRole('link', { name: /View concert/i })).toHaveAttribute('href', '/concerts/concert_456');
-    expect(screen.getByRole('link', { name: /Review bio/i })).toHaveAttribute('href', '/admin/concerts/concert_789/bio');
+    expect(screen.getByRole('link', { name: /Review bio/i })).toHaveAttribute('href', '/admin/concerts?action=edit&id=concert_789&step=2');
   });
 });

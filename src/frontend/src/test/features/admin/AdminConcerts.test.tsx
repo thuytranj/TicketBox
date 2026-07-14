@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
@@ -11,6 +12,17 @@ vi.mock('../../../api/client', () => ({
   },
 }));
 
+vi.mock('../../../features/socket/SocketContext', () => ({
+  useSocket: () => ({
+    socket: {
+      on: vi.fn(),
+      off: vi.fn(),
+      emit: vi.fn(),
+    },
+    connected: true,
+  }),
+}));
+
 describe('AdminConcerts', () => {
   beforeEach(() => {
     cleanup();
@@ -18,7 +30,6 @@ describe('AdminConcerts', () => {
   });
 
   it('lists existing concerts and triggers deletion successfully', async () => {
-    const mockConfirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     let concertsList = [
       {
         id: 'c1',
@@ -57,14 +68,18 @@ describe('AdminConcerts', () => {
     const deleteButton = screen.getAllByRole('button').at(-1)!;
     fireEvent.click(deleteButton);
 
+    await waitFor(async () => {
+      const confirmButton = await screen.findByRole('button', { name: /^Xóa$/ });
+      fireEvent.click(confirmButton);
+    });
+
     await waitFor(() => {
-      expect(mockConfirm).toHaveBeenCalled();
       expect(screen.getByText('Đã xóa sự kiện.')).toBeInTheDocument();
     });
   });
 
   it('submits a new concert with initial ticket types and status', async () => {
-    let concertsList: any[] = [];
+    const concertsList: any[] = [];
     vi.spyOn(apiClient, 'request').mockImplementation(async (url, options) => {
       if (url === '/concerts' && options?.method === 'POST') {
         concertsList.push({
@@ -81,6 +96,21 @@ describe('AdminConcerts', () => {
       }
       if (url === '/concerts?page=1&limit=100') {
         return { concerts: concertsList };
+      }
+      if (url === '/concerts/c2/artist-bio') {
+        return {
+          concertId: 'c2',
+          draftBio: 'Artist biography draft.',
+          status: 'completed',
+          error: null,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      if (url === '/concerts/c2/artist-bio/confirm' && options?.method === 'PUT') {
+        return { message: 'Success' };
+      }
+      if (url === '/concerts/c2/guests?page=1&limit=100') {
+        return { data: [], meta: { totalPages: 1, totalItems: 0 } };
       }
       return { concerts: [] };
     });
@@ -107,7 +137,7 @@ describe('AdminConcerts', () => {
     fireEvent.change(screen.getByLabelText(/Số lượng/i), { target: { value: '80' } });
     fireEvent.click(screen.getByRole('button', { name: /^Thêm$/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /Lưu sự kiện/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Tiếp tục sang Tiểu sử nghệ sĩ/i }));
 
     await waitFor(() => {
       const createCall = vi.mocked(apiClient.request).mock.calls.find(([url, options]) => (
@@ -126,6 +156,23 @@ describe('AdminConcerts', () => {
         ],
       });
       expect(screen.getByText('Đã tạo sự kiện.')).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Tạo hoặc chỉnh sửa tiểu sử thu hút cho nghệ sĩ biểu diễn của bạn bằng trí tuệ nhân tạo (AI).')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Tiếp tục sang Khách VIP/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Nhập danh sách khách mời VIP bằng cách tải lên file CSV.')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Hoàn tất/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Tạo sự kiện mới')).not.toBeInTheDocument();
+      expect(screen.getByText('New Show')).toBeInTheDocument();
     });
   });
 
@@ -244,10 +291,13 @@ describe('AdminConcerts', () => {
       expect(screen.getByText('Draft Show')).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByLabelText(/Lọc trạng thái/i), { target: { value: 'draft' } });
+    const draftTabBtn = screen.getAllByRole('button', { name: /B\u1ea3n nh\u00e1p/i }).find(btn => btn.tagName === 'BUTTON' && btn.textContent?.trim() === 'B\u1ea3n nh\u00e1p')!;
+    fireEvent.click(draftTabBtn);
 
-    expect(screen.queryByText('Active Show')).not.toBeInTheDocument();
-    expect(screen.getByText('Draft Show')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Active Show')).not.toBeInTheDocument();
+      expect(screen.getByText('Draft Show')).toBeInTheDocument();
+    });
   });
 
   it('opens directly to the draft filter from the dashboard link', async () => {
@@ -299,7 +349,6 @@ describe('AdminConcerts', () => {
     await waitFor(() => {
       expect(screen.queryByText('Active Show')).not.toBeInTheDocument();
       expect(screen.getByText('Draft Show')).toBeInTheDocument();
-      expect(screen.getByLabelText(/Lọc trạng thái/i)).toHaveValue('draft');
     });
   });
 
@@ -352,7 +401,7 @@ describe('AdminConcerts', () => {
       expect(screen.getByText('Editable Show')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText('Chỉnh sửa sự kiện Editable Show'));
+    fireEvent.click(screen.getByLabelText('Chỉnh sửa Editable Show'));
 
     await waitFor(() => {
       expect(screen.getByText('GA')).toBeInTheDocument();
