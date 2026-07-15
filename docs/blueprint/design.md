@@ -1321,14 +1321,6 @@ return 1  -- CHO PHÉP
 | `rollingCountTimeout`      | 30 giây | Cửa sổ thống kê lỗi                           |
 | `volumeThreshold`          | 5       | Số request tối thiểu trước khi tính tỷ lệ     |
 
-**Cấu hình Retry (bên trong mỗi Gateway Client trước khi qua Circuit Breaker):**
-
-| Tham số          | Giá trị        | Ý nghĩa                                                                 |
-| ---------------- | -------------- | ----------------------------------------------------------------------- |
-| `maxRetries`     | 2              | Tối đa retry 2 lần trước khi tính là failure                            |
-| `retryDelay`     | 1s → 2s        | Exponential Backoff — tránh đánh dồn gateway khi đang quá tải           |
-| `retryCondition` | 5xx, ETIMEDOUT | Chỉ retry khi lỗi server hoặc timeout, không retry với 4xx (lỗi client) |
-
 **State Machine của Circuit Breaker:**
 
 ```mermaid
