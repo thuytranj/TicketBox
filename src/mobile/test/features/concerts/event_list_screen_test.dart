@@ -78,7 +78,8 @@ Widget _wrap({
         providers: [
           ChangeNotifierProvider<ConcertProvider>.value(value: concertMock),
           ChangeNotifierProvider<AuthProvider>.value(
-              value: authMock ?? _MockAuthProvider()),
+            value: authMock ?? _MockAuthProvider(),
+          ),
         ],
         child: const EventListScreen(),
       ),
@@ -92,6 +93,26 @@ final _openConcert = Concert(
   location: 'Sân khấu Trung tâm',
   startTime: DateTime.now(),
   endTime: DateTime.now().add(const Duration(hours: 2)),
+  status: 'active',
+);
+final _laterTodayConcert = Concert(
+  id: 'c-later-today',
+  title: 'Later Today Concert',
+  location: 'Nhà hát Thành phố',
+  startTime: DateTime(
+    DateTime.now().year,
+    DateTime.now().month,
+    DateTime.now().day,
+    23,
+    59,
+  ),
+  endTime: DateTime(
+    DateTime.now().year,
+    DateTime.now().month,
+    DateTime.now().day,
+    23,
+    59,
+  ).add(const Duration(hours: 2)),
   status: 'active',
 );
 final _concertA = Concert(
@@ -226,15 +247,18 @@ void main() {
 
     // ── No confirm CTA ────────────────────────────────────────────────────────
 
-    testWidgets('confirm_cta key does not exist in widget tree', (tester) async {
-      final mock = _MockConcertProvider(
-        state: ConcertState.loaded,
-        concerts: [_concertA],
-      );
-      await tester.pumpWidget(_wrap(concertMock: mock));
+    testWidgets(
+      'confirm_cta key does not exist in widget tree',
+      (tester) async {
+        final mock = _MockConcertProvider(
+          state: ConcertState.loaded,
+          concerts: [_concertA],
+        );
+        await tester.pumpWidget(_wrap(concertMock: mock));
 
-      expect(find.byKey(const Key('confirm_cta')), findsNothing);
-    });
+        expect(find.byKey(const Key('confirm_cta')), findsNothing);
+      },
+    );
 
     // ── Loaded concerts ───────────────────────────────────────────────────────
 
@@ -291,6 +315,26 @@ void main() {
       // One initial route + one pushed route = 2 total
       expect(observer.pushed.length, greaterThanOrEqualTo(1));
     });
+
+    testWidgets(
+      'tapping concert later today still pushes route before start time',
+      (tester) async {
+        final observer = _NavObserver();
+        final mock = _MockConcertProvider(
+          state: ConcertState.loaded,
+          concerts: [_laterTodayConcert],
+        );
+        await tester.pumpWidget(
+          _wrap(concertMock: mock, observers: [observer]),
+        );
+
+        expect(find.byType(EventCard), findsOneWidget);
+
+        await tester.tap(find.byType(EventCard).first);
+
+        expect(observer.pushed.length, greaterThanOrEqualTo(1));
+      },
+    );
 
     testWidgets('tapping upcoming concert shows warning and does not navigate',
         (tester) async {
