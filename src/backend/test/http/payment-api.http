@@ -1,0 +1,364 @@
+@baseUrl = http://localhost:3000/api/v1
+# Thay thế bằng email/password của user đã đăng ký để lấy token
+@email = audience@ticketbox.vn
+@password = 123123
+
+# --- 0. ĐĂNG KÝ TÀI KHOẢN (Chỉ chạy 1 lần) ---
+# Bôi đen block này và nhấn Send Request để tạo tài khoản mới nếu báo lỗi 401
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "fullName": "Test User"
+}
+
+###
+
+# --- 0.5. XÁC THỰC EMAIL (Chỉ chạy 1 lần sau khi đăng ký) ---
+# Điền mã OTP vừa lấy được trong DB/Redis vào đây
+POST {{baseUrl}}/auth/verify-otp
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "otp": "766405"
+}
+
+###
+
+# --- 1. ĐĂNG NHẬP LẤY TOKEN ---
+# Chạy request này trước, extension REST Client sẽ tự động lưu biến {{authToken}}
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}"
+}
+
+### Tự động lấy token từ response login gán vào biến
+@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIwMTlmNWY4NC0xZmIyLTdkOTEtOTI3YS1iNDAwZmM1YmRlOWMiLCJlbWFpbCI6ImF1ZGllbmNlQHRpY2tldGJveC52biIsInJvbGUiOiJhdWRpZW5jZSIsImlhdCI6MTc4NDAyNjUwNCwiZXhwIjoxNzg0MDI3NDA0fQ.MxrRzNFne_t-IhPggfdckNmifbgoW5WNTp6An5PqNPo
+# Thay UUID dưới đây bằng ID của một đơn hàng (order) thực tế có trong DB đang ở trạng thái "pending"
+@orderId = 019f6044-7a4f-7224-9538-ae1029b84755
+# ==========================================
+# TEST LUỒNG THANH TOÁN
+# ==========================================
+
+### 2. Khởi tạo thanh toán VNPAY (Test Idempotency)
+# Bấm "Send Request" 2 lần liên tiếp thật nhanh.
+# Lần 1: Trả về link VNPAY.
+# Lần 2: Trả về link cũ ngay lập tức (hit cache) HOẶC lỗi 409 (nếu đang xử lý).
+POST {{baseUrl}}/payments/vnpay
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: test-idempotency-key-009
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "Thanh toán vé concert Anh Trai Say Hi"
+}
+
+### 3. Khởi tạo thanh toán MoMo
+POST {{baseUrl}}/payments/momo
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: test-idempotency-key-0015
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "Thanh toán vé concert bằng MoMo"
+}
+
+
+# ==========================================
+# TEST WEBHOOK (IPN) TẠI LOCAL
+# ==========================================
+
+### 4.1. Giả lập VNPAY gọi Webhook (để cập nhật trạng thái đơn thành PAID)
+# Copy TẤT CẢ các tham số trên thanh địa chỉ trình duyệt (phần sau dấu ?) dán vào đây
+# Ví dụ: vnp_Amount=...&vnp_BankCode=...&vnp_SecureHash=...
+@vnpayUrlParams = vnp_Amount=200000000&vnp_BankCode=NCB&vnp_BankTranNo=VNP14474751&vnp_CardType=ATM&vnp_OrderInfo=Thanh+to%C3%A1n+v%C3%A9+concert+Anh+Trai+Say+Hi&vnp_PayDate=20260622150242&vnp_ResponseCode=00&vnp_TmnCode=2TNUA98R&vnp_TransactionNo=14474751&vnp_TransactionStatus=00&vnp_TxnRef=019eee41-b072-77c2-9a49-becf429fcc2d&vnp_SecureHash=...
+GET {{baseUrl}}/payments/vnpay/webhook?{{vnpayUrlParams}}
+
+### 4.2. Kiểm tra lại trạng thái đơn hàng (sẽ chuyển thành PAID)
+GET {{baseUrl}}/payments/{{orderId}}
+Authorization: Bearer {{authToken}}
+
+
+# ==========================================
+# TẠO BOOKING MỚI ĐỂ LẤY orderId (Chạy trước khi test Circuit Breaker)
+# ==========================================
+# concertId và ticketTypeId bên dưới là dữ liệu mẫu sẵn có trong DB (Rock Storm 2026)
+@concertId = 019f5f84-2000-7de5-9240-0f1e78138a66
+@ticketTypeId = 019f5f84-2001-7880-a446-9fc5342fcc6d
+
+### A.1 Tạo đơn hàng mới (copy "id" từ response để dán vào @orderId dòng 45)
+# Mỗi lần bấm Send hãy đổi Idempotency-Key thành một giá trị mới (vd: booking-cb-002, booking-cb-003,...)
+POST {{baseUrl}}/bookings
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: booking-cb-001
+X-Captcha-Token: test-dummy-token
+
+{
+  "concertId": "{{concertId}}",
+  "items": [
+    {
+      "ticketTypeId": "{{ticketTypeId}}",
+      "quantity": 1
+    }
+  ]
+}
+
+### A.2 Xem lại danh sách đơn hàng đang PENDING (để xác nhận orderId vừa tạo)
+GET {{baseUrl}}/bookings?status=pending&limit=5
+Authorization: Bearer {{authToken}}
+
+
+# ==========================================
+# TEST CIRCUIT BREAKER (NGẮT MẠCH)
+# ==========================================
+
+### BƯỚC 0: Lấy danh sách đơn hàng của user hiện tại để tìm orderId PENDING
+# Chạy request này trước, nhìn vào response tìm order có "status": "pending"
+# rồi copy "id" của nó dán vào biến @orderId ở đầu file (dòng 45).
+GET {{baseUrl}}/bookings?status=pending&limit=5
+Authorization: Bearer {{authToken}}
+
+### 5. Xem trạng thái các cầu dao hiện tại
+# Bình thường sẽ trả về "CLOSED"
+GET {{baseUrl}}/payments/circuit-breaker/status
+Authorization: Bearer {{authToken}}
+
+### 5.1 Bắn lỗi liên tục 5 lần để kích hoạt Circuit Breaker bằng CHEAT CODE
+# Hướng dẫn test mới: KHÔNG CẦN TẮT SERVER HAY ĐỔI .ENV NỮA!
+# Cứ bấm Send Request liên tục các request dưới đây. Chữ "FAIL_MOMO" sẽ làm server tự giả lập lỗi.
+
+POST {{baseUrl}}/payments/momo
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-test-1
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "FAIL_MOMO 1"
+}
+
+###
+POST {{baseUrl}}/payments/momo
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-test-2
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "FAIL_MOMO 2"
+}
+
+###
+POST {{baseUrl}}/payments/momo
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-test-3
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "FAIL_MOMO 3"
+}
+
+###
+POST {{baseUrl}}/payments/momo
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-test-4
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "FAIL_MOMO 4"
+}
+
+###
+POST {{baseUrl}}/payments/momo
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-test-5
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "FAIL_MOMO 5"
+}
+
+### 5.2 Lần thứ 6 (Mạch đã ngắt OPEN)
+POST {{baseUrl}}/payments/momo
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-test-6
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "FAIL_MOMO 6"
+}
+
+# ==========================================
+# KIỂM TRA GRACEFUL DEGRADATION
+# Mạch MoMo đã OPEN → Nhưng hệ thống vẫn phải sống!
+# Chạy các request dưới đây SAU KHI đã bắn 5 lỗi FAIL_MOMO ở trên.
+# Kỳ vọng: Tất cả đều trả về 200 OK → Trang concert hoàn toàn bình thường.
+# ==========================================
+
+# Thay bằng một concertId thực tế trong DB (lấy từ bước GET /concerts ở dưới)
+@concertId = 019f5f84-2000-7de5-9240-0f1e78138a66
+
+### 5.2.1 Lấy danh sách tất cả concert (Phải thành công - 200 OK)
+# Kỳ vọng: Mạch MoMo OPEN không ảnh hưởng gì đến trang chủ.
+GET {{baseUrl}}/concerts
+Authorization: Bearer {{authToken}}
+
+### 5.2.2 Xem chi tiết một concert cụ thể (Phải thành công - 200 OK)
+# Kỳ vọng: Thông tin concert, nghệ sĩ, sơ đồ rạp vẫn hiển thị đầy đủ.
+GET {{baseUrl}}/concerts/{{concertId}}
+Authorization: Bearer {{authToken}}
+
+### 5.2.3 Kiểm tra trạng thái Circuit Breaker (Phải trả về OPEN cho momo)
+# Kỳ vọng: { "momo": "OPEN", "vnpay": "CLOSED" }
+GET {{baseUrl}}/payments/circuit-breaker/status
+Authorization: Bearer {{authToken}}
+
+### 5.2.4 Thanh toán bằng VNPAY vẫn hoạt động bình thường (Graceful Degradation)
+# Kỳ vọng: Cổng VNPAY hoàn toàn không bị ảnh hưởng bởi mạch MoMo bị ngắt.
+POST {{baseUrl}}/payments/vnpay
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-degradation-test-1
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "Thanh toán dự phòng qua VNPAY khi MoMo bị sập"
+}
+
+###
+
+### 5.3 Lần thứ 7: Thử nghiệm phục hồi (HALF-OPEN -> CLOSED)
+# Hướng dẫn test:
+# 1. Mở file .env, sửa MOMO_ACCESS_KEY lại cho ĐÚNG (F8BBA842ECF85)
+# 2. Restart server. Đợi thấy dòng chữ báo mạch "HALF-OPEN".
+# 3. Bấm Send Request cái này.
+# LƯU Ý: Phải dùng Idempotency-Key mới tinh (cb-test-7) để không bị dính cache!
+POST {{baseUrl}}/payments/momo
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-test-7
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "Test CB 7 - Phục hồi"
+}
+
+
+### 5.4 Bắn lỗi liên tục 5 lần để kích hoạt Circuit Breaker cho VNPAY
+# (Dùng cheat code FAIL_VNPAY)
+
+POST {{baseUrl}}/payments/vnpay
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-vnpay-1
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "FAIL_VNPAY 1"
+}
+
+###
+POST {{baseUrl}}/payments/vnpay
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-vnpay-2
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "FAIL_VNPAY 2"
+}
+
+###
+POST {{baseUrl}}/payments/vnpay
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-vnpay-3
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "FAIL_VNPAY 3"
+}
+
+###
+POST {{baseUrl}}/payments/vnpay
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-vnpay-4
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "FAIL_VNPAY 4"
+}
+
+###
+POST {{baseUrl}}/payments/vnpay
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-vnpay-5
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "FAIL_VNPAY 5"
+}
+
+### 5.5 Lần thứ 6 của VNPAY (Mạch đã ngắt OPEN)
+POST {{baseUrl}}/payments/vnpay
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-vnpay-6
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "FAIL_VNPAY 6"
+}
+
+### 5.6 Lần thứ 7 của VNPAY: Thử nghiệm phục hồi (HALF-OPEN -> CLOSED)
+# Nhớ chờ 30 giây kể từ lúc ngắt mạch trước khi bấm nhé!
+POST {{baseUrl}}/payments/vnpay
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+Idempotency-Key: cb-vnpay-7
+
+{
+  "orderId": "{{orderId}}",
+  "orderInfo": "Test CB VNPAY 7 - Phục hồi"
+}
+
+# ==========================================
+# GIẢ LẬP WEBHOOK TỪ ĐỐI TÁC (Tùy chọn)
+# (Thường VNPAY/MoMo sẽ tự gọi URL này, nhưng bạn có thể bắn thử để test signature validation)
+# ==========================================
+
+### 6. Giả lập MoMo Webhook (Test chữ ký sai)
+POST {{baseUrl}}/payments/momo/webhook
+Content-Type: application/json
+
+{
+  "partnerCode": "MOMO",
+  "orderId": "{{orderId}}",
+  "requestId": "12345",
+  "amount": 500000,
+  "orderInfo": "MoMo Webhook Test",
+  "orderType": "momo_wallet",
+  "transId": 2500000000,
+  "resultCode": 0,
+  "message": "Successful.",
+  "payType": "qr",
+  "responseTime": 1610000000,
+  "extraData": "",
+  "signature": "fake-signature-chu-ky-sai-he-thong-se-khong-duyet"
+}

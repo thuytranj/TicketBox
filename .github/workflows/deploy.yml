@@ -1,0 +1,52 @@
+name: Deploy Backend to VPS Azure
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            # 0. Nạp biến môi trường hệ thống để đảm bảo nhận diện lệnh
+            export PATH=$PATH:/usr/local/bin:/usr/bin
+            
+            cd ~/TicketBox
+            
+            # 1. Reset toàn bộ thay đổi cục bộ và dọn dẹp file rác trên VPS để tránh xung đột khi pull
+            git reset --hard HEAD
+            git clean -fd
+            git checkout develop
+            git pull origin develop
+            
+            # 2. Kiểm tra xem VPS sử dụng lệnh 'docker-compose' (V1) hay 'docker compose' (V2)
+            if command -v docker-compose &> /dev/null; then
+              DOCKER_COMPOSE_CMD="docker-compose"
+            else
+              DOCKER_COMPOSE_CMD="docker compose"
+            fi
+            
+            # 3. Re-build và khởi chạy lại các docker containers
+            $DOCKER_COMPOSE_CMD -f docker-compose.prod.yml up -d --build --remove-orphans
+            
+            # 4. Chờ 15 giây để Database và NestJS API khởi động hoàn tất
+            sleep 15
+            
+            # 5. Chạy Database Migrations
+            $DOCKER_COMPOSE_CMD -f docker-compose.prod.yml exec -T ticketbox-api npm run migration:run
+            
+            # 6. Khởi động lại Nginx Load Balancer để xóa cache DNS và nhận diện IP mới của container API
+            $DOCKER_COMPOSE_CMD -f docker-compose.prod.yml restart nginx-lb
+            
+            # 7. Dọn dẹp các Docker image rác (dangling images) để tiết kiệm ổ cứng VPS
+            docker image prune -f

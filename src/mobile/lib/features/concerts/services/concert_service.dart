@@ -1,0 +1,103 @@
+import '../../../core/network/dio_client.dart';
+import '../models/concert.dart';
+
+class ConcertService {
+  final DioClient _dioClient;
+  static const int _pageSize = 100;
+
+  ConcertService(this._dioClient);
+
+  // ── Public API ──────────────────────────────────────────────────────────────
+
+  /// Fetches all concerts (active only). Kept for backwards compatibility.
+  Future<List<Concert>> getConcerts() async {
+    return _fetchAllPages();
+  }
+
+  /// Fetches active + completed concerts, merges and deduplicates by [id].
+  ///
+  /// The completed fetch is best-effort: if the backend returns an error or
+  /// does not support `status=completed`, only active concerts are returned
+  /// (no crash).
+  Future<List<Concert>> getAllConcerts() async {
+    final activeFuture = _fetchAllPages(status: 'active');
+    final completedFuture = _fetchAllPages(status: 'completed').catchError(
+      (_) => <Concert>[],
+    );
+
+    final results = await Future.wait([activeFuture, completedFuture]);
+    final active = results[0];
+    final completed = results[1];
+
+    // Merge and deduplicate by id — active list takes priority.
+    final seen = <String>{};
+    final merged = <Concert>[];
+    for (final c in [...active, ...completed]) {
+      if (seen.add(c.id)) {
+        merged.add(c);
+      }
+    }
+    return merged;
+  }
+
+  // ── Internal pagination ──────────────────────────────────────────────────────
+
+  Future<List<Concert>> _fetchAllPages({String? status}) async {
+    final concerts = <Concert>[];
+    var page = 1;
+
+    while (true) {
+      final queryParameters = <String, dynamic>{
+        'page': page,
+        'limit': _pageSize,
+      };
+      if (status != null) {
+        queryParameters['status'] = status;
+      }
+
+      final data = await _dioClient.get(
+        '/concerts',
+        queryParameters: queryParameters,
+      );
+
+      final pageConcerts = _parseConcertPage(data);
+      concerts.addAll(pageConcerts);
+
+      final totalPages = _readTotalPages(data);
+      final shouldContinue =
+          totalPages != null && totalPages > page && pageConcerts.isNotEmpty;
+      if (!shouldContinue) {
+        break;
+      }
+
+      page++;
+    }
+
+    return concerts;
+  }
+
+  List<Concert> _parseConcertPage(dynamic data) {
+    List<dynamic> concertsJson;
+    if (data is List) {
+      concertsJson = data;
+    } else if (data is Map<String, dynamic> && data['concerts'] != null) {
+      concertsJson = data['concerts'] as List<dynamic>;
+    } else {
+      concertsJson = const [];
+    }
+
+    return concertsJson
+        .whereType<Map<String, dynamic>>()
+        .map(Concert.fromJson)
+        .toList();
+  }
+
+  int? _readTotalPages(dynamic data) {
+    if (data is! Map<String, dynamic>) return null;
+    final meta = data['meta'];
+    if (meta is! Map<String, dynamic>) return null;
+    final totalPages = meta['totalPages'];
+    if (totalPages is int) return totalPages;
+    return int.tryParse(totalPages?.toString() ?? '');
+  }
+}
