@@ -68,6 +68,33 @@ describe('GlobalExceptionFilter', () => {
     );
   });
 
+  it('should preserve structured error fields from HttpException objects', () => {
+    const exception = new HttpException(
+      {
+        message: 'Ticket has already been used',
+        code: 'ALREADY_USED',
+        status: 'ALREADY_USED',
+        error: 'Duplicate Check-in',
+      },
+      HttpStatus.BAD_REQUEST,
+    );
+
+    filter.catch(exception, mockArgumentsHost);
+
+    expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(mockResponse.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        statusCode: HttpStatus.BAD_REQUEST,
+        message: 'Ticket has already been used',
+        code: 'ALREADY_USED',
+        status: 'ALREADY_USED',
+        error: 'Duplicate Check-in',
+        path: '/test-path',
+      }),
+    );
+  });
+
   it('should format generic errors correctly', () => {
     const exception = new Error('Generic internal database error');
 

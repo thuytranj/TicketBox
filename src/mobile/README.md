@@ -6,31 +6,46 @@
 
 ## 🛠 Hướng dẫn thiết lập Môi trường Phát triển
 
-Để khởi chạy ứng dụng mobile và kết nối với Backend nội bộ, hãy làm theo các bước dưới đây:
+Ứng dụng mobile hiện mặc định gọi backend đã deploy tại:
 
-### 1. Khởi động Backend
-Đảm bảo bạn đã khởi động cơ sở dữ liệu PostgreSQL, Redis, RabbitMQ và máy chủ Backend:
+```text
+https://api.ticketboxz.me/api/v1
+```
+
+Bạn có thể chạy app trực tiếp mà **không cần khởi động backend local**:
+
 ```bash
-# Terminal 1: Khởi động các dịch vụ Docker
+cd src/mobile
+flutter run
+```
+
+### Override sang backend local khi cần
+
+Nếu bạn muốn test với backend local, hãy tự khởi động PostgreSQL, Redis, RabbitMQ và backend, sau đó truyền lại `API_BASE_URL` khi chạy Flutter.
+
+```bash
+# Terminal 1
 docker compose up -d postgres redis rabbitmq
 
-# Terminal 2: Chạy Migrations, Seed dữ liệu và chạy Backend ở chế độ Dev
+# Terminal 2
 cd src/backend
 npm run migration:run
-npm run db:seed
+npm run db:seed:direct
 npm run start:dev
 ```
-*Backend mặc định sẽ khởi chạy tại cổng HTTP `3000` (`http://localhost:3000`).*
 
-### 2. Thiết lập Port Forwarding cho Android (ADB Reverse)
-Nếu bạn chạy ứng dụng trên thiết bị Android thật hoặc Emulator, hãy chạy lệnh sau để thiết bị có thể phân giải được cổng `3000` của localhost máy tính:
+*Backend local mặc định chạy tại `http://localhost:3000`.*
+
+### Thiết lập Port Forwarding cho Android khi dùng backend local
+
+Nếu bạn chạy ứng dụng trên thiết bị Android thật hoặc Emulator và muốn gọi backend local, hãy chạy:
+
 ```bash
 adb devices
 adb reverse tcp:3000 tcp:3000
 ```
 
-### 3. Cấu hình Biến Môi trường (Environment Variables)
-Khi khởi chạy ứng dụng Flutter, bạn **bắt buộc** phải truyền tham số `--dart-define` để chỉ định API Endpoint:
+### Cấu hình `API_BASE_URL` khi cần override
 
 *   **Android Studio / VS Code configuration args:**
     ```bash
@@ -78,8 +93,30 @@ Khi khởi chạy ứng dụng Flutter, bạn **bắt buộc** phải truyền t
 *   Trạng thái đồng bộ được phản ánh trực tiếp trên AppBar thông qua badge số lượng vé chưa sync (ví dụ: `⚡ 5 pending`).
 *   Khi staff bấm đồng bộ thủ công, phản hồi thành công chỉ có nghĩa là log đã được **đưa vào hàng đợi xử lý của backend**, chưa phải kết quả đối soát cuối cùng.
 
-### Danh sách sự kiện
-Endpoint `/concerts` hiện trả về danh sách **concert đang active** theo dạng phân trang chung của backend, chưa phải danh sách “được phân công riêng cho gate staff”. Mobile sẽ tự gom nhiều trang để hiển thị đầy đủ danh sách active hiện có.
+### Danh sách sự kiện & lọc
+Concert được tải về từ hai endpoint song song: `GET /concerts?status=active` và `GET /concerts?status=completed`. App gộp (merge) và loại trùng (dedupe) theo `id` trước khi hiển thị — active ưu tiên nếu cùng ID. Nếu endpoint `completed` không được hỗ trợ, app tiếp tục bình thường chỉ với danh sách active.
+
+**Màn hình EventListScreen** cho phép staff:
+- Tìm kiếm nhanh theo tên hoặc địa điểm (local, case-insensitive) qua thanh search cố định phía trên.
+- Lọc theo 3 tab: **Hôm nay** (mặc định), **Sắp diễn ra**, **Đã diễn ra**.
+- Phân trang cục bộ 6 concert/trang sau khi áp filter + search.
+- **Chạm trực tiếp vào card concert** → điều hướng ngay sang màn Check-in Dashboard (`PreloadScreen`) mà không qua bước xác nhận trung gian.
+
+### Check-in Readiness Dashboard (`PreloadScreen`)
+Khi staff chọn một concert, app tự động tải dữ liệu vé xuống nền và chuyển sang màn **Check-in Readiness Dashboard**. Đây là màn hình trung gian trước khi vào camera quét QR.
+
+**Bố cục:**
+- **Header**: Tên concert lớn + địa điểm + ngày giờ (nếu có) + nhãn `SỰ KIỆN ĐANG MỞ`.
+- **Dòng trạng thái** (realtime, dựa vào `Connectivity().onConnectivityChanged`):
+  - Đang tải: `Đang chuẩn bị dữ liệu check-in...`
+  - Đã đồng bộ + online: `● Trạng thái: Đã đồng bộ (Ngoại tuyến sẵn sàng)`
+  - Đã đồng bộ + offline: `● Trạng thái: Mất kết nối (Đang chạy chế độ offline)`
+  - Lỗi: `● Trạng thái: Chưa sẵn sàng`
+- **3 số liệu lớn** (sau khi tải xong): Đã quét (`checked_in / total`), Vé còn lại, VIP chưa vào — đọc trực tiếp từ SQLite local.
+- **Nút chính**: `BẮT ĐẦU QUÉT MÃ QR` → mở `ScannerScreen`.
+- **Khi lỗi**: Card thông báo ngắn (sanitized, user-facing) + nút `Thử lại`.
+
+> Màn hình này không hiển thị bất kỳ log kỹ thuật nào (bước kết nối, tải, lưu trữ). Toàn bộ tiến trình backend được ẩn, chỉ phản ánh kết quả cuối cho staff.
 
 ---
 
@@ -130,10 +167,10 @@ flutter test test/
 |--------|-----------|-------|
 | Login screen | `test/features/auth/login_screen_test.dart` | UI states, form validation, error display |
 | Auth restore | `test/features/auth/auth_provider_test.dart` | Offline degraded mode, 401+refresh, invalid role |
-| Event list | `test/features/concerts/event_list_screen_test.dart` | Loading/error/selection states |
-| Concert selection | `test/features/concerts/concert_provider_test.dart` | Stale selection invalidation after refresh |
-| Concert service | `test/features/concerts/concert_service_test.dart` | `/concerts` pagination aggregation across multiple backend pages |
-| Preload screen | `test/features/checkin/preload_screen_test.dart` | Step progress, success/error states |
+| Event list | `test/features/concerts/event_list_screen_test.dart` | Loading/error/empty states; search bar render; 3-tab filter (Hôm nay mặc định); tab switches concerts; pagination next/prev; tap card → route push (no confirm CTA); no sticky bottom bar |
+| Concert provider | `test/features/concerts/concert_provider_test.dart` | State transitions, fetch trigger, error handling — no selection-tracking state |
+| Concert service | `test/features/concerts/concert_service_test.dart` | `/concerts` multi-page aggregation; `getAllConcerts()` active+completed parallel fetch, merge, dedupe by id, graceful degradation when completed fetch fails |
+| Check-in Dashboard | `test/features/checkin/preload_screen_test.dart` | Concert identity header (title, location, SỰ KIỆN ĐANG MỞ); loading shows readiness message (no step log labels); loaded shows status line + 3 metrics (Đã quét/Vé còn lại/VIP chưa vào) + BẮT ĐẦU QUÉT MÃ QR; error shows sanitized message + Thử lại; no dev-facing step icons |
 | Scanner screen | `test/features/checkin/scanner_screen_test.dart` | AppBar contract, scan frame overlay, manual sync messaging |
 | ScanResultPanel | `test/features/checkin/scan_result_panel_test.dart` | 4 states, auto-dismiss, tap dismiss, one-shot guard |
 | Scan throttle | `test/features/checkin/scan_throttle_test.dart` | Duplicate QR cooldown acceptance/rejection logic |

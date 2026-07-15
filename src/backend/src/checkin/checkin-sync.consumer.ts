@@ -2,9 +2,9 @@ import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
-import { Ticket } from '../booking/entities/ticket.entity';
+import { Ticket, TicketStatus } from '../booking/entities/ticket.entity';
 import { CheckinStatus } from '../common/enums/checkin-status.enum';
-import { VipGuest } from '../concert/entities/vip-guest.entity';
+import { VipGuest, VipGuestStatus } from '../concert/entities/vip-guest.entity';
 import { CheckinLog, CheckinLogStatus } from './entities/checkin-log.entity';
 import { CHECKIN_SYNC_QUEUE } from './checkin.service';
 import { generateUuidV7 } from '../auth/utils/uuid';
@@ -125,6 +125,9 @@ export class CheckinSyncConsumer implements OnModuleInit {
       .where('ticket.qrCodeHash = :qrCodeHash', { qrCodeHash })
       .andWhere('order.concertId = :concertId', { concertId })
       .andWhere('order.status = :orderStatus', { orderStatus: 'paid' })
+      .andWhere('ticket.status = :ticketStatus', {
+        ticketStatus: TicketStatus.ACTIVE,
+      })
       .getOne();
 
     if (ticket) {
@@ -134,7 +137,7 @@ export class CheckinSyncConsumer implements OnModuleInit {
 
     // Try VIP guest
     const vipGuest = await this.vipGuestRepo.findOne({
-      where: { qrCodeHash, concertId },
+      where: { qrCodeHash, concertId, status: VipGuestStatus.ACTIVE },
     });
 
     if (vipGuest) {

@@ -167,8 +167,8 @@ class _ScannerScreenState extends State<ScannerScreen>
       // Map uncaught exceptions (e.g. DB failure) to the ERROR outcome.
       setState(() {
         _currentOutcome = ScanOutcome.fromServiceResult({
-          'status': 'ERROR',
-          'message': 'Có lỗi xảy ra. Thử lại.',
+          'status': 'DEVICE_ERROR',
+          'message': 'Thiết bị gặp lỗi khi lưu kết quả quét.',
         });
       });
     }

@@ -5,6 +5,7 @@ import 'package:ticketbox_mobile/core/theme/gate_app_theme.dart';
 import 'package:ticketbox_mobile/features/checkin/models/preload_step.dart';
 import 'package:ticketbox_mobile/features/checkin/providers/checkin_provider.dart';
 import 'package:ticketbox_mobile/features/checkin/screens/preload_screen.dart';
+import 'package:ticketbox_mobile/features/checkin/widgets/dashboard_stat_card.dart';
 import 'package:ticketbox_mobile/features/concerts/models/concert.dart';
 import 'package:ticketbox_mobile/shared/widgets/gate_button.dart';
 
@@ -17,10 +18,22 @@ class _MockCheckinProvider extends ChangeNotifier implements CheckinProvider {
   PreloadStep currentStep;
   @override
   String errorMessage;
+
+  // Raw totals (backwards compat)
   @override
   int ticketCount;
   @override
   int vipCount;
+
+  // Dashboard metrics
+  @override
+  int totalEntries;
+  @override
+  int checkedInCount;
+  @override
+  int ticketRemaining;
+  @override
+  int vipRemaining;
 
   bool preloadCalled = false;
 
@@ -30,6 +43,10 @@ class _MockCheckinProvider extends ChangeNotifier implements CheckinProvider {
     this.errorMessage = '',
     this.ticketCount = 0,
     this.vipCount = 0,
+    this.totalEntries = 0,
+    this.checkedInCount = 0,
+    this.ticketRemaining = 0,
+    this.vipRemaining = 0,
   });
 
   @override
@@ -41,7 +58,7 @@ class _MockCheckinProvider extends ChangeNotifier implements CheckinProvider {
   void reset() {}
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 Widget _wrap(_MockCheckinProvider mock, Concert concert) => MaterialApp(
       theme: GateAppTheme.dark(),
@@ -57,124 +74,263 @@ final _testConcert = Concert(
   location: 'Sân vận động Mỹ Đình',
 );
 
-// ── Tests ────────────────────────────────────────────────────────────────────
+final _upcomingConcert = Concert(
+  id: 'c-upcoming-456',
+  title: 'Future Show',
+  location: 'Nhà thi đấu Phú Thọ',
+  startTime: DateTime.now().add(const Duration(days: 1)),
+  endTime: DateTime.now().add(const Duration(days: 1, hours: 3)),
+  status: 'active',
+);
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 void main() {
-  group('PreloadScreen Widget Tests', () {
-    testWidgets('renders concert information card correctly', (tester) async {
+  group('PreloadScreen — commercial dashboard', () {
+    // ── Concert identity ────────────────────────────────────────────────────
+
+    testWidgets('renders concert title and location', (tester) async {
       final mock = _MockCheckinProvider();
       await tester.pumpWidget(_wrap(mock, _testConcert));
 
       expect(find.text('Blackpink World Tour'), findsOneWidget);
       expect(find.text('Sân vận động Mỹ Đình'), findsOneWidget);
-      expect(find.byIcon(Icons.confirmation_number_outlined), findsOneWidget);
     });
 
-    testWidgets('connecting step shows active status during connecting', (tester) async {
+    testWidgets('renders eyebrow label SỰ KIỆN ĐANG MỞ', (tester) async {
+      final mock = _MockCheckinProvider();
+      await tester.pumpWidget(_wrap(mock, _testConcert));
+
+      expect(find.text('SỰ KIỆN ĐANG MỞ'), findsOneWidget);
+    });
+
+    testWidgets('renders blocked eyebrow label for upcoming concert',
+        (tester) async {
+      final mock = _MockCheckinProvider();
+      await tester.pumpWidget(_wrap(mock, _upcomingConcert));
+
+      expect(find.text('CHECK-IN CHƯA MỞ'), findsOneWidget);
+    });
+
+    // ── No dev-facing step log ──────────────────────────────────────────────
+
+    testWidgets('does not show dev step log labels', (tester) async {
       final mock = _MockCheckinProvider(
         state: PreloadState.loading,
         currentStep: PreloadStep.connecting,
       );
       await tester.pumpWidget(_wrap(mock, _testConcert));
 
-      // Active state shows rotating sync icon
-      expect(find.byIcon(Icons.sync_rounded), findsOneWidget);
-      
-      // Other steps are pending (circle icon)
-      expect(find.byIcon(Icons.radio_button_unchecked_rounded), findsNWidgets(2));
+      expect(find.text('Kết nối máy chủ'), findsNothing);
+      expect(find.text('Tải dữ liệu danh sách vé'), findsNothing);
+      expect(find.text('Thiết lập lưu trữ offline'), findsNothing);
+      expect(find.text('TIẾN TRÌNH ĐỒNG BỘ'), findsNothing);
     });
 
-    testWidgets('downloading step shows active and connecting step shows success', (tester) async {
+    testWidgets('does not show step radio/check icons from old UI',
+        (tester) async {
       final mock = _MockCheckinProvider(
         state: PreloadState.loading,
         currentStep: PreloadStep.downloading,
       );
       await tester.pumpWidget(_wrap(mock, _testConcert));
 
-      // Connecting step shows check icon (success)
-      expect(find.byIcon(Icons.check_circle_outline_rounded), findsOneWidget);
-      
-      // Downloading shows sync icon
-      expect(find.byIcon(Icons.sync_rounded), findsOneWidget);
-      
-      // Saving shows radio unchecked icon
-      expect(find.byIcon(Icons.radio_button_unchecked_rounded), findsOneWidget);
-    });
-
-    testWidgets('saving step shows active and other steps show success', (tester) async {
-      final mock = _MockCheckinProvider(
-        state: PreloadState.loading,
-        currentStep: PreloadStep.saving,
-      );
-      await tester.pumpWidget(_wrap(mock, _testConcert));
-
-      // Connecting and Downloading show check icon
-      expect(find.byIcon(Icons.check_circle_outline_rounded), findsNWidgets(2));
-      
-      // Saving shows sync icon
-      expect(find.byIcon(Icons.sync_rounded), findsOneWidget);
-      
-      // No unchecked icons
       expect(find.byIcon(Icons.radio_button_unchecked_rounded), findsNothing);
     });
 
-    testWidgets('completed step shows all success icons, renders database offline summary card', (tester) async {
+    // ── Status line — loading ───────────────────────────────────────────────
+
+    testWidgets('shows loading status text while preloading', (tester) async {
       final mock = _MockCheckinProvider(
-        state: PreloadState.loaded,
-        currentStep: PreloadStep.completed,
-        ticketCount: 1420,
-        vipCount: 120,
+        state: PreloadState.loading,
+        currentStep: PreloadStep.downloading,
       );
       await tester.pumpWidget(_wrap(mock, _testConcert));
 
-      // All 3 steps show check icon
-      expect(find.byIcon(Icons.check_circle_outline_rounded), findsNWidgets(3));
-      
-      // Badge "SẴN SÀNG"
-      expect(find.text('SẴN SÀNG'), findsOneWidget);
-      
-      // Summary values
-      expect(find.text('1420'), findsOneWidget);
-      expect(find.text('120'), findsOneWidget);
-      
-      // Confirm CTA button
-      final btn = tester.widget<GateButton>(find.byKey(const Key('preload_action_btn')));
-      expect(btn.label, 'Vào màn hình quét vé');
+      expect(
+        find.text('Đang chuẩn bị dữ liệu check-in...'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('loading state shows spinner button', (tester) async {
+      final mock = _MockCheckinProvider(state: PreloadState.loading);
+      await tester.pumpWidget(_wrap(mock, _testConcert));
+
+      final btn = tester.widget<GateButton>(
+        find.byKey(const Key('preload_action_btn')),
+      );
+      expect(btn.isLoading, isTrue);
+      expect(btn.onPressed, isNull);
+    });
+
+    // ── Dashboard grid — loaded ─────────────────────────────────────────────
+
+    testWidgets('shows 3 dashboard stat cards when loaded', (tester) async {
+      final mock = _MockCheckinProvider(
+        state: PreloadState.loaded,
+        currentStep: PreloadStep.completed,
+        totalEntries: 1540,
+        checkedInCount: 423,
+        ticketRemaining: 980,
+        vipRemaining: 137,
+      );
+      await tester.pumpWidget(_wrap(mock, _testConcert));
+
+      expect(find.byType(DashboardStatCard), findsNWidgets(3));
+    });
+
+    testWidgets('dashboard shows correct scanned/total ratio', (tester) async {
+      final mock = _MockCheckinProvider(
+        state: PreloadState.loaded,
+        currentStep: PreloadStep.completed,
+        totalEntries: 1540,
+        checkedInCount: 423,
+        ticketRemaining: 980,
+        vipRemaining: 137,
+      );
+      await tester.pumpWidget(_wrap(mock, _testConcert));
+
+      expect(find.text('423 / 1540'), findsOneWidget);
+    });
+
+    testWidgets('dashboard shows ticket remaining and vip remaining',
+        (tester) async {
+      final mock = _MockCheckinProvider(
+        state: PreloadState.loaded,
+        currentStep: PreloadStep.completed,
+        totalEntries: 500,
+        checkedInCount: 100,
+        ticketRemaining: 342,
+        vipRemaining: 58,
+      );
+      await tester.pumpWidget(_wrap(mock, _testConcert));
+
+      expect(find.text('342'), findsOneWidget);
+      expect(find.text('58'), findsOneWidget);
+    });
+
+    testWidgets('dashboard not rendered while loading', (tester) async {
+      final mock = _MockCheckinProvider(state: PreloadState.loading);
+      await tester.pumpWidget(_wrap(mock, _testConcert));
+
+      expect(find.byType(DashboardStatCard), findsNothing);
+    });
+
+    // ── Start scan button — loaded ──────────────────────────────────────────
+
+    testWidgets('shows BẮT ĐẦU QUÉT MÃ QR button when loaded', (tester) async {
+      final mock = _MockCheckinProvider(
+        state: PreloadState.loaded,
+        currentStep: PreloadStep.completed,
+      );
+      await tester.pumpWidget(_wrap(mock, _testConcert));
+
+      final btn = tester.widget<GateButton>(
+        find.byKey(const Key('start_scan_btn')),
+      );
+      expect(btn.label, 'BẮT ĐẦU QUÉT MÃ QR');
       expect(btn.onPressed, isNotNull);
     });
 
-    testWidgets('error state displays failure step, error message details and Thử lại button', (tester) async {
+    testWidgets('upcoming concert disables scanner entry', (tester) async {
+      final mock = _MockCheckinProvider();
+      await tester.pumpWidget(_wrap(mock, _upcomingConcert));
+
+      final btn = tester.widget<GateButton>(
+        find.byKey(const Key('preload_action_btn')),
+      );
+      expect(btn.onPressed, isNull);
+      expect(btn.label, 'Check-in chưa mở');
+      expect(
+        find.text('Sự kiện chưa tới thời gian mở check-in.'),
+        findsOneWidget,
+      );
+      expect(mock.preloadCalled, isFalse);
+    });
+
+    testWidgets('no confirm_cta key present anywhere in tree', (tester) async {
+      final mock = _MockCheckinProvider(
+        state: PreloadState.loaded,
+        currentStep: PreloadStep.completed,
+      );
+      await tester.pumpWidget(_wrap(mock, _testConcert));
+
+      expect(find.byKey(const Key('confirm_cta')), findsNothing);
+    });
+
+    // ── Error state ─────────────────────────────────────────────────────────
+
+    testWidgets('error state shows user-facing sanitized message', (tester) async {
       final mock = _MockCheckinProvider(
         state: PreloadState.error,
-        currentStep: PreloadStep.downloading, // Failed during download
+        currentStep: PreloadStep.downloading,
         errorMessage: 'DioException: connection timeout',
       );
       await tester.pumpWidget(_wrap(mock, _testConcert));
 
-      // Connecting step succeeds
-      expect(find.byIcon(Icons.check_circle_outline_rounded), findsOneWidget);
-      
-      // Downloading step fails (error icon)
-      expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
-      
-      // Saving step remains pending
-      expect(find.byIcon(Icons.radio_button_unchecked_rounded), findsOneWidget);
-
-      // Sanitized network error message displays
       expect(
         find.text('Không thể kết nối máy chủ. Vui lòng kiểm tra Wi-Fi hoặc 4G.'),
         findsOneWidget,
       );
+    });
 
-      // Thử lại button
-      final btn = tester.widget<GateButton>(find.byKey(const Key('preload_action_btn')));
+    testWidgets('error state does not show raw exception text', (tester) async {
+      final mock = _MockCheckinProvider(
+        state: PreloadState.error,
+        errorMessage: 'DioException: connection timeout',
+      );
+      await tester.pumpWidget(_wrap(mock, _testConcert));
+
+      expect(find.text('DioException: connection timeout'), findsNothing);
+      expect(find.textContaining('Exception'), findsNothing);
+    });
+
+    testWidgets('error state shows Thử lại button', (tester) async {
+      final mock = _MockCheckinProvider(
+        state: PreloadState.error,
+        errorMessage: 'Unknown error',
+      );
+      await tester.pumpWidget(_wrap(mock, _testConcert));
+
+      final btn = tester.widget<GateButton>(
+        find.byKey(const Key('preload_action_btn')),
+      );
       expect(btn.label, 'Thử lại');
       expect(btn.onPressed, isNotNull);
+    });
 
-      // Triggering button calls preloadData
+    testWidgets('Thử lại button triggers preloadData', (tester) async {
+      final mock = _MockCheckinProvider(
+        state: PreloadState.error,
+        errorMessage: 'Unknown error',
+      );
+      await tester.pumpWidget(_wrap(mock, _testConcert));
+
       await tester.tap(find.byKey(const Key('preload_action_btn')));
       await tester.pump();
+
       expect(mock.preloadCalled, isTrue);
+    });
+
+    testWidgets('error state shows status line Chưa sẵn sàng', (tester) async {
+      final mock = _MockCheckinProvider(
+        state: PreloadState.error,
+        errorMessage: 'Network error',
+      );
+      await tester.pumpWidget(_wrap(mock, _testConcert));
+
+      expect(find.text('Trạng thái: Chưa sẵn sàng'), findsOneWidget);
+    });
+
+    testWidgets('error state does not show dashboard grid', (tester) async {
+      final mock = _MockCheckinProvider(
+        state: PreloadState.error,
+        errorMessage: 'Network error',
+      );
+      await tester.pumpWidget(_wrap(mock, _testConcert));
+
+      expect(find.byType(DashboardStatCard), findsNothing);
     });
   });
 }

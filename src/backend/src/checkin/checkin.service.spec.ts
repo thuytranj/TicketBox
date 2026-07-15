@@ -5,7 +5,7 @@ import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { CheckinService, CHECKIN_SYNC_QUEUE } from './checkin.service';
 import { Ticket, TicketStatus } from '../booking/entities/ticket.entity';
 import { CheckinStatus } from '../common/enums/checkin-status.enum';
-import { VipGuest } from '../concert/entities/vip-guest.entity';
+import { VipGuest, VipGuestStatus } from '../concert/entities/vip-guest.entity';
 import { Concert } from '../concert/entities/concert.entity';
 import { CheckinLog } from './entities/checkin-log.entity';
 import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
@@ -37,7 +37,7 @@ describe('CheckinService', () => {
     checkinStatus: CheckinStatus.NOT_CHECKED_IN,
     checkedInAt: null,
     concertId: 'concert-1',
-    status: 'active',
+    status: VipGuestStatus.ACTIVE,
   } as any;
 
   const mockQueryBuilder = {
@@ -154,6 +154,10 @@ describe('CheckinService', () => {
       expect(result.data.type).toBe('regular_ticket');
       expect(result.data.ticketId).toBe('ticket-1');
       expect(result.data.checkinStatus).toBe('checked_in');
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'ticket.status = :ticketStatus',
+        { ticketStatus: TicketStatus.ACTIVE },
+      );
       expect(mockTransactionManager.update).toHaveBeenCalled();
       expect(mockTransactionManager.save).toHaveBeenCalled();
     });
@@ -183,6 +187,13 @@ describe('CheckinService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.type).toBe('vip_guest');
+      expect(vipGuestRepo.findOne).toHaveBeenCalledWith({
+        where: {
+          qrCodeHash: 'hash_vip_789',
+          concertId: 'concert-1',
+          status: VipGuestStatus.ACTIVE,
+        },
+      });
     });
 
     it('should throw NotFoundException when QR code not found', async () => {
