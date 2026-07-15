@@ -86,6 +86,14 @@ Widget _wrap({
 
 // Sample concerts — "upcoming" so they appear in Sắp diễn ra tab.
 final _futureTime = DateTime.now().add(const Duration(days: 5));
+final _openConcert = Concert(
+  id: 'c-open',
+  title: 'Gate Open Concert',
+  location: 'Sân khấu Trung tâm',
+  startTime: DateTime.now(),
+  endTime: DateTime.now().add(const Duration(hours: 2)),
+  status: 'active',
+);
 final _concertA = Concert(
   id: 'c1',
   title: 'Rock Night 2026',
@@ -262,7 +270,29 @@ void main() {
 
     // ── Direct navigation on tap ──────────────────────────────────────────────
 
-    testWidgets('tapping EventCard pushes a route (no confirm step)',
+    testWidgets('tapping open EventCard pushes a route (no confirm step)',
+        (tester) async {
+      final observer = _NavObserver();
+      final mock = _MockConcertProvider(
+        state: ConcertState.loaded,
+        concerts: [_openConcert],
+      );
+      await tester.pumpWidget(
+        _wrap(concertMock: mock, observers: [observer]),
+      );
+
+      expect(find.byType(EventCard), findsOneWidget);
+
+      // Tap card — navigation should be pushed immediately.
+      // We intentionally do NOT pump after tap to avoid building
+      // PreloadScreen (which depends on providers not in this test tree).
+      await tester.tap(find.byType(EventCard).first);
+
+      // One initial route + one pushed route = 2 total
+      expect(observer.pushed.length, greaterThanOrEqualTo(1));
+    });
+
+    testWidgets('tapping upcoming concert shows warning and does not navigate',
         (tester) async {
       final observer = _NavObserver();
       final mock = _MockConcertProvider(
@@ -276,15 +306,15 @@ void main() {
       await tester.tap(find.text('Sắp diễn ra'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(EventCard), findsOneWidget);
-
-      // Tap card — navigation should be pushed immediately.
-      // We intentionally do NOT pump after tap to avoid building
-      // PreloadScreen (which depends on providers not in this test tree).
+      final pushCountBeforeTap = observer.pushed.length;
       await tester.tap(find.byType(EventCard).first);
+      await tester.pump();
 
-      // One initial route + one pushed route = 2 total
-      expect(observer.pushed.length, greaterThanOrEqualTo(1));
+      expect(
+        find.text('Sự kiện chưa tới thời gian mở check-in.'),
+        findsOneWidget,
+      );
+      expect(observer.pushed.length, pushCountBeforeTap);
     });
 
     // ── Pagination ────────────────────────────────────────────────────────────

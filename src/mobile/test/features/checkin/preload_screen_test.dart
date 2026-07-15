@@ -74,6 +74,15 @@ final _testConcert = Concert(
   location: 'Sân vận động Mỹ Đình',
 );
 
+final _upcomingConcert = Concert(
+  id: 'c-upcoming-456',
+  title: 'Future Show',
+  location: 'Nhà thi đấu Phú Thọ',
+  startTime: DateTime.now().add(const Duration(days: 1)),
+  endTime: DateTime.now().add(const Duration(days: 1, hours: 3)),
+  status: 'active',
+);
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 void main() {
@@ -93,6 +102,14 @@ void main() {
       await tester.pumpWidget(_wrap(mock, _testConcert));
 
       expect(find.text('SỰ KIỆN ĐANG MỞ'), findsOneWidget);
+    });
+
+    testWidgets('renders blocked eyebrow label for upcoming concert',
+        (tester) async {
+      final mock = _MockCheckinProvider();
+      await tester.pumpWidget(_wrap(mock, _upcomingConcert));
+
+      expect(find.text('CHECK-IN CHƯA MỞ'), findsOneWidget);
     });
 
     // ── No dev-facing step log ──────────────────────────────────────────────
@@ -214,6 +231,22 @@ void main() {
       );
       expect(btn.label, 'BẮT ĐẦU QUÉT MÃ QR');
       expect(btn.onPressed, isNotNull);
+    });
+
+    testWidgets('upcoming concert disables scanner entry', (tester) async {
+      final mock = _MockCheckinProvider();
+      await tester.pumpWidget(_wrap(mock, _upcomingConcert));
+
+      final btn = tester.widget<GateButton>(
+        find.byKey(const Key('preload_action_btn')),
+      );
+      expect(btn.onPressed, isNull);
+      expect(btn.label, 'Check-in chưa mở');
+      expect(
+        find.text('Sự kiện chưa tới thời gian mở check-in.'),
+        findsOneWidget,
+      );
+      expect(mock.preloadCalled, isFalse);
     });
 
     testWidgets('no confirm_cta key present anywhere in tree', (tester) async {

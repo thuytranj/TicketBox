@@ -59,7 +59,7 @@ void main() {
     test('Unknown status maps to error', () {
       final o = ScanOutcome.fromServiceResult({'status': 'SOME_RANDOM', 'message': ''});
       expect(o.status, ScanStatus.error);
-      expect(o.title, 'LỖI ĐỒNG BỘ');
+      expect(o.title, 'KHÔNG THỂ XỬ LÝ');
     });
 
     test('Empty status maps to error', () {
@@ -156,16 +156,25 @@ void main() {
   });
 
   group('ScanResultPanel — ERROR state', () {
-    testWidgets('shows LỖI ĐỒNG BỘ title for unknown status', (tester) async {
+    testWidgets('shows KHÔNG THỂ XỬ LÝ title for unknown status', (tester) async {
       await tester.pumpWidget(
           _wrap(result: {'status': 'TIMEOUT', 'message': 'x'}));
-      expect(find.text('LỖI ĐỒNG BỘ'), findsOneWidget);
+      expect(find.text('KHÔNG THỂ XỬ LÝ'), findsOneWidget);
     });
 
     testWidgets('shows cloud_off icon', (tester) async {
       await tester.pumpWidget(
           _wrap(result: {'status': 'ERROR', 'message': 'x'}));
       expect(find.byIcon(Icons.cloud_off_rounded), findsOneWidget);
+    });
+
+    testWidgets('shows specific auth expired title when session expires',
+        (tester) async {
+      await tester.pumpWidget(_wrap(result: {
+        'status': 'AUTH_EXPIRED',
+        'message': 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+      }));
+      expect(find.text('PHIÊN ĐÃ HẾT HẠN'), findsOneWidget);
     });
   });
 

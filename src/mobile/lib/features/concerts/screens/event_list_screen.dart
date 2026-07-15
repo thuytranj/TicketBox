@@ -82,6 +82,19 @@ class _EventListScreenState extends State<EventListScreen>
   // ── Navigation ──────────────────────────────────────────────────────────────
 
   void _navigateTo(Concert concert) {
+    if (!concert.isGateOpen) {
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      messenger
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(concert.gateBlockedMessage),
+            backgroundColor: GateColors.scanUsed.primary,
+          ),
+        );
+      return;
+    }
+
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => PreloadScreen(concert: concert),
     ));

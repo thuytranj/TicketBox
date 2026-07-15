@@ -492,6 +492,46 @@ class CheckinService {
     return parts.join(' | ');
   }
 
+  Map<String, dynamic> _mapScanApiError(ApiException exception) {
+    if (exception.statusCode == 401) {
+      return {
+        'success': false,
+        'status': 'AUTH_EXPIRED',
+        'message': 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+      };
+    }
+
+    if (exception.statusCode == 403) {
+      return {
+        'success': false,
+        'status': 'FORBIDDEN',
+        'message': 'Tài khoản không có quyền thực hiện check-in này.',
+      };
+    }
+
+    if (exception.statusCode == 400) {
+      return {
+        'success': false,
+        'status': 'INVALID_REQUEST',
+        'message': 'Yêu cầu quét không hợp lệ. Vui lòng thử lại.',
+      };
+    }
+
+    if (exception.statusCode >= 500) {
+      return {
+        'success': false,
+        'status': 'SERVER_ERROR',
+        'message': 'Máy chủ đang gặp sự cố. Vui lòng thử lại sau.',
+      };
+    }
+
+    return {
+      'success': false,
+      'status': 'ERROR',
+      'message': 'Không thể xử lý lượt quét này. Vui lòng thử lại.',
+    };
+  }
+
   Future<Map<String, dynamic>> processScan(
     String concertId,
     String qrCodeHash,
@@ -555,7 +595,7 @@ class CheckinService {
         return _offlineFallbackScan(concertId, qrCodeHash, deviceId: deviceId);
       }
 
-      rethrow;
+      return _mapScanApiError(e);
     } catch (_) {
       rethrow;
     }

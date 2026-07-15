@@ -10,8 +10,11 @@ void main() {
       });
 
       expect(outcome.status, ScanStatus.error);
-      expect(outcome.title, 'LỖI ĐỒNG BỘ');
-      expect(outcome.message, 'Có lỗi xảy ra. Thử lại.');
+      expect(outcome.title, 'KHÔNG THỂ XỬ LÝ');
+      expect(
+        outcome.message,
+        'Không thể xử lý lượt quét này. Vui lòng thử lại.',
+      );
     });
   });
 }

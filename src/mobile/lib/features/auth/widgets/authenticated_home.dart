@@ -78,6 +78,11 @@ class _AuthenticatedHomeState extends State<AuthenticatedHome> {
       return null;
     }
 
+    if (!concert.isGateOpen) {
+      await checkinService.clearPreparedConcertSnapshot();
+      return null;
+    }
+
     final hasOfflineEntries = await checkinService.hasOfflineEntries(concert.id);
     if (!hasOfflineEntries) {
       await checkinService.clearPreparedConcertSnapshot();

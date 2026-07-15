@@ -27,9 +27,11 @@ class _PreloadScreenState extends State<PreloadScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<CheckinProvider>().preloadData(widget.concert.id);
-    });
+    if (widget.concert.isGateOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        context.read<CheckinProvider>().preloadData(widget.concert.id);
+      });
+    }
   }
 
   @override
@@ -138,9 +140,11 @@ class _PreloadScreenState extends State<PreloadScreen> {
         children: [
           // Eyebrow label
           Text(
-            'SỰ KIỆN ĐANG MỞ',
+            concert.gateEyebrowLabel,
             style: GateTypography.caption.copyWith(
-              color: GateColors.primary,
+              color: concert.isGateOpen
+                  ? GateColors.primary
+                  : GateColors.scanUsed.primary,
               fontWeight: FontWeight.w700,
               letterSpacing: 1.2,
             ),
@@ -212,6 +216,7 @@ class _PreloadScreenState extends State<PreloadScreen> {
               : true; // assume online until proven otherwise
 
           return _StatusLine(
+            concert: widget.concert,
             providerState: provider.state,
             isOnline: isOnline,
           );
@@ -222,6 +227,10 @@ class _PreloadScreenState extends State<PreloadScreen> {
 
   /// 3-card dashboard grid — only rendered when data is loaded.
   Widget _buildDashboardGrid(CheckinProvider provider) {
+    if (!widget.concert.isGateOpen) {
+      return const SizedBox.shrink();
+    }
+
     // Fixed height placeholder keeps button position stable during load.
     const double gridHeight = 110;
 
@@ -304,8 +313,67 @@ class _PreloadScreenState extends State<PreloadScreen> {
     );
   }
 
+  Widget _buildAvailabilityCard() {
+    if (widget.concert.isGateOpen) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        GateSpacing.md,
+        GateSpacing.md,
+        GateSpacing.md,
+        0,
+      ),
+      child: GateCard(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.info_outline_rounded,
+              color: GateColors.scanUsed.primary,
+              size: 20,
+            ),
+            GateSpacing.horizontal(GateSpacing.sm),
+            Expanded(
+              child: Text(
+                widget.concert.gateBlockedMessage,
+                style: GateTypography.bodyMedium.copyWith(
+                  color: GateColors.onSurface,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Bottom action bar.
   Widget _buildBottomBar(CheckinProvider provider) {
+    if (!widget.concert.isGateOpen) {
+      return Container(
+        decoration: const BoxDecoration(
+          color: GateColors.surface,
+          border: Border(
+            top: BorderSide(color: GateColors.border, width: 1),
+          ),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          GateSpacing.md,
+          GateSpacing.sm,
+          GateSpacing.md,
+          GateSpacing.sm + MediaQuery.of(context).padding.bottom,
+        ),
+        child: GateButton(
+          key: const Key('preload_action_btn'),
+          label: widget.concert.gateStatusLine.replaceFirst('Trạng thái: ', ''),
+          onPressed: null,
+          fullWidth: true,
+        ),
+      );
+    }
+
     final state = provider.state;
     final isLoading =
         state == PreloadState.loading || state == PreloadState.initial;
@@ -380,6 +448,7 @@ class _PreloadScreenState extends State<PreloadScreen> {
           _buildStatusLine(provider),
           GateSpacing.vertical(GateSpacing.md),
           _buildDashboardGrid(provider),
+          _buildAvailabilityCard(),
           _buildErrorCard(provider),
           const Spacer(),
         ],
@@ -395,10 +464,12 @@ class _PreloadScreenState extends State<PreloadScreen> {
 /// explicit and easy to test.
 class _StatusLine extends StatelessWidget {
   const _StatusLine({
+    required this.concert,
     required this.providerState,
     required this.isOnline,
   });
 
+  final Concert concert;
   final PreloadState providerState;
   final bool isOnline;
 
@@ -430,6 +501,31 @@ class _StatusLine extends StatelessWidget {
   }
 
   (Color, String) _resolve() {
+    if (!concert.isGateOpen) {
+      return switch (concert.gateState) {
+        ConcertGateState.upcoming => (
+            GateColors.scanUsed.primary,
+            concert.gateStatusLine,
+          ),
+        ConcertGateState.completed => (
+            GateColors.scanInvalid.primary,
+            concert.gateStatusLine,
+          ),
+        ConcertGateState.cancelled => (
+            GateColors.scanInvalid.primary,
+            concert.gateStatusLine,
+          ),
+        ConcertGateState.unavailable => (
+            GateColors.onSurfaceSub,
+            concert.gateStatusLine,
+          ),
+        ConcertGateState.open => (
+            GateColors.networkOnline,
+            concert.gateStatusLine,
+          ),
+      };
+    }
+
     switch (providerState) {
       case PreloadState.initial:
       case PreloadState.loading:

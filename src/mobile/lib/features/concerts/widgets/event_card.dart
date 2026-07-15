@@ -168,12 +168,17 @@ class EventCard extends StatelessWidget {
   Widget? _buildStatusChip() {
     final now = DateTime.now();
     final start = concert.startTime?.toLocal();
-    final end = concert.endTime?.toLocal();
-    final status = concert.status?.toLowerCase();
+    final gateState = concert.gateState;
 
-    // Completed: explicit status or endTime in the past
-    if (status == 'completed' ||
-        (end != null && end.isBefore(now))) {
+    if (gateState == ConcertGateState.cancelled) {
+      return _Chip(
+        label: 'Đã hủy',
+        color: GateColors.scanInvalid.primary,
+        bgColor: GateColors.scanInvalid.container,
+      );
+    }
+
+    if (gateState == ConcertGateState.completed) {
       return _Chip(
         label: 'Đã diễn ra',
         color: GateColors.onSurfaceSub,
@@ -181,12 +186,27 @@ class EventCard extends StatelessWidget {
       );
     }
 
-    // Today: startTime on the same local calendar day
     if (start != null && _isSameLocalDay(start, now)) {
       return _Chip(
         label: 'Hôm nay',
         color: GateColors.primary,
         bgColor: GateColors.primary.withValues(alpha: 0.15),
+      );
+    }
+
+    if (gateState == ConcertGateState.upcoming) {
+      return _Chip(
+        label: 'Sắp diễn ra',
+        color: GateColors.scanUsed.primary,
+        bgColor: GateColors.scanUsed.container,
+      );
+    }
+
+    if (gateState == ConcertGateState.unavailable) {
+      return _Chip(
+        label: 'Chưa mở',
+        color: GateColors.onSurfaceSub,
+        bgColor: GateColors.border,
       );
     }
 
