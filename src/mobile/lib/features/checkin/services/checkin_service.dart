@@ -81,6 +81,10 @@ class CheckinService {
     required String title,
     required String location,
     String? posterUrl,
+    String? description,
+    String? startTime,
+    String? endTime,
+    String? status,
   }) async {
     final payload = jsonEncode({
       'userId': userId,
@@ -88,6 +92,10 @@ class CheckinService {
       'title': title,
       'location': location,
       'posterUrl': posterUrl,
+      'description': description,
+      'startTime': startTime,
+      'endTime': endTime,
+      'status': status,
     });
     await _storage.write(key: _preparedConcertKey, value: payload);
   }
@@ -135,7 +143,8 @@ class CheckinService {
   /// ### Merge strategy (replaces the old DELETE-all-then-INSERT):
   ///
   /// 1. Fetch server data.
-  /// 2. Validate: reject an empty payload to avoid wiping a valid offline cache.
+  /// 2. Validate: allow an empty payload only when no protected local offline
+  ///    state exists yet; otherwise abort to avoid wiping a valid cache.
   /// 3. Inside a single transaction:
   ///    a. Collect IDs of entries that are locally `checked_in` — these must
   ///       never be reset to "available" by a stale server payload.
@@ -161,19 +170,38 @@ class CheckinService {
     final ticketsJson = data['tickets'] as List<dynamic>? ?? [];
     final vipGuestsJson = data['vipGuests'] as List<dynamic>? ?? [];
     final allEntries = [...ticketsJson, ...vipGuestsJson];
-
-    // Guard: never wipe the local cache if the server returned nothing.
-    if (allEntries.isEmpty) {
-      throw Exception(
-        'Server returned empty checkin data for concert $concertId. '
-        'Preload aborted to protect offline cache.',
-      );
-    }
+    final db = await _dbHelper.database;
 
     onStepChanged?.call(PreloadStep.downloading);
 
+    // Empty payload is valid for a concert that simply has no issued entries yet.
+    // We only block it when local offline state already exists, because in that
+    // case an empty response is more likely a stale/anomalous server snapshot.
+    if (allEntries.isEmpty) {
+      final localEntryCount = Sqflite.firstIntValue(await db.rawQuery(
+            'SELECT COUNT(*) FROM checkin_entries WHERE concert_id = ?',
+            [concertId],
+          )) ??
+          0;
+      final pendingOfflineCount = Sqflite.firstIntValue(await db.rawQuery(
+            'SELECT COUNT(*) FROM offline_checkin_logs '
+            'WHERE concert_id = ? AND upload_status = ?',
+            [concertId, 'pending'],
+          )) ??
+          0;
+
+      if (localEntryCount > 0 || pendingOfflineCount > 0) {
+        throw Exception(
+          'Server returned empty checkin data for concert $concertId while '
+          'local offline state exists. Preload aborted to protect offline cache.',
+        );
+      }
+
+      onStepChanged?.call(PreloadStep.saving);
+      return;
+    }
+
     final now = DateTime.now().toIso8601String();
-    final db = await _dbHelper.database;
 
     onStepChanged?.call(PreloadStep.saving);
 
@@ -368,7 +396,16 @@ class CheckinService {
 
   bool _isDuplicateCheckinError(ApiException exception) {
     final code = exception.errorCode?.toUpperCase().trim();
-    return code == 'ALREADY_USED' || code == 'DUPLICATE CHECK-IN';
+    if (code == 'ALREADY_USED' || code == 'DUPLICATE CHECK-IN') {
+      return true;
+    }
+
+    final message = exception.message.toLowerCase();
+    return message.contains('already been used') ||
+        message.contains('duplicate check-in') ||
+        message.contains('duplicate checkin') ||
+        message.contains('da duoc su dung') ||
+        message.contains('da su dung');
   }
 
   String? _entryTypeLabel(String? rawType) {
@@ -455,6 +492,46 @@ class CheckinService {
     return parts.join(' | ');
   }
 
+  Map<String, dynamic> _mapScanApiError(ApiException exception) {
+    if (exception.statusCode == 401) {
+      return {
+        'success': false,
+        'status': 'AUTH_EXPIRED',
+        'message': 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
+      };
+    }
+
+    if (exception.statusCode == 403) {
+      return {
+        'success': false,
+        'status': 'FORBIDDEN',
+        'message': 'Tài khoản không có quyền thực hiện check-in này.',
+      };
+    }
+
+    if (exception.statusCode == 400) {
+      return {
+        'success': false,
+        'status': 'INVALID_REQUEST',
+        'message': 'Yêu cầu quét không hợp lệ. Vui lòng thử lại.',
+      };
+    }
+
+    if (exception.statusCode >= 500) {
+      return {
+        'success': false,
+        'status': 'SERVER_ERROR',
+        'message': 'Máy chủ đang gặp sự cố. Vui lòng thử lại sau.',
+      };
+    }
+
+    return {
+      'success': false,
+      'status': 'ERROR',
+      'message': 'Không thể xử lý lượt quét này. Vui lòng thử lại.',
+    };
+  }
+
   Future<Map<String, dynamic>> processScan(
     String concertId,
     String qrCodeHash,
@@ -518,7 +595,7 @@ class CheckinService {
         return _offlineFallbackScan(concertId, qrCodeHash, deviceId: deviceId);
       }
 
-      rethrow;
+      return _mapScanApiError(e);
     } catch (_) {
       rethrow;
     }
@@ -727,6 +804,44 @@ class CheckinService {
     final result = await db.rawQuery(
       "SELECT COUNT(*) as count FROM checkin_entries "
       "WHERE concert_id = ? AND entry_type = 'vip_guest'",
+      [concertId],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// Returns the total number of entries that have been scanned (checked in)
+  /// for [concertId], across all entry types.
+  Future<int> getTotalCheckedIn(String concertId) async {
+    final db = await _dbHelper.database;
+    final result = await db.rawQuery(
+      "SELECT COUNT(*) FROM checkin_entries "
+      "WHERE concert_id = ? AND checkin_status = 'checked_in'",
+      [concertId],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// Returns the number of standard tickets that have NOT yet been scanned
+  /// for [concertId].
+  Future<int> getTicketRemaining(String concertId) async {
+    final db = await _dbHelper.database;
+    final result = await db.rawQuery(
+      "SELECT COUNT(*) FROM checkin_entries "
+      "WHERE concert_id = ? AND entry_type = 'ticket' "
+      "AND checkin_status != 'checked_in'",
+      [concertId],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// Returns the number of VIP guests that have NOT yet been scanned
+  /// for [concertId].
+  Future<int> getVipRemaining(String concertId) async {
+    final db = await _dbHelper.database;
+    final result = await db.rawQuery(
+      "SELECT COUNT(*) FROM checkin_entries "
+      "WHERE concert_id = ? AND entry_type = 'vip_guest' "
+      "AND checkin_status != 'checked_in'",
       [concertId],
     );
     return Sqflite.firstIntValue(result) ?? 0;

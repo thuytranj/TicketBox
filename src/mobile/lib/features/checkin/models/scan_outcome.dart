@@ -48,8 +48,9 @@ class ScanOutcome {
         (result['message'] as String? ?? '').contains('Offline');
 
     final status = _mapStatus(rawStatus);
-    final title = _titleFor(status);
-    final message = _sanitizeMessage(result['message'] as String? ?? '', status);
+    final title = _titleFor(rawStatus, status);
+    final message =
+        _sanitizeMessage(rawStatus, result['message'] as String? ?? '', status);
 
     return ScanOutcome(
       status: status,
@@ -74,21 +75,53 @@ class ScanOutcome {
     }
   }
 
-  static String _titleFor(ScanStatus status) => switch (status) {
-        ScanStatus.valid => 'HỢP LỆ',
-        ScanStatus.alreadyUsed => 'VÉ ĐÃ SỬ DỤNG',
-        ScanStatus.notFound => 'MÃ VÉ KHÔNG ĐÚNG',
-        ScanStatus.error => 'LỖI ĐỒNG BỘ',
-      };
+  static String _titleFor(String rawStatus, ScanStatus status) {
+    switch (rawStatus) {
+      case 'AUTH_EXPIRED':
+        return 'PHIÊN ĐÃ HẾT HẠN';
+      case 'FORBIDDEN':
+        return 'KHÔNG CÓ QUYỀN';
+      case 'SERVER_ERROR':
+        return 'LỖI MÁY CHỦ';
+      case 'INVALID_REQUEST':
+        return 'KHÔNG THỂ XỬ LÝ';
+      case 'DEVICE_ERROR':
+        return 'LỖI THIẾT BỊ';
+    }
 
-  static String _sanitizeMessage(String raw, ScanStatus status) {
+    return switch (status) {
+      ScanStatus.valid => 'HỢP LỆ',
+      ScanStatus.alreadyUsed => 'VÉ ĐÃ SỬ DỤNG',
+      ScanStatus.notFound => 'MÃ VÉ KHÔNG ĐÚNG',
+      ScanStatus.error => 'KHÔNG THỂ XỬ LÝ',
+    };
+  }
+
+  static String _sanitizeMessage(
+    String rawStatus,
+    String raw,
+    ScanStatus status,
+  ) {
     // Strip raw exception text — never expose internal errors to staff UI.
     if (raw.isEmpty) {
+      switch (rawStatus) {
+        case 'AUTH_EXPIRED':
+          return 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
+        case 'FORBIDDEN':
+          return 'Tài khoản không có quyền thực hiện check-in này.';
+        case 'SERVER_ERROR':
+          return 'Máy chủ đang gặp sự cố. Vui lòng thử lại sau.';
+        case 'INVALID_REQUEST':
+          return 'Yêu cầu quét không hợp lệ. Vui lòng thử lại.';
+        case 'DEVICE_ERROR':
+          return 'Thiết bị gặp lỗi khi lưu kết quả quét.';
+      }
+
       return switch (status) {
         ScanStatus.valid => 'Vé hợp lệ',
         ScanStatus.alreadyUsed => 'Vé này đã được sử dụng',
         ScanStatus.notFound => 'Mã vé không tồn tại',
-        ScanStatus.error => 'Có lỗi xảy ra. Thử lại.',
+        ScanStatus.error => 'Không thể xử lý lượt quét này. Vui lòng thử lại.',
       };
     }
     return raw;

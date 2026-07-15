@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/gate_colors.dart';
+import '../../../core/theme/gate_radii.dart';
 import '../../../core/theme/gate_spacing.dart';
-import '../../../shared/widgets/gate_button.dart';
+import '../../../core/theme/gate_typography.dart';
 import '../../../shared/widgets/gate_empty_state.dart';
 import '../../../shared/widgets/gate_error_state.dart';
 import '../../../shared/widgets/gate_loading_state.dart';
@@ -13,6 +14,16 @@ import '../providers/concert_provider.dart';
 import '../widgets/event_card.dart';
 import '../../checkin/screens/preload_screen.dart';
 
+// ── Tab index constants ────────────────────────────────────────────────────────
+
+const int _tabToday = 0;
+const int _tabUpcoming = 1;
+const int _tabPast = 2;
+
+const int _pageSize = 6;
+
+// ── Screen ─────────────────────────────────────────────────────────────────────
+
 class EventListScreen extends StatefulWidget {
   const EventListScreen({super.key});
 
@@ -20,30 +31,76 @@ class EventListScreen extends StatefulWidget {
   State<EventListScreen> createState() => _EventListScreenState();
 }
 
-class _EventListScreenState extends State<EventListScreen> {
-  // Approximate height of bottom CTA bar (padding + button + bottom safe area).
-  static const double _ctaBarHeight = 88.0;
+class _EventListScreenState extends State<EventListScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  final TextEditingController _searchController = TextEditingController();
+
+  String _searchQuery = '';
+  int _currentPage = 1;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: _tabToday,
+    );
+    _tabController.addListener(_onTabChanged);
+    _searchController.addListener(_onSearchChanged);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ConcertProvider>().fetchConcerts();
     });
   }
 
-  // ── Business logic (unchanged) ─────────────────────────────────────────────
+  @override
+  void dispose() {
+    _tabController.removeListener(_onTabChanged);
+    _tabController.dispose();
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
 
-  void _navigateToNext() {
-    final concert = context.read<ConcertProvider>().selectedConcert;
-    if (concert == null) return;
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) return;
+    setState(() => _currentPage = 1);
+  }
+
+  void _onSearchChanged() {
+    final q = _searchController.text.trim().toLowerCase();
+    if (q != _searchQuery) {
+      setState(() {
+        _searchQuery = q;
+        _currentPage = 1;
+      });
+    }
+  }
+
+  // ── Navigation ──────────────────────────────────────────────────────────────
+
+  void _navigateTo(Concert concert) {
+    if (!concert.isGateOpen) {
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      messenger
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(concert.gateBlockedMessage),
+            backgroundColor: GateColors.scanUsed.primary,
+          ),
+        );
+      return;
+    }
 
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => PreloadScreen(concert: concert),
     ));
   }
 
-  // ── Error helpers ──────────────────────────────────────────────────────────
+  // ── Error helpers ───────────────────────────────────────────────────────────
 
   GateErrorType _resolveErrorType(String message) {
     final lower = message.toLowerCase();
@@ -73,7 +130,170 @@ class _EventListScreenState extends State<EventListScreen> {
     return 'Đã có lỗi xảy ra. Vui lòng thử lại.';
   }
 
-  // ── Body builder ───────────────────────────────────────────────────────────
+  // ── Tab filtering ───────────────────────────────────────────────────────────
+
+  List<Concert> _filterByTab(List<Concert> all, int tabIndex) {
+    final now = DateTime.now();
+    switch (tabIndex) {
+      case _tabToday:
+        return all.where((c) {
+          final start = c.startTime?.toLocal();
+          if (start == null) return false;
+          return _isSameLocalDay(start, now);
+        }).toList();
+
+      case _tabUpcoming:
+        // Concerts after today. null startTime → placed at end.
+        final withTime = all.where((c) {
+          final start = c.startTime?.toLocal();
+          if (start == null) return false;
+          // Strictly after today (not same day)
+          return start.isAfter(DateTime(now.year, now.month, now.day + 1)
+              .subtract(const Duration(microseconds: 1)));
+        }).toList();
+        final noTime =
+            all.where((c) => c.startTime == null).toList();
+        return [...withTime, ...noTime];
+
+      case _tabPast:
+        return all.where((c) {
+          final status = c.status?.toLowerCase();
+          if (status == 'completed') return true;
+          final end = c.endTime?.toLocal();
+          return end != null && end.isBefore(now);
+        }).toList();
+
+      default:
+        return all;
+    }
+  }
+
+  bool _isSameLocalDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  List<Concert> _filterBySearch(List<Concert> concerts, String query) {
+    if (query.isEmpty) return concerts;
+    return concerts.where((c) {
+      return c.title.toLowerCase().contains(query) ||
+          c.location.toLowerCase().contains(query);
+    }).toList();
+  }
+
+  // ── Build ───────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final concertProvider = context.watch<ConcertProvider>();
+
+    return GateScaffold(
+      title: 'Chọn sự kiện',
+      actions: [
+        Tooltip(
+          message: 'Đăng xuất',
+          child: IconButton(
+            key: const Key('logout_button'),
+            icon: const Icon(Icons.logout_rounded),
+            onPressed: () => context.read<AuthProvider>().logout(),
+          ),
+        ),
+      ],
+      body: Column(
+        children: [
+          _buildSearchBar(),
+          _buildTabBar(),
+          Expanded(child: _buildBody(concertProvider)),
+        ],
+      ),
+    );
+  }
+
+  // ── Search bar ──────────────────────────────────────────────────────────────
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        GateSpacing.md,
+        GateSpacing.sm,
+        GateSpacing.md,
+        GateSpacing.xs,
+      ),
+      child: TextField(
+        key: const Key('search_field'),
+        controller: _searchController,
+        style: GateTypography.bodyMedium.copyWith(color: GateColors.onSurface),
+        decoration: InputDecoration(
+          hintText: 'Tìm theo tên hoặc địa điểm…',
+          hintStyle: GateTypography.bodyMedium,
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            color: GateColors.onSurfaceSub,
+            size: 20,
+          ),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  key: const Key('search_clear'),
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: GateColors.onSurfaceSub,
+                    size: 18,
+                  ),
+                  onPressed: () => _searchController.clear(),
+                  tooltip: 'Xóa tìm kiếm',
+                )
+              : null,
+          filled: true,
+          fillColor: GateColors.surface,
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: GateSpacing.md,
+            vertical: GateSpacing.sm,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: GateRadii.md,
+            borderSide: const BorderSide(color: GateColors.border, width: 1),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: GateRadii.md,
+            borderSide: const BorderSide(color: GateColors.border, width: 1),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: GateRadii.md,
+            borderSide:
+                const BorderSide(color: GateColors.primary, width: 1.5),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Tab bar ─────────────────────────────────────────────────────────────────
+
+  Widget _buildTabBar() {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: GateSpacing.md),
+      decoration: BoxDecoration(
+        color: GateColors.surface,
+        borderRadius: GateRadii.md,
+      ),
+      child: TabBar(
+        key: const Key('event_tab_bar'),
+        controller: _tabController,
+        labelStyle: GateTypography.label.copyWith(fontWeight: FontWeight.w600),
+        unselectedLabelStyle: GateTypography.label,
+        labelColor: GateColors.primary,
+        unselectedLabelColor: GateColors.onSurfaceSub,
+        indicatorColor: GateColors.primary,
+        indicatorWeight: 2,
+        dividerColor: Colors.transparent,
+        tabs: const [
+          Tab(key: Key('tab_today'), text: 'Hôm nay'),
+          Tab(key: Key('tab_upcoming'), text: 'Sắp diễn ra'),
+          Tab(key: Key('tab_past'), text: 'Đã diễn ra'),
+        ],
+      ),
+    );
+  }
+
+  // ── Body ────────────────────────────────────────────────────────────────────
 
   Widget _buildBody(ConcertProvider provider) {
     switch (provider.state) {
@@ -89,98 +309,125 @@ class _EventListScreenState extends State<EventListScreen> {
         );
 
       case ConcertState.loaded:
-        if (provider.concerts.isEmpty) {
-          return const GateEmptyState(
-            icon: Icons.event_busy_outlined,
-            message: 'Hiện không có sự kiện đang mở để soát vé.',
-          );
-        }
-        return _buildConcertList(provider);
+        return TabBarView(
+          controller: _tabController,
+          children: [
+            _buildTabContent(provider.concerts, _tabToday),
+            _buildTabContent(provider.concerts, _tabUpcoming),
+            _buildTabContent(provider.concerts, _tabPast),
+          ],
+        );
     }
   }
 
-  Widget _buildConcertList(ConcertProvider provider) {
-    return RefreshIndicator(
-      color: GateColors.primary,
-      backgroundColor: GateColors.surface,
-      onRefresh: provider.fetchConcerts,
-      child: ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(
-          GateSpacing.md,
-          GateSpacing.md,
-          GateSpacing.md,
-          // Extra bottom padding so last item is never hidden by CTA bar
-          _ctaBarHeight + GateSpacing.md,
-        ),
-        itemCount: provider.concerts.length,
-        separatorBuilder: (context, index) => GateSpacing.vertical(GateSpacing.sm),
-        itemBuilder: (context, index) {
-          final concert = provider.concerts[index];
-          final isSelected = provider.selectedConcert?.id == concert.id;
+  // ── Tab content ─────────────────────────────────────────────────────────────
 
-          return EventCard(
-            key: ValueKey(concert.id),
-            concert: concert,
-            isSelected: isSelected,
-            onTap: () => provider.selectConcert(concert),
-          );
-        },
-      ),
+  Widget _buildTabContent(List<Concert> all, int tabIndex) {
+    final tabFiltered = _filterByTab(all, tabIndex);
+    final searchFiltered = _filterBySearch(tabFiltered, _searchQuery);
+
+    if (searchFiltered.isEmpty) {
+      return RefreshIndicator(
+        color: GateColors.primary,
+        backgroundColor: GateColors.surface,
+        onRefresh: context.read<ConcertProvider>().fetchConcerts,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: SizedBox(
+            height: 400,
+            child: GateEmptyState(
+              icon: Icons.event_busy_outlined,
+              message: _searchQuery.isNotEmpty
+                  ? 'Không tìm thấy sự kiện phù hợp.'
+                  : 'Không có sự kiện trong mục này.',
+            ),
+          ),
+        ),
+      );
+    }
+
+    final totalPages = (searchFiltered.length / _pageSize).ceil();
+    // Clamp current page in case filter reduced total pages.
+    final page = _currentPage.clamp(1, totalPages);
+    final startIndex = (page - 1) * _pageSize;
+    final pageItems = searchFiltered.skip(startIndex).take(_pageSize).toList();
+
+    return Column(
+      children: [
+        Expanded(
+          child: RefreshIndicator(
+            color: GateColors.primary,
+            backgroundColor: GateColors.surface,
+            onRefresh: context.read<ConcertProvider>().fetchConcerts,
+            child: ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                GateSpacing.md,
+                GateSpacing.sm,
+                GateSpacing.md,
+                GateSpacing.md,
+              ),
+              itemCount: pageItems.length,
+              separatorBuilder: (_, __) => GateSpacing.vertical(GateSpacing.sm),
+              itemBuilder: (context, index) {
+                final concert = pageItems[index];
+                return EventCard(
+                  key: ValueKey(concert.id),
+                  concert: concert,
+                  onTap: () => _navigateTo(concert),
+                );
+              },
+            ),
+          ),
+        ),
+        if (totalPages > 1) _buildPaginationFooter(page, totalPages),
+      ],
     );
   }
 
-  // ── Sticky bottom CTA ──────────────────────────────────────────────────────
+  // ── Pagination footer ───────────────────────────────────────────────────────
 
-  Widget _buildBottomCta(Concert? selected) {
-    final hasSelection = selected != null;
-
+  Widget _buildPaginationFooter(int page, int totalPages) {
     return Container(
-      decoration: BoxDecoration(
+      key: const Key('pagination_footer'),
+      padding: EdgeInsets.symmetric(
+        horizontal: GateSpacing.md,
+        vertical: GateSpacing.sm,
+      ),
+      decoration: const BoxDecoration(
         color: GateColors.surface,
-        border: const Border(
+        border: Border(
           top: BorderSide(color: GateColors.border, width: 1),
         ),
       ),
-      padding: EdgeInsets.fromLTRB(
-        GateSpacing.md,
-        GateSpacing.sm,
-        GateSpacing.md,
-        GateSpacing.sm + MediaQuery.of(context).padding.bottom,
-      ),
-      child: GateButton(
-        key: const Key('confirm_cta'),
-        label: hasSelection
-            ? 'Xác nhận: ${selected.title}'
-            : 'Chọn một sự kiện để tiếp tục',
-        onPressed: hasSelection ? _navigateToNext : null,
-        icon: Icons.arrow_forward_rounded,
-        fullWidth: true,
-      ),
-    );
-  }
-
-  // ── Build ──────────────────────────────────────────────────────────────────
-
-  @override
-  Widget build(BuildContext context) {
-    final concertProvider = context.watch<ConcertProvider>();
-    final selected = concertProvider.selectedConcert;
-
-    return GateScaffold(
-      title: 'Chọn sự kiện',
-      actions: [
-        Tooltip(
-          message: 'Đăng xuất',
-          child: IconButton(
-            key: const Key('logout_button'),
-            icon: const Icon(Icons.logout_rounded),
-            onPressed: () => context.read<AuthProvider>().logout(),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            key: const Key('page_prev'),
+            icon: const Icon(Icons.chevron_left_rounded),
+            color: page > 1 ? GateColors.onSurface : GateColors.border,
+            onPressed:
+                page > 1 ? () => setState(() => _currentPage = page - 1) : null,
+            tooltip: 'Trang trước',
           ),
-        ),
-      ],
-      bottomBar: _buildBottomCta(selected),
-      body: _buildBody(concertProvider),
+          GateSpacing.horizontal(GateSpacing.xs),
+          Text(
+            'Trang $page / $totalPages',
+            style: GateTypography.label.copyWith(color: GateColors.onSurface),
+          ),
+          GateSpacing.horizontal(GateSpacing.xs),
+          IconButton(
+            key: const Key('page_next'),
+            icon: const Icon(Icons.chevron_right_rounded),
+            color: page < totalPages ? GateColors.onSurface : GateColors.border,
+            onPressed: page < totalPages
+                ? () => setState(() => _currentPage = page + 1)
+                : null,
+            tooltip: 'Trang sau',
+          ),
+        ],
+      ),
     );
   }
 }

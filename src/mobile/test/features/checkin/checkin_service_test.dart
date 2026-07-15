@@ -155,13 +155,28 @@ void main() {
           reason: 'checked_in entry goes to metadata-only update path');
     });
 
-    test('empty server payload triggers validation guard (no wipe)', () {
+    test('empty server payload is allowed when no local offline state exists', () {
       final serverEntries = <Map<String, dynamic>>[];
+      const localEntryCount = 0;
+      const pendingOfflineCount = 0;
 
-      // The service should throw before touching the DB
-      bool wouldThrow = serverEntries.isEmpty;
-      expect(wouldThrow, true,
-          reason: 'empty server payload must abort preload to protect offline cache');
+      final shouldAbort =
+          serverEntries.isEmpty && (localEntryCount > 0 || pendingOfflineCount > 0);
+
+      expect(shouldAbort, false,
+          reason: 'brand-new concerts may legitimately have zero issued entries');
+    });
+
+    test('empty server payload still aborts when local offline state exists', () {
+      final serverEntries = <Map<String, dynamic>>[];
+      const localEntryCount = 3;
+      const pendingOfflineCount = 1;
+
+      final shouldAbort =
+          serverEntries.isEmpty && (localEntryCount > 0 || pendingOfflineCount > 0);
+
+      expect(shouldAbort, true,
+          reason: 'an empty snapshot must not wipe an existing offline cache or pending logs');
     });
 
     test('pending offline scans are preserved as checked_in after merge', () {

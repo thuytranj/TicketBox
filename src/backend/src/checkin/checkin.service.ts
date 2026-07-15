@@ -7,9 +7,9 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { RabbitMQService } from '../common/rabbitmq/rabbitmq.service';
-import { Ticket } from '../booking/entities/ticket.entity';
+import { Ticket, TicketStatus } from '../booking/entities/ticket.entity';
 import { CheckinStatus } from '../common/enums/checkin-status.enum';
-import { VipGuest } from '../concert/entities/vip-guest.entity';
+import { VipGuest, VipGuestStatus } from '../concert/entities/vip-guest.entity';
 import { Concert } from '../concert/entities/concert.entity';
 import { CheckinLog, CheckinLogStatus } from './entities/checkin-log.entity';
 import { CheckinScanDto } from './dto/checkin-scan.dto';
@@ -61,12 +61,14 @@ export class CheckinService {
       ])
       .where('order.concertId = :concertId', { concertId })
       .andWhere('order.status = :orderStatus', { orderStatus: 'paid' })
-      .andWhere('ticket.status = :ticketStatus', { ticketStatus: 'active' })
+      .andWhere('ticket.status = :ticketStatus', {
+        ticketStatus: TicketStatus.ACTIVE,
+      })
       .getMany();
 
     // Fetch VIP guests
     const vipGuests = await this.vipGuestRepo.find({
-      where: { concertId, status: 'active' as any },
+      where: { concertId, status: VipGuestStatus.ACTIVE },
       select: ['id', 'qrCodeHash', 'checkinStatus'],
     });
 
@@ -101,6 +103,9 @@ export class CheckinService {
       .where('ticket.qrCodeHash = :qrCodeHash', { qrCodeHash })
       .andWhere('order.concertId = :concertId', { concertId })
       .andWhere('order.status = :orderStatus', { orderStatus: 'paid' })
+      .andWhere('ticket.status = :ticketStatus', {
+        ticketStatus: TicketStatus.ACTIVE,
+      })
       .getOne();
 
     if (ticket) {
@@ -150,7 +155,7 @@ export class CheckinService {
 
     // Try VIP guest
     const vipGuest = await this.vipGuestRepo.findOne({
-      where: { qrCodeHash, concertId },
+      where: { qrCodeHash, concertId, status: VipGuestStatus.ACTIVE },
     });
 
     if (vipGuest) {
